@@ -1,0 +1,1922 @@
+basePath: /
+definitions:
+  entity.Console:
+    properties:
+      consoleType:
+        $ref: '#/definitions/entity.ConsoleType'
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      pricePerHour:
+        type: number
+      status:
+        $ref: '#/definitions/entity.ConsoleStatus'
+      updatedAt:
+        type: string
+    type: object
+  entity.ConsoleStatus:
+    enum:
+    - available
+    - in_use
+    - maintenance
+    type: string
+    x-enum-varnames:
+    - ConsoleStatusAvailable
+    - ConsoleStatusInUse
+    - ConsoleStatusMaintenance
+  entity.ConsoleType:
+    enum:
+    - PS3
+    - PS4
+    - PS5
+    type: string
+    x-enum-varnames:
+    - ConsoleTypePS3
+    - ConsoleTypePS4
+    - ConsoleTypePS5
+  entity.Customer:
+    properties:
+      createdAt:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  entity.DiscountType:
+    enum:
+    - percentage
+    - fixed_amount
+    type: string
+    x-enum-comments:
+      DiscountTypeFixedAmount: diskon nominal tetap
+      DiscountTypePercentage: diskon persen dari total
+    x-enum-descriptions:
+    - diskon persen dari total
+    - diskon nominal tetap
+    x-enum-varnames:
+    - DiscountTypePercentage
+    - DiscountTypeFixedAmount
+  entity.Payment:
+    properties:
+      amount:
+        type: number
+      cashReceived:
+        description: uang yang diterima
+        type: number
+      changeAmount:
+        description: kembalian
+        type: number
+      createdAt:
+        type: string
+      discountAmount:
+        description: nominal diskon yang diberikan
+        type: number
+      id:
+        type: string
+      notes:
+        type: string
+      paidAt:
+        type: string
+      paymentMethod:
+        $ref: '#/definitions/entity.PaymentMethod'
+      paymentStatus:
+        $ref: '#/definitions/entity.PaymentStatus'
+      session:
+        allOf:
+        - $ref: '#/definitions/entity.Session'
+        description: Relasi
+      sessionId:
+        type: string
+      updatedAt:
+        type: string
+      voucher:
+        $ref: '#/definitions/entity.Voucher'
+      voucherId:
+        type: string
+    type: object
+  entity.PaymentMethod:
+    enum:
+    - cash
+    type: string
+    x-enum-varnames:
+    - PaymentMethodCash
+  entity.PaymentStatus:
+    enum:
+    - pending
+    - paid
+    - refunded
+    type: string
+    x-enum-varnames:
+    - PaymentStatusPending
+    - PaymentStatusPaid
+    - PaymentStatusRefunded
+  entity.Session:
+    properties:
+      console:
+        allOf:
+        - $ref: '#/definitions/entity.Console'
+        description: Relasi (join data)
+      consoleId:
+        type: string
+      createdAt:
+        type: string
+      customer:
+        $ref: '#/definitions/entity.Customer'
+      customerId:
+        description: nullable, walk-in
+        type: string
+      durationMinutes:
+        type: integer
+      endTime:
+        type: string
+      id:
+        type: string
+      notes:
+        type: string
+      startTime:
+        type: string
+      status:
+        $ref: '#/definitions/entity.SessionStatus'
+      totalPrice:
+        type: number
+      updatedAt:
+        type: string
+    type: object
+  entity.SessionStatus:
+    enum:
+    - active
+    - completed
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - SessionStatusActive
+    - SessionStatusCompleted
+    - SessionStatusCancelled
+  entity.Shift:
+    properties:
+      createdAt:
+        type: string
+      endHour:
+        description: 0-23 (jam selesai)
+        type: integer
+      id:
+        type: string
+      is24Hour:
+        description: true = bisa login kapan saja
+        type: boolean
+      name:
+        description: 'contoh: "Shift Pagi", "Shift Malam"'
+        type: string
+      startHour:
+        description: 0-23 (jam mulai)
+        type: integer
+      status:
+        $ref: '#/definitions/entity.ShiftStatus'
+      updatedAt:
+        type: string
+      user:
+        allOf:
+        - $ref: '#/definitions/entity.User'
+        description: Relasi (join data)
+      userId:
+        type: string
+    type: object
+  entity.ShiftStatus:
+    enum:
+    - active
+    - inactive
+    type: string
+    x-enum-varnames:
+    - ShiftStatusActive
+    - ShiftStatusInactive
+  entity.User:
+    properties:
+      createdAt:
+        type: string
+      fullName:
+        type: string
+      id:
+        type: string
+      isActive:
+        type: boolean
+      role:
+        $ref: '#/definitions/entity.UserRole'
+      updatedAt:
+        type: string
+      username:
+        type: string
+    type: object
+  entity.UserRole:
+    enum:
+    - superadmin
+    - admin
+    - kasir
+    type: string
+    x-enum-varnames:
+    - UserRoleSuperAdmin
+    - UserRoleAdmin
+    - UserRoleKasir
+  entity.Voucher:
+    properties:
+      code:
+        type: string
+      createdAt:
+        type: string
+      discountType:
+        $ref: '#/definitions/entity.DiscountType'
+      discountValue:
+        type: number
+      expiresAt:
+        type: string
+      id:
+        type: string
+      isActive:
+        type: boolean
+      maxDiscount:
+        description: batas maks diskon persen (0 = tidak terbatas)
+        type: number
+      maxUsage:
+        description: batas total pemakaian (0 = tidak terbatas)
+        type: integer
+      minPurchase:
+        description: minimal total sebelum voucher berlaku
+        type: number
+      name:
+        type: string
+      updatedAt:
+        type: string
+      usageCount:
+        type: integer
+    type: object
+  response.ErrorResponse:
+    properties:
+      error:
+        type: string
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  response.Response:
+    properties:
+      data: {}
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  usecase.CreateCashPaymentRequest:
+    properties:
+      cashReceived:
+        type: number
+      notes:
+        type: string
+      sessionId:
+        type: string
+      voucherCode:
+        description: opsional — kode diskon voucher
+        type: string
+    required:
+    - cashReceived
+    - sessionId
+    type: object
+  usecase.CreateConsoleRequest:
+    properties:
+      consoleType:
+        allOf:
+        - $ref: '#/definitions/entity.ConsoleType'
+        enum:
+        - PS3
+        - PS4
+        - PS5
+      description:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      pricePerHour:
+        type: number
+    required:
+    - consoleType
+    - name
+    - pricePerHour
+    type: object
+  usecase.CreateCustomerRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      phone:
+        maxLength: 20
+        minLength: 8
+        type: string
+    required:
+    - name
+    - phone
+    type: object
+  usecase.CreateShiftRequest:
+    properties:
+      endHour:
+        maximum: 23
+        minimum: 0
+        type: integer
+      is24Hour:
+        type: boolean
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      startHour:
+        maximum: 23
+        minimum: 0
+        type: integer
+      userId:
+        type: string
+    required:
+    - name
+    - userId
+    type: object
+  usecase.CreateVoucherRequest:
+    properties:
+      code:
+        maxLength: 50
+        minLength: 3
+        type: string
+      discountType:
+        allOf:
+        - $ref: '#/definitions/entity.DiscountType'
+        enum:
+        - percentage
+        - fixed_amount
+      discountValue:
+        type: number
+      expiresAt:
+        type: string
+      maxDiscount:
+        description: hanya berlaku untuk percentage
+        minimum: 0
+        type: number
+      maxUsage:
+        description: 0 = tidak terbatas
+        minimum: 0
+        type: integer
+      minPurchase:
+        minimum: 0
+        type: number
+      name:
+        maxLength: 150
+        minLength: 3
+        type: string
+    required:
+    - code
+    - discountType
+    - discountValue
+    - name
+    type: object
+  usecase.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  usecase.LoginResponse:
+    properties:
+      expiresAt:
+        type: string
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/entity.User'
+    type: object
+  usecase.RegisterRequest:
+    properties:
+      fullName:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/entity.UserRole'
+        enum:
+        - superadmin
+        - admin
+        - kasir
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - fullName
+    - password
+    - role
+    - username
+    type: object
+  usecase.StartSessionRequest:
+    properties:
+      consoleId:
+        type: string
+      customerId:
+        description: opsional, walk-in tidak perlu
+        type: string
+      notes:
+        type: string
+    required:
+    - consoleId
+    type: object
+  usecase.UpdateConsoleRequest:
+    properties:
+      consoleType:
+        allOf:
+        - $ref: '#/definitions/entity.ConsoleType'
+        enum:
+        - PS3
+        - PS4
+        - PS5
+      description:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      pricePerHour:
+        type: number
+      status:
+        allOf:
+        - $ref: '#/definitions/entity.ConsoleStatus'
+        enum:
+        - available
+        - in_use
+        - maintenance
+    type: object
+  usecase.UpdateCustomerRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      phone:
+        maxLength: 20
+        minLength: 8
+        type: string
+    type: object
+  usecase.UpdateShiftRequest:
+    properties:
+      endHour:
+        maximum: 23
+        minimum: 0
+        type: integer
+      is24Hour:
+        type: boolean
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      startHour:
+        maximum: 23
+        minimum: 0
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/entity.ShiftStatus'
+        enum:
+        - active
+        - inactive
+    type: object
+  usecase.UpdateVoucherRequest:
+    properties:
+      code:
+        maxLength: 50
+        minLength: 3
+        type: string
+      discountType:
+        allOf:
+        - $ref: '#/definitions/entity.DiscountType'
+        enum:
+        - percentage
+        - fixed_amount
+      discountValue:
+        type: number
+      expiresAt:
+        type: string
+      isActive:
+        type: boolean
+      maxDiscount:
+        minimum: 0
+        type: number
+      maxUsage:
+        minimum: 0
+        type: integer
+      minPurchase:
+        minimum: 0
+        type: number
+      name:
+        maxLength: 150
+        minLength: 3
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@byone-arena.com
+    name: Byone Arena Support
+  description: API untuk sistem manajemen rental PlayStation Byone Arena. Mendukung
+    realtime via WebSocket untuk aplikasi mobile dan TV Android.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Byone Arena API
+  version: "1.0"
+paths:
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Autentikasi pengguna (admin, superadmin, kasir). Kasir hanya bisa
+        login sesuai jadwal shift aktif.
+      parameters:
+      - description: Kredensial login
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/usecase.LoginResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Kredensial salah atau di luar jam shift
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Login pengguna
+      tags:
+      - Autentikasi
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan akun dengan role superadmin, admin, atau kasir. Endpoint
+        ini sebaiknya dinonaktifkan di production.
+      parameters:
+      - description: Data registrasi
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.User'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Username sudah digunakan
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Daftarkan pengguna baru
+      tags:
+      - Autentikasi
+  /api/v1/consoles:
+    get:
+      description: Mengembalikan daftar seluruh unit konsol PlayStation
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Console'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua konsol
+      tags:
+      - Konsol
+    post:
+      consumes:
+      - application/json
+      description: Menambahkan unit konsol PlayStation baru ke sistem
+      parameters:
+      - description: Data konsol baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateConsoleRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Console'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Tambah konsol baru
+      tags:
+      - Konsol
+  /api/v1/consoles/{id}:
+    delete:
+      description: Menghapus unit konsol dari sistem secara permanen
+      parameters:
+      - description: Console ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hapus konsol
+      tags:
+      - Konsol
+    get:
+      description: Mengembalikan detail satu unit konsol
+      parameters:
+      - description: Console ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Console'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil konsol berdasarkan ID
+      tags:
+      - Konsol
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui informasi unit konsol (nama, tipe, harga, status, deskripsi)
+      parameters:
+      - description: Console ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data konsol yang diperbarui
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.UpdateConsoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Console'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update data konsol
+      tags:
+      - Konsol
+  /api/v1/consoles/available:
+    get:
+      description: Mengembalikan daftar konsol dengan status available
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Console'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil konsol yang tersedia
+      tags:
+      - Konsol
+  /api/v1/customers:
+    get:
+      description: Mengembalikan daftar seluruh pelanggan yang terdaftar, diurutkan
+        berdasarkan nama
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Customer'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua pelanggan
+      tags:
+      - Pelanggan
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan pelanggan baru ke sistem. Nomor telepon harus unik.
+      parameters:
+      - description: Data pelanggan baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateCustomerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Customer'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Nomor telepon sudah terdaftar
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Daftarkan pelanggan baru
+      tags:
+      - Pelanggan
+  /api/v1/customers/{id}:
+    delete:
+      description: Menghapus data pelanggan dari sistem secara permanen
+      parameters:
+      - description: Customer ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hapus data pelanggan
+      tags:
+      - Pelanggan
+    get:
+      description: Mengembalikan detail data satu pelanggan
+      parameters:
+      - description: Customer ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Customer'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil pelanggan berdasarkan ID
+      tags:
+      - Pelanggan
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data pelanggan yang sudah terdaftar
+      parameters:
+      - description: Customer ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data pelanggan yang diperbarui
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.UpdateCustomerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Customer'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update data pelanggan
+      tags:
+      - Pelanggan
+  /api/v1/payments:
+    post:
+      consumes:
+      - application/json
+      description: Memproses pembayaran tunai untuk sesi yang sudah selesai. Sertakan
+        `voucherCode` untuk mendapatkan diskon. SP otomatis menghitung diskon, kembalian,
+        dan mengubah status menjadi paid.
+      parameters:
+      - description: Data pembayaran — voucherCode opsional
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateCashPaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Payment'
+              type: object
+        "400":
+          description: Uang kurang / voucher tidak valid / sesi tidak valid
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Pembayaran sudah ada untuk sesi ini
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Buat pembayaran tunai
+      tags:
+      - Pembayaran
+  /api/v1/payments/{id}:
+    get:
+      description: Mengembalikan detail transaksi pembayaran tunai
+      parameters:
+      - description: Payment ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Payment'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil pembayaran berdasarkan ID
+      tags:
+      - Pembayaran
+  /api/v1/payments/{id}/refund:
+    patch:
+      description: Membatalkan pembayaran dan mengembalikan status ke refunded. Hanya
+        pembayaran berstatus paid yang bisa direfund.
+      parameters:
+      - description: Payment ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Payment'
+              type: object
+        "400":
+          description: Pembayaran tidak dalam status paid
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Proses refund pembayaran
+      tags:
+      - Pembayaran
+  /api/v1/sessions:
+    get:
+      description: Mengembalikan daftar seluruh sesi rental (aktif, selesai, dibatalkan)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Session'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua sesi rental
+      tags:
+      - Sesi Rental
+  /api/v1/sessions/{id}:
+    get:
+      description: Mengembalikan detail satu sesi rental beserta data konsol dan pelanggan
+      parameters:
+      - description: Session ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Session'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil sesi berdasarkan ID
+      tags:
+      - Sesi Rental
+  /api/v1/sessions/{id}/cancel:
+    patch:
+      description: Membatalkan sesi rental aktif tanpa tagihan. Konsol dikembalikan
+        ke status available. Event realtime dikirim.
+      parameters:
+      - description: Session ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Sesi tidak aktif atau tidak ditemukan
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Batalkan sesi rental
+      tags:
+      - Sesi Rental
+  /api/v1/sessions/{id}/end:
+    patch:
+      description: Mengakhiri sesi rental aktif, menghitung durasi dan total harga,
+        membebaskan konsol. Event realtime dikirim.
+      parameters:
+      - description: Session ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Session'
+              type: object
+        "400":
+          description: Sesi tidak aktif atau tidak ditemukan
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Akhiri sesi rental
+      tags:
+      - Sesi Rental
+  /api/v1/sessions/{session_id}/payment:
+    get:
+      description: Mengembalikan data pembayaran untuk sesi rental tertentu
+      parameters:
+      - description: Session ID (UUID)
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Payment'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Belum ada pembayaran untuk sesi ini
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil pembayaran berdasarkan Session ID
+      tags:
+      - Pembayaran
+  /api/v1/sessions/active:
+    get:
+      description: Mengembalikan sesi yang sedang berjalan saat ini di semua konsol
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Session'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua sesi aktif
+      tags:
+      - Sesi Rental
+  /api/v1/sessions/start:
+    post:
+      consumes:
+      - application/json
+      description: Memulai sesi rental untuk konsol tertentu. Konsol harus dalam status
+        available. Event realtime dikirim ke semua client yang terhubung.
+      parameters:
+      - description: Data sesi baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.StartSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Session'
+              type: object
+        "400":
+          description: Konsol tidak tersedia atau request tidak valid
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mulai sesi rental baru
+      tags:
+      - Sesi Rental
+  /api/v1/shifts:
+    get:
+      description: Mengembalikan semua jadwal shift kasir beserta data pengguna terkait
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Shift'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Hanya admin dan superadmin
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua jadwal shift
+      tags:
+      - Shift Kasir
+    post:
+      consumes:
+      - application/json
+      description: 'Membuat jadwal shift untuk pengguna kasir. Gunakan is24Hour=true
+        untuk shift tanpa batasan jam. Untuk shift partial, startHour dan endHour
+        tidak boleh sama (mendukung overnight, misal: startHour=22, endHour=6).'
+      parameters:
+      - description: Data shift baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateShiftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Shift'
+              type: object
+        "400":
+          description: User bukan kasir atau jam tidak valid
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Buat jadwal shift baru
+      tags:
+      - Shift Kasir
+  /api/v1/shifts/{id}:
+    delete:
+      description: Menghapus jadwal shift kasir secara permanen
+      parameters:
+      - description: Shift ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hapus jadwal shift
+      tags:
+      - Shift Kasir
+    get:
+      description: Mengembalikan detail satu jadwal shift kasir
+      parameters:
+      - description: Shift ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Shift'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil shift berdasarkan ID
+      tags:
+      - Shift Kasir
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data jadwal shift. Semua field bersifat opsional.
+      parameters:
+      - description: Shift ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data shift yang diperbarui
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.UpdateShiftRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Shift'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update jadwal shift
+      tags:
+      - Shift Kasir
+  /api/v1/users/{user_id}/shifts:
+    get:
+      description: Mengembalikan semua jadwal shift milik satu pengguna kasir
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Shift'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil shift berdasarkan User ID
+      tags:
+      - Shift Kasir
+  /api/v1/vouchers:
+    get:
+      description: Mengembalikan daftar seluruh voucher diskon beserta status dan
+        statistik penggunaan
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Voucher'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Hanya admin dan superadmin
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua voucher
+      tags:
+      - Voucher
+    post:
+      consumes:
+      - application/json
+      description: 'Membuat voucher diskon baru. Tipe diskon: ''percentage'' (persen
+        dari total) atau ''fixed_amount'' (nominal tetap). Kode akan otomatis diubah
+        ke huruf kapital.'
+      parameters:
+      - description: Data voucher baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateVoucherRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Voucher'
+              type: object
+        "400":
+          description: Kode sudah digunakan atau validasi gagal
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Buat voucher baru
+      tags:
+      - Voucher
+  /api/v1/vouchers/{id}:
+    delete:
+      description: Menghapus voucher secara permanen. Voucher yang sudah dipakai di
+        transaksi tidak dapat dihapus.
+      parameters:
+      - description: Voucher ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hapus voucher
+      tags:
+      - Voucher
+    get:
+      description: Mengembalikan detail satu voucher diskon
+      parameters:
+      - description: Voucher ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Voucher'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil voucher berdasarkan ID
+      tags:
+      - Voucher
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui informasi voucher. Semua field bersifat opsional.
+      parameters:
+      - description: Voucher ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data voucher yang diperbarui
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.UpdateVoucherRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Voucher'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update data voucher
+      tags:
+      - Voucher
+  /api/v1/vouchers/{id}/toggle:
+    patch:
+      description: Toggle status isActive voucher. Voucher nonaktif tidak bisa digunakan
+        saat pembayaran.
+      parameters:
+      - description: Voucher ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Voucher'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Aktifkan / nonaktifkan voucher
+      tags:
+      - Voucher
+  /api/v1/vouchers/code/{code}:
+    get:
+      description: Mengecek validitas dan detail voucher berdasarkan kodenya. Dapat
+        digunakan kasir untuk preview diskon sebelum pembayaran.
+      parameters:
+      - description: Kode voucher (tidak case-sensitive)
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Voucher'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Kode tidak ditemukan
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cek voucher berdasarkan kode
+      tags:
+      - Voucher
+securityDefinitions:
+  BearerAuth:
+    description: 'Masukkan token JWT dengan format: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

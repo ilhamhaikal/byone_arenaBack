@@ -1,0 +1,72 @@
+services:
+  # =============================================
+  # PostgreSQL Database
+  # =============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: byone-arena-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-byone_secret}
+      POSTGRES_DB: ${DB_NAME:-byone_arena}
+      TZ: Asia/Jakarta
+      PGTZ: Asia/Jakarta
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/000001_init_schema.up.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - byone-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-byone_arena}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # =============================================
+  # Go API Service (Fiber)
+  # =============================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: byone-arena-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      TZ: Asia/Jakarta
+    ports:
+      - "${PORT:-8080}:8080"
+    networks:
+      - byone-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+# =============================================
+# Networks
+# =============================================
+networks:
+  byone-network:
+    driver: bridge
+    name: byone-network
+
+# =============================================
+# Volumes
+# =============================================
+volumes:
+  postgres_data:
+    name: byone-arena-postgres-data
