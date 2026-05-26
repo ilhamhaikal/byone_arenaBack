@@ -33,9 +33,10 @@ type Payment struct {
 	PaymentMethod  PaymentMethod `json:"paymentMethod"   gorm:"not null;default:'cash';size:20"`
 	PaymentStatus  PaymentStatus `json:"paymentStatus"   gorm:"not null;default:'pending';size:20;index"`
 	PaidAt         *time.Time    `json:"paidAt,omitempty"`
-	CashReceived   float64       `json:"cashReceived"    gorm:"not null;default:0;type:numeric(10,2)"` // uang yang diterima
-	ChangeAmount   float64       `json:"changeAmount"    gorm:"not null;default:0;type:numeric(10,2)"` // kembalian
-	Notes          string        `json:"notes,omitempty" gorm:"type:text"`
+	CashReceived        float64       `json:"cashReceived"        gorm:"not null;default:0;type:numeric(10,2)"` // uang yang diterima
+	ChangeAmount        float64       `json:"changeAmount"        gorm:"not null;default:0;type:numeric(10,2)"` // kembalian
+	AutoDiscountAmount  float64       `json:"autoDiscountAmount" gorm:"not null;default:0;type:numeric(10,2)"` // diskon otomatis (happy hour, member, dll)
+	Notes               string        `json:"notes,omitempty"    gorm:"type:text"`
 	CreatedAt      time.Time     `json:"createdAt"       gorm:"autoCreateTime"`
 	UpdatedAt      time.Time     `json:"updatedAt"       gorm:"autoUpdateTime"`
 

@@ -34,27 +34,37 @@ func NewVoucherUseCase(voucherRepo repository.VoucherRepository) VoucherUseCase 
 
 // CreateVoucherRequest payload untuk membuat voucher baru
 type CreateVoucherRequest struct {
-	Code          string               `json:"code"          validate:"required,min=3,max=50"`
-	Name          string               `json:"name"          validate:"required,min=3,max=150"`
-	DiscountType  entity.DiscountType  `json:"discountType"  validate:"required,oneof=percentage fixed_amount"`
-	DiscountValue float64              `json:"discountValue" validate:"required,gt=0"`
-	MinPurchase   float64              `json:"minPurchase"   validate:"gte=0"`
-	MaxDiscount   float64              `json:"maxDiscount"   validate:"gte=0"`  // hanya berlaku untuk percentage
-	MaxUsage      int                  `json:"maxUsage"      validate:"gte=0"`  // 0 = tidak terbatas
-	ExpiresAt     *time.Time           `json:"expiresAt"`
+	// Kode unik voucher (otomatis uppercase). Contoh: DISKON10
+	Code string `json:"code" validate:"required,min=3,max=50" example:"HPH3"`
+	// Nama deskriptif voucher
+	Name string `json:"name" validate:"required,min=3,max=150" example:"Happy Hours 3 Jam"`
+	// Tipe diskon: "percentage" (persen) atau "fixed_amount" (nominal Rp)
+	DiscountType entity.DiscountType `json:"discountType" validate:"required,oneof=percentage fixed_amount" enums:"percentage,fixed_amount" example:"fixed_amount"`
+	// Nilai diskon: jika percentage maka 0-100, jika fixed_amount maka nominal Rp
+	DiscountValue float64 `json:"discountValue" validate:"required,gt=0" example:"24000"`
+	// Minimal total belanja sebelum voucher berlaku (0 = tidak ada minimum)
+	MinPurchase float64 `json:"minPurchase" validate:"gte=0" example:"24000"`
+	// Batas maksimal nominal diskon untuk tipe percentage (0 = tidak terbatas)
+	MaxDiscount float64 `json:"maxDiscount" validate:"gte=0" example:"0"`
+	// Batas maksimal total pemakaian voucher (0 = tidak terbatas)
+	MaxUsage int `json:"maxUsage" validate:"gte=0" example:"100"`
+	// Tanggal kedaluwarsa voucher dalam format RFC3339/ISO8601. Contoh: 2026-06-26T00:00:00Z (null = tidak ada batas waktu)
+	ExpiresAt *time.Time `json:"expiresAt" example:"2026-06-26T00:00:00Z"`
 }
 
 // UpdateVoucherRequest payload untuk mengubah data voucher
 type UpdateVoucherRequest struct {
-	Code          string               `json:"code"          validate:"omitempty,min=3,max=50"`
-	Name          string               `json:"name"          validate:"omitempty,min=3,max=150"`
-	DiscountType  entity.DiscountType  `json:"discountType"  validate:"omitempty,oneof=percentage fixed_amount"`
-	DiscountValue float64              `json:"discountValue" validate:"omitempty,gt=0"`
-	MinPurchase   *float64             `json:"minPurchase"   validate:"omitempty,gte=0"`
-	MaxDiscount   *float64             `json:"maxDiscount"   validate:"omitempty,gte=0"`
-	MaxUsage      *int                 `json:"maxUsage"      validate:"omitempty,gte=0"`
-	IsActive      *bool                `json:"isActive"`
-	ExpiresAt     *time.Time           `json:"expiresAt"`
+	Code          string              `json:"code"          validate:"omitempty,min=3,max=50"          example:"HPH3"`
+	Name          string              `json:"name"          validate:"omitempty,min=3,max=150"         example:"Happy Hours 3 Jam"`
+	// Tipe diskon: "percentage" atau "fixed_amount"
+	DiscountType  entity.DiscountType `json:"discountType"  validate:"omitempty,oneof=percentage fixed_amount" enums:"percentage,fixed_amount" example:"fixed_amount"`
+	DiscountValue float64             `json:"discountValue" validate:"omitempty,gt=0"                   example:"24000"`
+	MinPurchase   *float64            `json:"minPurchase"   validate:"omitempty,gte=0"`
+	MaxDiscount   *float64            `json:"maxDiscount"   validate:"omitempty,gte=0"`
+	MaxUsage      *int                `json:"maxUsage"      validate:"omitempty,gte=0"`
+	IsActive      *bool               `json:"isActive"`
+	// Format RFC3339/ISO8601. Contoh: 2026-06-26T00:00:00Z
+	ExpiresAt     *time.Time          `json:"expiresAt"     example:"2026-06-26T00:00:00Z"`
 }
 
 func (uc *voucherUseCase) GetAllVouchers(ctx context.Context) ([]*entity.Voucher, error) {

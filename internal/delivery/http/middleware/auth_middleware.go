@@ -3,6 +3,7 @@ package middleware
 import (
 	"strings"
 
+	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/config"
 	"byone-arena/pkg/response"
@@ -50,8 +51,16 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 // AdminOnly membatasi akses hanya untuk pengguna dengan role admin atau superadmin
 func AdminOnly() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		role, ok := c.Locals("role").(string)
-		if !ok || (role != "admin" && role != "superadmin") {
+		roleValue := c.Locals("role")
+		role, ok := roleValue.(entity.UserRole)
+		if !ok {
+			if roleString, stringOK := roleValue.(string); stringOK {
+				role = entity.UserRole(roleString)
+				ok = true
+			}
+		}
+
+		if !ok || (role != entity.UserRoleAdmin && role != entity.UserRoleSuperAdmin) {
 			return response.Forbidden(c, "Hanya admin atau superadmin yang dapat mengakses endpoint ini")
 		}
 		return c.Next()

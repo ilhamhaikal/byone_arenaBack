@@ -146,7 +146,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mengembalikan daftar seluruh unit konsol PlayStation",
+                "description": "Mengembalikan daftar seluruh unit konsol / TV Android",
                 "produces": [
                     "application/json"
                 ],
@@ -288,6 +288,58 @@ const docTemplate = `{
                                             "type": "array",
                                             "items": {
                                                 "$ref": "#/definitions/entity.Console"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/consoles/overview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan semua konsol beserta sesi aktif masing-masing (jika ada).\\n\\nSetiap item mencakup:\\n- Data konsol (nama, tipe, IP, status, harga/jam)\\n- ` + "`" + `activeSession` + "`" + `: null jika konsol kosong, atau berisi info sesi aktif termasuk ` + "`" + `remainingMinutes` + "`" + ` (sisa menit dari durasi yang dipesan; -1 = open-ended).\\n\\nGunakan endpoint ini untuk tampilan dashboard / monitor konsol secara realtime.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Konsol"
+                ],
+                "summary": "Dashboard overview semua konsol",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/usecase.ConsoleOverviewItem"
                                             }
                                         }
                                     }
@@ -799,6 +851,1286 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/discounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan seluruh aturan diskon otomatis (happy hour, member, dll) beserta statusnya",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discount"
+                ],
+                "summary": "Ambil semua aturan diskon",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.DiscountRule"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membuat aturan diskon otomatis baru. Tipe rule: 'always', 'happy_hour', 'member', 'day_of_week'.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discount"
+                ],
+                "summary": "Buat aturan diskon baru",
+                "parameters": [
+                    {
+                        "description": "Data aturan diskon baru",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/usecase.CreateDiscountRuleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.DiscountRule"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/discounts/active": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan aturan diskon yang sedang aktif, diurutkan berdasarkan prioritas",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discount"
+                ],
+                "summary": "Ambil aturan diskon aktif",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.DiscountRule"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/discounts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan detail satu aturan diskon",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discount"
+                ],
+                "summary": "Ambil aturan diskon berdasarkan ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Discount Rule ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.DiscountRule"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengubah data aturan diskon. Semua field opsional (partial update).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discount"
+                ],
+                "summary": "Update aturan diskon",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Discount Rule ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data yang diubah",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/usecase.UpdateDiscountRuleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.DiscountRule"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus aturan diskon secara permanen",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discount"
+                ],
+                "summary": "Hapus aturan diskon",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Discount Rule ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/discounts/{id}/toggle": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Toggle status aktif aturan diskon (aktif ↔ nonaktif)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Discount"
+                ],
+                "summary": "Aktifkan / nonaktifkan aturan diskon",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Discount Rule ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.DiscountRule"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/food-orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan seluruh pesanan makanan diurutkan terbaru",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FoodOrder"
+                ],
+                "summary": "Ambil semua pesanan makanan",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.FoodOrder"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin membuat pesanan makanan. Harga otomatis diambil dari data menu, total dihitung otomatis dari quantity × harga.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FoodOrder"
+                ],
+                "summary": "Buat pesanan makanan baru",
+                "parameters": [
+                    {
+                        "description": "Data pesanan baru",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/usecase.CreateFoodOrderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.FoodOrder"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/food-orders/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Filter pesanan berdasarkan status: pending, preparing, served, cancelled",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FoodOrder"
+                ],
+                "summary": "Ambil pesanan berdasarkan status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Status pesanan",
+                        "name": "status",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.FoodOrder"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/food-orders/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan detail pesanan beserta semua item dan info menu",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FoodOrder"
+                ],
+                "summary": "Ambil pesanan berdasarkan ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Food Order ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.FoodOrder"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus pesanan secara permanen. Hanya pesanan berstatus 'cancelled' yang bisa dihapus.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FoodOrder"
+                ],
+                "summary": "Hapus pesanan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Food Order ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/food-orders/{id}/cancel": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Membatalkan pesanan makanan. Tidak bisa membatalkan pesanan yang sudah served.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FoodOrder"
+                ],
+                "summary": "Batalkan pesanan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Food Order ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.FoodOrder"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/food-orders/{id}/status": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengubah status pesanan. Alur: pending → preparing → served. Dapat dibatalkan (cancelled) dari status apapun kecuali served.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FoodOrder"
+                ],
+                "summary": "Update status pesanan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Food Order ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status baru",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/usecase.UpdateOrderStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.FoodOrder"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/menus": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan seluruh daftar menu makanan \u0026 minuman (termasuk yang tidak tersedia)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Menu"
+                ],
+                "summary": "Ambil semua menu",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.MenuItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin membuat item menu baru. Kategori: food, drink, snack, other",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Menu"
+                ],
+                "summary": "Buat menu baru",
+                "parameters": [
+                    {
+                        "description": "Data menu baru",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/usecase.CreateMenuItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.MenuItem"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/menus/available": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan hanya menu yang sedang tersedia, diurutkan per kategori",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Menu"
+                ],
+                "summary": "Ambil menu yang tersedia",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.MenuItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/menus/category/{category}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan menu tersedia berdasarkan kategori: food, drink, snack, other",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Menu"
+                ],
+                "summary": "Ambil menu berdasarkan kategori",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Kategori menu (food|drink|snack|other)",
+                        "name": "category",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.MenuItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/menus/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Menu"
+                ],
+                "summary": "Ambil menu berdasarkan ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Menu ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.MenuItem"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengubah data menu (partial update). Semua field opsional.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Menu"
+                ],
+                "summary": "Update menu",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Menu ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data yang diubah",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/usecase.UpdateMenuItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.MenuItem"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghapus item menu secara permanen. Tidak bisa dihapus jika masih ada pesanan aktif.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Menu"
+                ],
+                "summary": "Hapus menu",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Menu ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/menus/{id}/toggle": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengubah status tersedia/tidak tersedia menu",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Menu"
+                ],
+                "summary": "Toggle ketersediaan menu",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Menu ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.MenuItem"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/payments": {
             "post": {
                 "security": [
@@ -1107,7 +2439,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Memulai sesi rental untuk konsol tertentu. Konsol harus dalam status available. Event realtime dikirim ke semua client yang terhubung.",
+                "description": "Memulai sesi rental untuk konsol dan langsung menyelesaikan pembayaran di depan dalam satu transaksi.\\n\\n**Alur:**\\n1. Konsol harus berstatus ` + "`" + `available` + "`" + `\\n2. Harga dihitung dari ` + "`" + `bookedDurationMinutes × pricePerHour / 60` + "`" + `\\n3. Diskon otomatis (happy hour, member) diterapkan\\n4. Voucher opsional diterapkan jika ` + "`" + `voucherCode` + "`" + ` diberikan\\n5. ` + "`" + `cashReceived` + "`" + ` harus ≥ harga setelah diskon\\n\\nResponse mencakup ` + "`" + `session` + "`" + ` (dengan ` + "`" + `endScheduledAt` + "`" + ` untuk countdown) dan ` + "`" + `payment` + "`" + ` (dengan ` + "`" + `changeAmount` + "`" + ` kembalian).\\n\\nEvent realtime ` + "`" + `session_started` + "`" + ` dikirim ke semua client WebSocket.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1117,10 +2449,10 @@ const docTemplate = `{
                 "tags": [
                     "Sesi Rental"
                 ],
-                "summary": "Mulai sesi rental baru",
+                "summary": "Mulai sesi rental + pembayaran di depan",
                 "parameters": [
                     {
-                        "description": "Data sesi baru",
+                        "description": "Data sesi dan pembayaran",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -1141,7 +2473,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/entity.Session"
+                                            "$ref": "#/definitions/usecase.StartSessionResponse"
                                         }
                                     }
                                 }
@@ -1149,7 +2481,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Konsol tidak tersedia atau request tidak valid",
+                        "description": "Konsol tidak tersedia, uang kurang, atau voucher tidak valid",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -1330,6 +2662,61 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{session_id}/food-orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan semua pesanan makanan yang terhubung ke sesi PS tertentu",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "FoodOrder"
+                ],
+                "summary": "Ambil pesanan makanan dari satu sesi PS",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID (UUID)",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.FoodOrder"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -1868,7 +3255,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Membuat voucher diskon baru. Tipe diskon: 'percentage' (persen dari total) atau 'fixed_amount' (nominal tetap). Kode akan otomatis diubah ke huruf kapital.",
+                "description": "Membuat voucher diskon baru.\\n\\n**Nilai discountType yang valid:**\\n- ` + "`" + `percentage` + "`" + ` — diskon persen dari total (discountValue = 0–100)\\n- ` + "`" + `fixed_amount` + "`" + ` — diskon nominal Rp tetap\\n\\n**Format expiresAt:** RFC3339/ISO8601, contoh ` + "`" + `2026-06-26T00:00:00Z` + "`" + `. Kirim ` + "`" + `null` + "`" + ` jika tidak ada batas waktu.\\n\\nKode otomatis diubah ke UPPERCASE.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1910,7 +3297,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Kode sudah digunakan atau validasi gagal",
+                        "description": "Validasi gagal — cek discountType (percentage|fixed_amount) dan format expiresAt (RFC3339)",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -1922,7 +3309,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Forbidden",
+                        "description": "Hanya admin atau superadmin",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -2281,6 +3668,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "ipAddress": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -2302,6 +3692,11 @@ const docTemplate = `{
                 "in_use",
                 "maintenance"
             ],
+            "x-enum-comments": {
+                "ConsoleStatusAvailable": "siap disewa / TV mati",
+                "ConsoleStatusInUse": "sedang aktif / TV menyala",
+                "ConsoleStatusMaintenance": "sedang diperbaiki"
+            },
             "x-enum-varnames": [
                 "ConsoleStatusAvailable",
                 "ConsoleStatusInUse",
@@ -2313,12 +3708,14 @@ const docTemplate = `{
             "enum": [
                 "PS3",
                 "PS4",
-                "PS5"
+                "PS5",
+                "AndroidTV"
             ],
             "x-enum-varnames": [
                 "ConsoleTypePS3",
                 "ConsoleTypePS4",
-                "ConsoleTypePS5"
+                "ConsoleTypePS5",
+                "ConsoleTypeAndroidTV"
             ]
         },
         "entity.Customer": {
@@ -2333,11 +3730,72 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "isMember": {
+                    "description": "pelanggan member mendapat diskon otomatis",
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
                 "phone": {
                     "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.DiscountRule": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "daysOfWeek": {
+                    "description": "Day of week: comma-separated \"0,1,2\" (0=Minggu, 1=Senin, ..., 6=Sabtu)",
+                    "type": "string"
+                },
+                "discountType": {
+                    "description": "reuse dari voucher.go",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.DiscountType"
+                        }
+                    ]
+                },
+                "discountValue": {
+                    "type": "number"
+                },
+                "endHour": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "maxDiscount": {
+                    "description": "batas maks diskon persen (0 = tidak terbatas)",
+                    "type": "number"
+                },
+                "minPurchase": {
+                    "description": "minimal total sebelum rule berlaku",
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "priority": {
+                    "description": "lebih besar = lebih dulu dievaluasi",
+                    "type": "integer"
+                },
+                "ruleType": {
+                    "$ref": "#/definitions/entity.RuleType"
+                },
+                "startHour": {
+                    "description": "Happy hour: jam mulai dan jam selesai (0-23, bisa lintas tengah malam)",
+                    "type": "integer"
                 },
                 "updatedAt": {
                     "type": "string"
@@ -2354,19 +3812,174 @@ const docTemplate = `{
                 "DiscountTypeFixedAmount": "diskon nominal tetap",
                 "DiscountTypePercentage": "diskon persen dari total"
             },
-            "x-enum-descriptions": [
-                "diskon persen dari total",
-                "diskon nominal tetap"
-            ],
             "x-enum-varnames": [
                 "DiscountTypePercentage",
                 "DiscountTypeFixedAmount"
+            ]
+        },
+        "entity.FoodOrder": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "customer": {
+                    "$ref": "#/definitions/entity.Customer"
+                },
+                "customerId": {
+                    "description": "opsional: walk-in",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.FoodOrderItem"
+                    }
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "orderNumber": {
+                    "type": "string"
+                },
+                "session": {
+                    "description": "Relasi",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.Session"
+                        }
+                    ]
+                },
+                "sessionId": {
+                    "description": "opsional: terhubung ke sesi PS",
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/entity.OrderStatus"
+                },
+                "totalAmount": {
+                    "type": "number"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.FoodOrderItem": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "menuItem": {
+                    "description": "Relasi",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.MenuItem"
+                        }
+                    ]
+                },
+                "menuItemId": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "orderId": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "subtotal": {
+                    "description": "quantity × unit_price",
+                    "type": "number"
+                },
+                "unitPrice": {
+                    "description": "snapshot harga saat pesan",
+                    "type": "number"
+                }
+            }
+        },
+        "entity.MenuItem": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/entity.MenuItemCategory"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isAvailable": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "number"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.MenuItemCategory": {
+            "type": "string",
+            "enum": [
+                "food",
+                "drink",
+                "snack",
+                "other"
+            ],
+            "x-enum-varnames": [
+                "MenuCategoryFood",
+                "MenuCategoryDrink",
+                "MenuCategorySnack",
+                "MenuCategoryOther"
+            ]
+        },
+        "entity.OrderStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "preparing",
+                "served",
+                "cancelled"
+            ],
+            "x-enum-comments": {
+                "OrderStatusCancelled": "dibatalkan",
+                "OrderStatusPending": "pesanan baru, menunggu diproses dapur",
+                "OrderStatusPreparing": "sedang diproses dapur",
+                "OrderStatusServed": "sudah diantarkan ke pelanggan"
+            },
+            "x-enum-varnames": [
+                "OrderStatusPending",
+                "OrderStatusPreparing",
+                "OrderStatusServed",
+                "OrderStatusCancelled"
             ]
         },
         "entity.Payment": {
             "type": "object",
             "properties": {
                 "amount": {
+                    "type": "number"
+                },
+                "autoDiscountAmount": {
+                    "description": "diskon otomatis (happy hour, member, dll)",
                     "type": "number"
                 },
                 "cashReceived": {
@@ -2443,9 +4056,34 @@ const docTemplate = `{
                 "PaymentStatusRefunded"
             ]
         },
+        "entity.RuleType": {
+            "type": "string",
+            "enum": [
+                "always",
+                "happy_hour",
+                "member",
+                "day_of_week"
+            ],
+            "x-enum-comments": {
+                "RuleTypeAlways": "berlaku untuk semua transaksi",
+                "RuleTypeDayOfWeek": "berlaku pada hari tertentu",
+                "RuleTypeHappyHour": "berlaku pada jam tertentu",
+                "RuleTypeMember": "khusus pelanggan member"
+            },
+            "x-enum-varnames": [
+                "RuleTypeAlways",
+                "RuleTypeHappyHour",
+                "RuleTypeMember",
+                "RuleTypeDayOfWeek"
+            ]
+        },
         "entity.Session": {
             "type": "object",
             "properties": {
+                "bookedDurationMinutes": {
+                    "description": "BookedDurationMinutes adalah durasi yang dipesan di awal (contoh: 120 menit = 2 jam)",
+                    "type": "integer"
+                },
                 "console": {
                     "description": "Relasi (join data)",
                     "allOf": [
@@ -2469,6 +4107,10 @@ const docTemplate = `{
                 },
                 "durationMinutes": {
                     "type": "integer"
+                },
+                "endScheduledAt": {
+                    "description": "EndScheduledAt adalah waktu selesai yang direncanakan (StartTime + BookedDurationMinutes)",
+                    "type": "string"
                 },
                 "endTime": {
                     "type": "string"
@@ -2673,6 +4315,71 @@ const docTemplate = `{
                 }
             }
         },
+        "usecase.ActiveSessionInfo": {
+            "type": "object",
+            "properties": {
+                "bookedDurationMinutes": {
+                    "type": "integer"
+                },
+                "customerId": {
+                    "type": "string"
+                },
+                "customerName": {
+                    "type": "string"
+                },
+                "endScheduledAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "remainingMinutes": {
+                    "description": "-1 = open-ended",
+                    "type": "integer"
+                },
+                "startTime": {
+                    "type": "string"
+                }
+            }
+        },
+        "usecase.ConsoleOverviewItem": {
+            "type": "object",
+            "properties": {
+                "activeSession": {
+                    "$ref": "#/definitions/usecase.ActiveSessionInfo"
+                },
+                "consoleType": {
+                    "$ref": "#/definitions/entity.ConsoleType"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "ipAddress": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pricePerHour": {
+                    "type": "number"
+                },
+                "status": {
+                    "$ref": "#/definitions/entity.ConsoleStatus"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
         "usecase.CreateCashPaymentRequest": {
             "type": "object",
             "required": [
@@ -2704,27 +4411,40 @@ const docTemplate = `{
             ],
             "properties": {
                 "consoleType": {
+                    "description": "Tipe konsol: PS3, PS4, PS5, atau AndroidTV",
                     "enum": [
                         "PS3",
                         "PS4",
-                        "PS5"
+                        "PS5",
+                        "AndroidTV"
                     ],
                     "allOf": [
                         {
                             "$ref": "#/definitions/entity.ConsoleType"
                         }
-                    ]
+                    ],
+                    "example": "AndroidTV"
                 },
                 "description": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "TV 43 inch ruang A"
+                },
+                "ipAddress": {
+                    "description": "Alamat IP TV Android (wajib untuk AndroidTV)",
+                    "type": "string",
+                    "maxLength": 50,
+                    "example": "192.168.1.101"
                 },
                 "name": {
+                    "description": "Nama tampilan konsol, contoh: \"TV 01\"",
                     "type": "string",
                     "maxLength": 100,
-                    "minLength": 2
+                    "minLength": 2,
+                    "example": "TV 01"
                 },
                 "pricePerHour": {
-                    "type": "number"
+                    "type": "number",
+                    "example": 10000
                 }
             }
         },
@@ -2747,6 +4467,134 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 20,
                     "minLength": 8
+                }
+            }
+        },
+        "usecase.CreateDiscountRuleRequest": {
+            "type": "object",
+            "required": [
+                "discountType",
+                "discountValue",
+                "name",
+                "ruleType"
+            ],
+            "properties": {
+                "daysOfWeek": {
+                    "description": "wajib jika rule_type=day_of_week, format \"0,1,2\"",
+                    "type": "string"
+                },
+                "discountType": {
+                    "enum": [
+                        "percentage",
+                        "fixed_amount"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.DiscountType"
+                        }
+                    ]
+                },
+                "discountValue": {
+                    "type": "number"
+                },
+                "endHour": {
+                    "description": "wajib jika rule_type=happy_hour (0-23)",
+                    "type": "integer"
+                },
+                "maxDiscount": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "minPurchase": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 150,
+                    "minLength": 3
+                },
+                "priority": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "ruleType": {
+                    "enum": [
+                        "always",
+                        "happy_hour",
+                        "member",
+                        "day_of_week"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.RuleType"
+                        }
+                    ]
+                },
+                "startHour": {
+                    "description": "wajib jika rule_type=happy_hour (0-23)",
+                    "type": "integer"
+                }
+            }
+        },
+        "usecase.CreateFoodOrderRequest": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "customerId": {
+                    "description": "opsional: pelanggan terdaftar",
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/usecase.FoodOrderItemRequest"
+                    }
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "sessionId": {
+                    "description": "opsional: sesi PS yang sedang berjalan",
+                    "type": "string"
+                }
+            }
+        },
+        "usecase.CreateMenuItemRequest": {
+            "type": "object",
+            "required": [
+                "category",
+                "name",
+                "price"
+            ],
+            "properties": {
+                "category": {
+                    "enum": [
+                        "food",
+                        "drink",
+                        "snack",
+                        "other"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.MenuItemCategory"
+                        }
+                    ]
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 150,
+                    "minLength": 2
+                },
+                "price": {
+                    "type": "number",
+                    "minimum": 0
                 }
             }
         },
@@ -2790,11 +4638,14 @@ const docTemplate = `{
             ],
             "properties": {
                 "code": {
+                    "description": "Kode unik voucher (otomatis uppercase). Contoh: DISKON10",
                     "type": "string",
                     "maxLength": 50,
-                    "minLength": 3
+                    "minLength": 3,
+                    "example": "HPH3"
                 },
                 "discountType": {
+                    "description": "Tipe diskon: \"percentage\" (persen) atau \"fixed_amount\" (nominal Rp)",
                     "enum": [
                         "percentage",
                         "fixed_amount"
@@ -2803,32 +4654,62 @@ const docTemplate = `{
                         {
                             "$ref": "#/definitions/entity.DiscountType"
                         }
-                    ]
+                    ],
+                    "example": "fixed_amount"
                 },
                 "discountValue": {
-                    "type": "number"
+                    "description": "Nilai diskon: jika percentage maka 0-100, jika fixed_amount maka nominal Rp",
+                    "type": "number",
+                    "example": 24000
                 },
                 "expiresAt": {
-                    "type": "string"
+                    "description": "Tanggal kedaluwarsa voucher dalam format RFC3339/ISO8601. Contoh: 2026-06-26T00:00:00Z (null = tidak ada batas waktu)",
+                    "type": "string",
+                    "example": "2026-06-26T00:00:00Z"
                 },
                 "maxDiscount": {
-                    "description": "hanya berlaku untuk percentage",
+                    "description": "Batas maksimal nominal diskon untuk tipe percentage (0 = tidak terbatas)",
                     "type": "number",
-                    "minimum": 0
+                    "minimum": 0,
+                    "example": 0
                 },
                 "maxUsage": {
-                    "description": "0 = tidak terbatas",
+                    "description": "Batas maksimal total pemakaian voucher (0 = tidak terbatas)",
                     "type": "integer",
-                    "minimum": 0
+                    "minimum": 0,
+                    "example": 100
                 },
                 "minPurchase": {
+                    "description": "Minimal total belanja sebelum voucher berlaku (0 = tidak ada minimum)",
                     "type": "number",
-                    "minimum": 0
+                    "minimum": 0,
+                    "example": 24000
                 },
                 "name": {
+                    "description": "Nama deskriptif voucher",
                     "type": "string",
                     "maxLength": 150,
-                    "minLength": 3
+                    "minLength": 3,
+                    "example": "Happy Hours 3 Jam"
+                }
+            }
+        },
+        "usecase.FoodOrderItemRequest": {
+            "type": "object",
+            "required": [
+                "menuItemId",
+                "quantity"
+            ],
+            "properties": {
+                "menuItemId": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "integer",
+                    "minimum": 1
                 }
             }
         },
@@ -2899,18 +4780,50 @@ const docTemplate = `{
         "usecase.StartSessionRequest": {
             "type": "object",
             "required": [
+                "bookedDurationMinutes",
+                "cashReceived",
                 "consoleId"
             ],
             "properties": {
+                "bookedDurationMinutes": {
+                    "description": "Durasi yang dipesan dalam menit. Harus kelipatan 60 (per jam). Contoh: 60, 120, 180",
+                    "type": "integer",
+                    "minimum": 60,
+                    "example": 120
+                },
+                "cashReceived": {
+                    "description": "Uang tunai yang diberikan pelanggan di depan (harus \u003e= harga setelah diskon)",
+                    "type": "number",
+                    "example": 25000
+                },
                 "consoleId": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
                 },
                 "customerId": {
                     "description": "opsional, walk-in tidak perlu",
-                    "type": "string"
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440001"
                 },
                 "notes": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "Rental 2 jam"
+                },
+                "voucherCode": {
+                    "description": "Kode voucher diskon (opsional)",
+                    "type": "string",
+                    "example": "DISKON10"
+                }
+            }
+        },
+        "usecase.StartSessionResponse": {
+            "type": "object",
+            "properties": {
+                "payment": {
+                    "$ref": "#/definitions/entity.Payment"
+                },
+                "session": {
+                    "$ref": "#/definitions/entity.Session"
                 }
             }
         },
@@ -2921,24 +4834,33 @@ const docTemplate = `{
                     "enum": [
                         "PS3",
                         "PS4",
-                        "PS5"
+                        "PS5",
+                        "AndroidTV"
                     ],
                     "allOf": [
                         {
                             "$ref": "#/definitions/entity.ConsoleType"
                         }
-                    ]
+                    ],
+                    "example": "AndroidTV"
                 },
                 "description": {
                     "type": "string"
                 },
+                "ipAddress": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "example": "192.168.1.101"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 100,
-                    "minLength": 2
+                    "minLength": 2,
+                    "example": "TV 01"
                 },
                 "pricePerHour": {
-                    "type": "number"
+                    "type": "number",
+                    "example": 10000
                 },
                 "status": {
                     "enum": [
@@ -2950,7 +4872,8 @@ const docTemplate = `{
                         {
                             "$ref": "#/definitions/entity.ConsoleStatus"
                         }
-                    ]
+                    ],
+                    "example": "available"
                 }
             }
         },
@@ -2969,6 +4892,117 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 20,
                     "minLength": 8
+                }
+            }
+        },
+        "usecase.UpdateDiscountRuleRequest": {
+            "type": "object",
+            "properties": {
+                "daysOfWeek": {
+                    "type": "string"
+                },
+                "discountType": {
+                    "enum": [
+                        "percentage",
+                        "fixed_amount"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.DiscountType"
+                        }
+                    ]
+                },
+                "discountValue": {
+                    "type": "number"
+                },
+                "endHour": {
+                    "type": "integer"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "maxDiscount": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "minPurchase": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 150,
+                    "minLength": 3
+                },
+                "priority": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "ruleType": {
+                    "enum": [
+                        "always",
+                        "happy_hour",
+                        "member",
+                        "day_of_week"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.RuleType"
+                        }
+                    ]
+                },
+                "startHour": {
+                    "type": "integer"
+                }
+            }
+        },
+        "usecase.UpdateMenuItemRequest": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "enum": [
+                        "food",
+                        "drink",
+                        "snack",
+                        "other"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.MenuItemCategory"
+                        }
+                    ]
+                },
+                "description": {
+                    "type": "string"
+                },
+                "isAvailable": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 150,
+                    "minLength": 2
+                },
+                "price": {
+                    "type": "number",
+                    "minimum": 0
+                }
+            }
+        },
+        "usecase.UpdateOrderStatusRequest": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "preparing",
+                        "served",
+                        "cancelled"
+                    ]
                 }
             }
         },
@@ -3012,9 +5046,11 @@ const docTemplate = `{
                 "code": {
                     "type": "string",
                     "maxLength": 50,
-                    "minLength": 3
+                    "minLength": 3,
+                    "example": "HPH3"
                 },
                 "discountType": {
+                    "description": "Tipe diskon: \"percentage\" atau \"fixed_amount\"",
                     "enum": [
                         "percentage",
                         "fixed_amount"
@@ -3023,13 +5059,17 @@ const docTemplate = `{
                         {
                             "$ref": "#/definitions/entity.DiscountType"
                         }
-                    ]
+                    ],
+                    "example": "fixed_amount"
                 },
                 "discountValue": {
-                    "type": "number"
+                    "type": "number",
+                    "example": 24000
                 },
                 "expiresAt": {
-                    "type": "string"
+                    "description": "Format RFC3339/ISO8601. Contoh: 2026-06-26T00:00:00Z",
+                    "type": "string",
+                    "example": "2026-06-26T00:00:00Z"
                 },
                 "isActive": {
                     "type": "boolean"
@@ -3049,7 +5089,8 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 150,
-                    "minLength": 3
+                    "minLength": 3,
+                    "example": "Happy Hours 3 Jam"
                 }
             }
         }

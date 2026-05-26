@@ -16,7 +16,7 @@ type SessionUseCase interface {
 	GetAllSessions(ctx context.Context) ([]*entity.Session, error)
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*entity.Session, error)
 	GetActiveSessions(ctx context.Context) ([]*entity.Session, error)
-	StartSession(ctx context.Context, req *StartSessionRequest) (*entity.Session, error)
+	StartSession(ctx context.Context, req *StartSessionRequest) (*StartSessionResponse, error)
 	EndSession(ctx context.Context, id uuid.UUID) (*entity.Session, error)
 	CancelSession(ctx context.Context, id uuid.UUID) error
 }
@@ -34,11 +34,23 @@ func NewSessionUseCase(sessionRepo repository.SessionRepository, consoleRepo rep
 	}
 }
 
-// StartSessionRequest payload untuk memulai sesi rental baru
+// StartSessionRequest payload untuk memulai sesi rental baru dengan pembayaran di depan
 type StartSessionRequest struct {
-	ConsoleID  uuid.UUID  `json:"consoleId"  validate:"required"`
-	CustomerID *uuid.UUID `json:"customerId"` // opsional, walk-in tidak perlu
-	Notes      string     `json:"notes"`
+	ConsoleID uuid.UUID  `json:"consoleId"  validate:"required"   example:"550e8400-e29b-41d4-a716-446655440000"`
+	CustomerID *uuid.UUID `json:"customerId"                        example:"550e8400-e29b-41d4-a716-446655440001"` // opsional, walk-in tidak perlu
+	// Durasi yang dipesan dalam menit. Harus kelipatan 60 (per jam). Contoh: 60, 120, 180
+	BookedDurationMinutes int `json:"bookedDurationMinutes" validate:"required,min=60" example:"120"`
+	// Uang tunai yang diberikan pelanggan di depan (harus >= harga setelah diskon)
+	CashReceived float64 `json:"cashReceived" validate:"required,gt=0" example:"25000"`
+	// Kode voucher diskon (opsional)
+	VoucherCode string `json:"voucherCode" example:"DISKON10"`
+	Notes string `json:"notes" example:"Rental 2 jam"`
+}
+
+// StartSessionResponse respons setelah memulai sesi — berisi data sesi dan pembayaran lunas
+type StartSessionResponse struct {
+	Session *entity.Session  `json:"session"`
+	Payment *entity.Payment  `json:"payment"`
 }
 
 func (uc *sessionUseCase) GetAllSessions(ctx context.Context) ([]*entity.Session, error) {
@@ -60,7 +72,7 @@ func (uc *sessionUseCase) GetActiveSessions(ctx context.Context) ([]*entity.Sess
 	return uc.sessionRepo.FindActiveSession(ctx)
 }
 
-func (uc *sessionUseCase) StartSession(ctx context.Context, req *StartSessionRequest) (*entity.Session, error) {
+func (uc *sessionUseCase) StartSession(ctx context.Context, req *StartSessionRequest) (*StartSessionResponse, error) {
 	// Cek apakah konsol tersedia
 	console, err := uc.consoleRepo.FindByID(ctx, req.ConsoleID)
 	if err != nil {
@@ -84,27 +96,25 @@ func (uc *sessionUseCase) StartSession(ctx context.Context, req *StartSessionReq
 
 	now := time.Now()
 	session := &entity.Session{
-		ID:         uuid.New(),
-		ConsoleID:  req.ConsoleID,
-		CustomerID: req.CustomerID,
-		StartTime:  now,
-		Status:     entity.SessionStatusActive,
-		Notes:      req.Notes,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:                    uuid.New(),
+		ConsoleID:             req.ConsoleID,
+		CustomerID:            req.CustomerID,
+		StartTime:             now,
+		BookedDurationMinutes: req.BookedDurationMinutes,
+		Status:                entity.SessionStatusActive,
+		Notes:                 req.Notes,
+		CreatedAt:             now,
+		UpdatedAt:             now,
 	}
 
-	if err := uc.sessionRepo.Create(ctx, session); err != nil {
-		return nil, err
-	}
-
-	// Update status konsol menjadi in_use
-	if err := uc.consoleRepo.UpdateStatus(ctx, req.ConsoleID, entity.ConsoleStatusInUse); err != nil {
+	// Buat sesi + pembayaran di depan dalam satu transaksi atomik
+	payment, err := uc.sessionRepo.CreateWithPayment(ctx, session, req.CashReceived, req.VoucherCode)
+	if err != nil {
 		return nil, err
 	}
 
 	session.Console = console
-	return session, nil
+	return &StartSessionResponse{Session: session, Payment: payment}, nil
 }
 
 func (uc *sessionUseCase) EndSession(ctx context.Context, id uuid.UUID) (*entity.Session, error) {

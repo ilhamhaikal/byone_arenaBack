@@ -94,25 +94,28 @@ func (r *sessionRepository) FindActiveSession(ctx context.Context) ([]*entity.Se
 // Create menggunakan stored procedure sp_start_session untuk atomisitas
 func (r *sessionRepository) Create(ctx context.Context, session *entity.Session) error {
 	type spResult struct {
-		ID              uuid.UUID  `gorm:"column:id"`
-		ConsoleID       uuid.UUID  `gorm:"column:console_id"`
-		CustomerID      *uuid.UUID `gorm:"column:customer_id"`
-		StartTime       interface{} `gorm:"column:start_time"`
-		EndTime         interface{} `gorm:"column:end_time"`
-		DurationMinutes int        `gorm:"column:duration_minutes"`
-		TotalPrice      float64    `gorm:"column:total_price"`
-		Status          string     `gorm:"column:status"`
-		Notes           string     `gorm:"column:notes"`
-		CreatedAt       interface{} `gorm:"column:created_at"`
-		UpdatedAt       interface{} `gorm:"column:updated_at"`
+		ID                    uuid.UUID  `gorm:"column:id"`
+		ConsoleID             uuid.UUID  `gorm:"column:console_id"`
+		CustomerID            *uuid.UUID `gorm:"column:customer_id"`
+		StartTime             interface{} `gorm:"column:start_time"`
+		EndTime               interface{} `gorm:"column:end_time"`
+		EndScheduledAt        interface{} `gorm:"column:end_scheduled_at"`
+		BookedDurationMinutes int        `gorm:"column:booked_duration_minutes"`
+		DurationMinutes       int        `gorm:"column:duration_minutes"`
+		TotalPrice            float64    `gorm:"column:total_price"`
+		Status                string     `gorm:"column:status"`
+		Notes                 string     `gorm:"column:notes"`
+		CreatedAt             interface{} `gorm:"column:created_at"`
+		UpdatedAt             interface{} `gorm:"column:updated_at"`
 	}
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM sp_start_session(?, ?, ?)",
+		"SELECT * FROM sp_start_session(?, ?, ?, ?)",
 		session.ConsoleID,
 		session.CustomerID,
 		session.Notes,
+		session.BookedDurationMinutes,
 	).Scan(&result)
 
 	if tx.Error != nil {
@@ -120,8 +123,67 @@ func (r *sessionRepository) Create(ctx context.Context, session *entity.Session)
 	}
 
 	session.ID = result.ID
+	session.BookedDurationMinutes = result.BookedDurationMinutes
 	session.Status = entity.SessionStatus(result.Status)
 	return nil
+}
+
+// CreateWithPayment menggunakan sp_start_session_with_payment:
+// membuat sesi + pembayaran di depan dalam satu transaksi atomik.
+func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string) (*entity.Payment, error) {
+	type spResult struct {
+		// sesi
+		SessionID           uuid.UUID   `gorm:"column:session_id"`
+		SessionStatus       string      `gorm:"column:session_status"`
+		SessionStartTime    interface{} `gorm:"column:session_start_time"`
+		SessionBookedMin    int         `gorm:"column:session_booked_minutes"`
+		SessionEndScheduled interface{} `gorm:"column:session_end_scheduled"`
+		// pembayaran
+		PaymentID           uuid.UUID   `gorm:"column:payment_id"`
+		BaseAmount          float64     `gorm:"column:base_amount"`
+		DiscountAmount      float64     `gorm:"column:discount_amount"`
+		AutoDiscountAmount  float64     `gorm:"column:auto_discount_amount"`
+		CashReceived        float64     `gorm:"column:cash_received"`
+		ChangeAmount        float64     `gorm:"column:change_amount"`
+		VoucherID           *uuid.UUID  `gorm:"column:voucher_id"`
+		PaidAt              interface{} `gorm:"column:paid_at"`
+	}
+
+	var result spResult
+	tx := r.db.WithContext(ctx).Raw(
+		"SELECT * FROM sp_start_session_with_payment(?, ?, ?, ?, ?, ?)",
+		session.ConsoleID,
+		session.CustomerID,
+		session.Notes,
+		session.BookedDurationMinutes,
+		cashReceived,
+		voucherCode,
+	).Scan(&result)
+
+	if tx.Error != nil {
+		return nil, parseStoredProcError(tx.Error)
+	}
+
+	// Isi balik session
+	session.ID = result.SessionID
+	session.BookedDurationMinutes = result.SessionBookedMin
+	session.Status = entity.SessionStatus(result.SessionStatus)
+	session.TotalPrice = result.BaseAmount
+
+	// Bangun payment entity dari hasil SP
+	payment := &entity.Payment{
+		ID:                 result.PaymentID,
+		SessionID:          result.SessionID,
+		Amount:             result.BaseAmount,
+		DiscountAmount:     result.DiscountAmount,
+		AutoDiscountAmount: result.AutoDiscountAmount,
+		CashReceived:       result.CashReceived,
+		ChangeAmount:       result.ChangeAmount,
+		VoucherID:          result.VoucherID,
+		PaymentMethod:      entity.PaymentMethodCash,
+		PaymentStatus:      entity.PaymentStatusPaid,
+	}
+	return payment, nil
 }
 
 // Update menggunakan stored procedure sp_end_session
@@ -166,6 +228,9 @@ func parseStoredProcError(err error) error {
 		"SESSION_NOT_FOUND", "SESSION_NOT_ACTIVE",
 		"SESSION_NOT_COMPLETED", "PAYMENT_EXISTS", "INSUFFICIENT_CASH",
 		"PAYMENT_NOT_FOUND", "PAYMENT_NOT_PAID",
+		"INVALID_DURATION",
+		"VOUCHER_NOT_FOUND", "VOUCHER_INACTIVE", "VOUCHER_EXPIRED",
+		"VOUCHER_LIMIT_REACHED", "VOUCHER_MIN_PURCHASE",
 	} {
 		if strings.Contains(msg, prefix+":") {
 			start := strings.Index(msg, prefix+":")

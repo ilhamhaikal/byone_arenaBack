@@ -52,12 +52,13 @@ func (r *paymentRepository) FindBySessionID(ctx context.Context, sessionID uuid.
 // Create menggunakan stored procedure sp_create_payment untuk validasi dan atomisitas
 func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment) error {
 	type spResult struct {
-		PaymentID      uuid.UUID  `gorm:"column:payment_id"`
-		Amount         float64    `gorm:"column:amount"`
-		DiscountAmount float64    `gorm:"column:discount_amount"`
-		CashReceived   float64    `gorm:"column:cash_received"`
-		ChangeAmount   float64    `gorm:"column:change_amount"`
-		VoucherID      *uuid.UUID `gorm:"column:voucher_id"`
+		PaymentID          uuid.UUID  `gorm:"column:payment_id"`
+		Amount             float64    `gorm:"column:amount"`
+		DiscountAmount     float64    `gorm:"column:discount_amount"`
+		AutoDiscountAmount float64    `gorm:"column:auto_discount_amount"`
+		CashReceived       float64    `gorm:"column:cash_received"`
+		ChangeAmount       float64    `gorm:"column:change_amount"`
+		VoucherID          *uuid.UUID `gorm:"column:voucher_id"`
 	}
 
 	var result spResult
@@ -76,6 +77,7 @@ func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment)
 	payment.ID = result.PaymentID
 	payment.Amount = result.Amount
 	payment.DiscountAmount = result.DiscountAmount
+	payment.AutoDiscountAmount = result.AutoDiscountAmount
 	payment.CashReceived = result.CashReceived
 	payment.ChangeAmount = result.ChangeAmount
 	payment.VoucherID = result.VoucherID

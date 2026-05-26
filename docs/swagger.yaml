@@ -10,6 +10,8 @@ definitions:
         type: string
       id:
         type: string
+      ipAddress:
+        type: string
       name:
         type: string
       pricePerHour:
@@ -25,6 +27,10 @@ definitions:
     - in_use
     - maintenance
     type: string
+    x-enum-comments:
+      ConsoleStatusAvailable: siap disewa / TV mati
+      ConsoleStatusInUse: sedang aktif / TV menyala
+      ConsoleStatusMaintenance: sedang diperbaiki
     x-enum-varnames:
     - ConsoleStatusAvailable
     - ConsoleStatusInUse
@@ -34,11 +40,13 @@ definitions:
     - PS3
     - PS4
     - PS5
+    - AndroidTV
     type: string
     x-enum-varnames:
     - ConsoleTypePS3
     - ConsoleTypePS4
     - ConsoleTypePS5
+    - ConsoleTypeAndroidTV
   entity.Customer:
     properties:
       createdAt:
@@ -47,10 +55,53 @@ definitions:
         type: string
       id:
         type: string
+      isMember:
+        description: pelanggan member mendapat diskon otomatis
+        type: boolean
       name:
         type: string
       phone:
         type: string
+      updatedAt:
+        type: string
+    type: object
+  entity.DiscountRule:
+    properties:
+      createdAt:
+        type: string
+      daysOfWeek:
+        description: 'Day of week: comma-separated "0,1,2" (0=Minggu, 1=Senin, ...,
+          6=Sabtu)'
+        type: string
+      discountType:
+        allOf:
+        - $ref: '#/definitions/entity.DiscountType'
+        description: reuse dari voucher.go
+      discountValue:
+        type: number
+      endHour:
+        type: integer
+      id:
+        type: string
+      isActive:
+        type: boolean
+      maxDiscount:
+        description: batas maks diskon persen (0 = tidak terbatas)
+        type: number
+      minPurchase:
+        description: minimal total sebelum rule berlaku
+        type: number
+      name:
+        type: string
+      priority:
+        description: lebih besar = lebih dulu dievaluasi
+        type: integer
+      ruleType:
+        $ref: '#/definitions/entity.RuleType'
+      startHour:
+        description: 'Happy hour: jam mulai dan jam selesai (0-23, bisa lintas tengah
+          malam)'
+        type: integer
       updatedAt:
         type: string
     type: object
@@ -62,15 +113,121 @@ definitions:
     x-enum-comments:
       DiscountTypeFixedAmount: diskon nominal tetap
       DiscountTypePercentage: diskon persen dari total
-    x-enum-descriptions:
-    - diskon persen dari total
-    - diskon nominal tetap
     x-enum-varnames:
     - DiscountTypePercentage
     - DiscountTypeFixedAmount
+  entity.FoodOrder:
+    properties:
+      createdAt:
+        type: string
+      customer:
+        $ref: '#/definitions/entity.Customer'
+      customerId:
+        description: 'opsional: walk-in'
+        type: string
+      id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/entity.FoodOrderItem'
+        type: array
+      notes:
+        type: string
+      orderNumber:
+        type: string
+      session:
+        allOf:
+        - $ref: '#/definitions/entity.Session'
+        description: Relasi
+      sessionId:
+        description: 'opsional: terhubung ke sesi PS'
+        type: string
+      status:
+        $ref: '#/definitions/entity.OrderStatus'
+      totalAmount:
+        type: number
+      updatedAt:
+        type: string
+    type: object
+  entity.FoodOrderItem:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: string
+      menuItem:
+        allOf:
+        - $ref: '#/definitions/entity.MenuItem'
+        description: Relasi
+      menuItemId:
+        type: string
+      notes:
+        type: string
+      orderId:
+        type: string
+      quantity:
+        type: integer
+      subtotal:
+        description: quantity × unit_price
+        type: number
+      unitPrice:
+        description: snapshot harga saat pesan
+        type: number
+    type: object
+  entity.MenuItem:
+    properties:
+      category:
+        $ref: '#/definitions/entity.MenuItemCategory'
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      isAvailable:
+        type: boolean
+      name:
+        type: string
+      price:
+        type: number
+      updatedAt:
+        type: string
+    type: object
+  entity.MenuItemCategory:
+    enum:
+    - food
+    - drink
+    - snack
+    - other
+    type: string
+    x-enum-varnames:
+    - MenuCategoryFood
+    - MenuCategoryDrink
+    - MenuCategorySnack
+    - MenuCategoryOther
+  entity.OrderStatus:
+    enum:
+    - pending
+    - preparing
+    - served
+    - cancelled
+    type: string
+    x-enum-comments:
+      OrderStatusCancelled: dibatalkan
+      OrderStatusPending: pesanan baru, menunggu diproses dapur
+      OrderStatusPreparing: sedang diproses dapur
+      OrderStatusServed: sudah diantarkan ke pelanggan
+    x-enum-varnames:
+    - OrderStatusPending
+    - OrderStatusPreparing
+    - OrderStatusServed
+    - OrderStatusCancelled
   entity.Payment:
     properties:
       amount:
+        type: number
+      autoDiscountAmount:
+        description: diskon otomatis (happy hour, member, dll)
         type: number
       cashReceived:
         description: uang yang diterima
@@ -122,8 +279,29 @@ definitions:
     - PaymentStatusPending
     - PaymentStatusPaid
     - PaymentStatusRefunded
+  entity.RuleType:
+    enum:
+    - always
+    - happy_hour
+    - member
+    - day_of_week
+    type: string
+    x-enum-comments:
+      RuleTypeAlways: berlaku untuk semua transaksi
+      RuleTypeDayOfWeek: berlaku pada hari tertentu
+      RuleTypeHappyHour: berlaku pada jam tertentu
+      RuleTypeMember: khusus pelanggan member
+    x-enum-varnames:
+    - RuleTypeAlways
+    - RuleTypeHappyHour
+    - RuleTypeMember
+    - RuleTypeDayOfWeek
   entity.Session:
     properties:
+      bookedDurationMinutes:
+        description: 'BookedDurationMinutes adalah durasi yang dipesan di awal (contoh:
+          120 menit = 2 jam)'
+        type: integer
       console:
         allOf:
         - $ref: '#/definitions/entity.Console'
@@ -139,6 +317,10 @@ definitions:
         type: string
       durationMinutes:
         type: integer
+      endScheduledAt:
+        description: EndScheduledAt adalah waktu selesai yang direncanakan (StartTime
+          + BookedDurationMinutes)
+        type: string
       endTime:
         type: string
       id:
@@ -277,6 +459,49 @@ definitions:
       success:
         type: boolean
     type: object
+  usecase.ActiveSessionInfo:
+    properties:
+      bookedDurationMinutes:
+        type: integer
+      customerId:
+        type: string
+      customerName:
+        type: string
+      endScheduledAt:
+        type: string
+      id:
+        type: string
+      notes:
+        type: string
+      remainingMinutes:
+        description: -1 = open-ended
+        type: integer
+      startTime:
+        type: string
+    type: object
+  usecase.ConsoleOverviewItem:
+    properties:
+      activeSession:
+        $ref: '#/definitions/usecase.ActiveSessionInfo'
+      consoleType:
+        $ref: '#/definitions/entity.ConsoleType'
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      ipAddress:
+        type: string
+      name:
+        type: string
+      pricePerHour:
+        type: number
+      status:
+        $ref: '#/definitions/entity.ConsoleStatus'
+      updatedAt:
+        type: string
+    type: object
   usecase.CreateCashPaymentRequest:
     properties:
       cashReceived:
@@ -297,17 +522,29 @@ definitions:
       consoleType:
         allOf:
         - $ref: '#/definitions/entity.ConsoleType'
+        description: 'Tipe konsol: PS3, PS4, PS5, atau AndroidTV'
         enum:
         - PS3
         - PS4
         - PS5
+        - AndroidTV
+        example: AndroidTV
       description:
+        example: TV 43 inch ruang A
+        type: string
+      ipAddress:
+        description: Alamat IP TV Android (wajib untuk AndroidTV)
+        example: 192.168.1.101
+        maxLength: 50
         type: string
       name:
+        description: 'Nama tampilan konsol, contoh: "TV 01"'
+        example: TV 01
         maxLength: 100
         minLength: 2
         type: string
       pricePerHour:
+        example: 10000
         type: number
     required:
     - consoleType
@@ -329,6 +566,94 @@ definitions:
     required:
     - name
     - phone
+    type: object
+  usecase.CreateDiscountRuleRequest:
+    properties:
+      daysOfWeek:
+        description: wajib jika rule_type=day_of_week, format "0,1,2"
+        type: string
+      discountType:
+        allOf:
+        - $ref: '#/definitions/entity.DiscountType'
+        enum:
+        - percentage
+        - fixed_amount
+      discountValue:
+        type: number
+      endHour:
+        description: wajib jika rule_type=happy_hour (0-23)
+        type: integer
+      maxDiscount:
+        minimum: 0
+        type: number
+      minPurchase:
+        minimum: 0
+        type: number
+      name:
+        maxLength: 150
+        minLength: 3
+        type: string
+      priority:
+        minimum: 0
+        type: integer
+      ruleType:
+        allOf:
+        - $ref: '#/definitions/entity.RuleType'
+        enum:
+        - always
+        - happy_hour
+        - member
+        - day_of_week
+      startHour:
+        description: wajib jika rule_type=happy_hour (0-23)
+        type: integer
+    required:
+    - discountType
+    - discountValue
+    - name
+    - ruleType
+    type: object
+  usecase.CreateFoodOrderRequest:
+    properties:
+      customerId:
+        description: 'opsional: pelanggan terdaftar'
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/usecase.FoodOrderItemRequest'
+        minItems: 1
+        type: array
+      notes:
+        type: string
+      sessionId:
+        description: 'opsional: sesi PS yang sedang berjalan'
+        type: string
+    required:
+    - items
+    type: object
+  usecase.CreateMenuItemRequest:
+    properties:
+      category:
+        allOf:
+        - $ref: '#/definitions/entity.MenuItemCategory'
+        enum:
+        - food
+        - drink
+        - snack
+        - other
+      description:
+        type: string
+      name:
+        maxLength: 150
+        minLength: 2
+        type: string
+      price:
+        minimum: 0
+        type: number
+    required:
+    - category
+    - name
+    - price
     type: object
   usecase.CreateShiftRequest:
     properties:
@@ -355,31 +680,50 @@ definitions:
   usecase.CreateVoucherRequest:
     properties:
       code:
+        description: 'Kode unik voucher (otomatis uppercase). Contoh: DISKON10'
+        example: HPH3
         maxLength: 50
         minLength: 3
         type: string
       discountType:
         allOf:
         - $ref: '#/definitions/entity.DiscountType'
+        description: 'Tipe diskon: "percentage" (persen) atau "fixed_amount" (nominal
+          Rp)'
         enum:
         - percentage
         - fixed_amount
+        example: fixed_amount
       discountValue:
+        description: 'Nilai diskon: jika percentage maka 0-100, jika fixed_amount
+          maka nominal Rp'
+        example: 24000
         type: number
       expiresAt:
+        description: 'Tanggal kedaluwarsa voucher dalam format RFC3339/ISO8601. Contoh:
+          2026-06-26T00:00:00Z (null = tidak ada batas waktu)'
+        example: "2026-06-26T00:00:00Z"
         type: string
       maxDiscount:
-        description: hanya berlaku untuk percentage
+        description: Batas maksimal nominal diskon untuk tipe percentage (0 = tidak
+          terbatas)
+        example: 0
         minimum: 0
         type: number
       maxUsage:
-        description: 0 = tidak terbatas
+        description: Batas maksimal total pemakaian voucher (0 = tidak terbatas)
+        example: 100
         minimum: 0
         type: integer
       minPurchase:
+        description: Minimal total belanja sebelum voucher berlaku (0 = tidak ada
+          minimum)
+        example: 24000
         minimum: 0
         type: number
       name:
+        description: Nama deskriptif voucher
+        example: Happy Hours 3 Jam
         maxLength: 150
         minLength: 3
         type: string
@@ -388,6 +732,19 @@ definitions:
     - discountType
     - discountValue
     - name
+    type: object
+  usecase.FoodOrderItemRequest:
+    properties:
+      menuItemId:
+        type: string
+      notes:
+        type: string
+      quantity:
+        minimum: 1
+        type: integer
+    required:
+    - menuItemId
+    - quantity
     type: object
   usecase.LoginRequest:
     properties:
@@ -434,15 +791,42 @@ definitions:
     type: object
   usecase.StartSessionRequest:
     properties:
+      bookedDurationMinutes:
+        description: 'Durasi yang dipesan dalam menit. Harus kelipatan 60 (per jam).
+          Contoh: 60, 120, 180'
+        example: 120
+        minimum: 60
+        type: integer
+      cashReceived:
+        description: Uang tunai yang diberikan pelanggan di depan (harus >= harga
+          setelah diskon)
+        example: 25000
+        type: number
       consoleId:
+        example: 550e8400-e29b-41d4-a716-446655440000
         type: string
       customerId:
         description: opsional, walk-in tidak perlu
+        example: 550e8400-e29b-41d4-a716-446655440001
         type: string
       notes:
+        example: Rental 2 jam
+        type: string
+      voucherCode:
+        description: Kode voucher diskon (opsional)
+        example: DISKON10
         type: string
     required:
+    - bookedDurationMinutes
+    - cashReceived
     - consoleId
+    type: object
+  usecase.StartSessionResponse:
+    properties:
+      payment:
+        $ref: '#/definitions/entity.Payment'
+      session:
+        $ref: '#/definitions/entity.Session'
     type: object
   usecase.UpdateConsoleRequest:
     properties:
@@ -453,13 +837,21 @@ definitions:
         - PS3
         - PS4
         - PS5
+        - AndroidTV
+        example: AndroidTV
       description:
         type: string
+      ipAddress:
+        example: 192.168.1.101
+        maxLength: 50
+        type: string
       name:
+        example: TV 01
         maxLength: 100
         minLength: 2
         type: string
       pricePerHour:
+        example: 10000
         type: number
       status:
         allOf:
@@ -468,6 +860,7 @@ definitions:
         - available
         - in_use
         - maintenance
+        example: available
     type: object
   usecase.UpdateCustomerRequest:
     properties:
@@ -481,6 +874,80 @@ definitions:
         maxLength: 20
         minLength: 8
         type: string
+    type: object
+  usecase.UpdateDiscountRuleRequest:
+    properties:
+      daysOfWeek:
+        type: string
+      discountType:
+        allOf:
+        - $ref: '#/definitions/entity.DiscountType'
+        enum:
+        - percentage
+        - fixed_amount
+      discountValue:
+        type: number
+      endHour:
+        type: integer
+      isActive:
+        type: boolean
+      maxDiscount:
+        minimum: 0
+        type: number
+      minPurchase:
+        minimum: 0
+        type: number
+      name:
+        maxLength: 150
+        minLength: 3
+        type: string
+      priority:
+        minimum: 0
+        type: integer
+      ruleType:
+        allOf:
+        - $ref: '#/definitions/entity.RuleType'
+        enum:
+        - always
+        - happy_hour
+        - member
+        - day_of_week
+      startHour:
+        type: integer
+    type: object
+  usecase.UpdateMenuItemRequest:
+    properties:
+      category:
+        allOf:
+        - $ref: '#/definitions/entity.MenuItemCategory'
+        enum:
+        - food
+        - drink
+        - snack
+        - other
+      description:
+        type: string
+      isAvailable:
+        type: boolean
+      name:
+        maxLength: 150
+        minLength: 2
+        type: string
+      price:
+        minimum: 0
+        type: number
+    type: object
+  usecase.UpdateOrderStatusRequest:
+    properties:
+      status:
+        enum:
+        - pending
+        - preparing
+        - served
+        - cancelled
+        type: string
+    required:
+    - status
     type: object
   usecase.UpdateShiftRequest:
     properties:
@@ -508,18 +975,24 @@ definitions:
   usecase.UpdateVoucherRequest:
     properties:
       code:
+        example: HPH3
         maxLength: 50
         minLength: 3
         type: string
       discountType:
         allOf:
         - $ref: '#/definitions/entity.DiscountType'
+        description: 'Tipe diskon: "percentage" atau "fixed_amount"'
         enum:
         - percentage
         - fixed_amount
+        example: fixed_amount
       discountValue:
+        example: 24000
         type: number
       expiresAt:
+        description: 'Format RFC3339/ISO8601. Contoh: 2026-06-26T00:00:00Z'
+        example: "2026-06-26T00:00:00Z"
         type: string
       isActive:
         type: boolean
@@ -533,6 +1006,7 @@ definitions:
         minimum: 0
         type: number
       name:
+        example: Happy Hours 3 Jam
         maxLength: 150
         minLength: 3
         type: string
@@ -625,7 +1099,7 @@ paths:
       - Autentikasi
   /api/v1/consoles:
     get:
-      description: Mengembalikan daftar seluruh unit konsol PlayStation
+      description: Mengembalikan daftar seluruh unit konsol / TV Android
       produces:
       - application/json
       responses:
@@ -838,6 +1312,40 @@ paths:
       summary: Ambil konsol yang tersedia
       tags:
       - Konsol
+  /api/v1/consoles/overview:
+    get:
+      description: 'Mengembalikan semua konsol beserta sesi aktif masing-masing (jika
+        ada).\n\nSetiap item mencakup:\n- Data konsol (nama, tipe, IP, status, harga/jam)\n-
+        `activeSession`: null jika konsol kosong, atau berisi info sesi aktif termasuk
+        `remainingMinutes` (sisa menit dari durasi yang dipesan; -1 = open-ended).\n\nGunakan
+        endpoint ini untuk tampilan dashboard / monitor konsol secara realtime.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/usecase.ConsoleOverviewItem'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Dashboard overview semua konsol
+      tags:
+      - Konsol
   /api/v1/customers:
     get:
       description: Mengembalikan daftar seluruh pelanggan yang terdaftar, diurutkan
@@ -1020,6 +1528,778 @@ paths:
       summary: Update data pelanggan
       tags:
       - Pelanggan
+  /api/v1/discounts:
+    get:
+      description: Mengembalikan seluruh aturan diskon otomatis (happy hour, member,
+        dll) beserta statusnya
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.DiscountRule'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua aturan diskon
+      tags:
+      - Discount
+    post:
+      consumes:
+      - application/json
+      description: 'Membuat aturan diskon otomatis baru. Tipe rule: ''always'', ''happy_hour'',
+        ''member'', ''day_of_week''.'
+      parameters:
+      - description: Data aturan diskon baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateDiscountRuleRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.DiscountRule'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Buat aturan diskon baru
+      tags:
+      - Discount
+  /api/v1/discounts/{id}:
+    delete:
+      description: Menghapus aturan diskon secara permanen
+      parameters:
+      - description: Discount Rule ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hapus aturan diskon
+      tags:
+      - Discount
+    get:
+      description: Mengembalikan detail satu aturan diskon
+      parameters:
+      - description: Discount Rule ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.DiscountRule'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil aturan diskon berdasarkan ID
+      tags:
+      - Discount
+    put:
+      consumes:
+      - application/json
+      description: Mengubah data aturan diskon. Semua field opsional (partial update).
+      parameters:
+      - description: Discount Rule ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data yang diubah
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.UpdateDiscountRuleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.DiscountRule'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update aturan diskon
+      tags:
+      - Discount
+  /api/v1/discounts/{id}/toggle:
+    patch:
+      description: Toggle status aktif aturan diskon (aktif ↔ nonaktif)
+      parameters:
+      - description: Discount Rule ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.DiscountRule'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Aktifkan / nonaktifkan aturan diskon
+      tags:
+      - Discount
+  /api/v1/discounts/active:
+    get:
+      description: Mengembalikan aturan diskon yang sedang aktif, diurutkan berdasarkan
+        prioritas
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.DiscountRule'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil aturan diskon aktif
+      tags:
+      - Discount
+  /api/v1/food-orders:
+    get:
+      description: Mengembalikan seluruh pesanan makanan diurutkan terbaru
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.FoodOrder'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua pesanan makanan
+      tags:
+      - FoodOrder
+    post:
+      consumes:
+      - application/json
+      description: Admin membuat pesanan makanan. Harga otomatis diambil dari data
+        menu, total dihitung otomatis dari quantity × harga.
+      parameters:
+      - description: Data pesanan baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateFoodOrderRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.FoodOrder'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Buat pesanan makanan baru
+      tags:
+      - FoodOrder
+  /api/v1/food-orders/{id}:
+    delete:
+      description: Menghapus pesanan secara permanen. Hanya pesanan berstatus 'cancelled'
+        yang bisa dihapus.
+      parameters:
+      - description: Food Order ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hapus pesanan
+      tags:
+      - FoodOrder
+    get:
+      description: Mengembalikan detail pesanan beserta semua item dan info menu
+      parameters:
+      - description: Food Order ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.FoodOrder'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil pesanan berdasarkan ID
+      tags:
+      - FoodOrder
+  /api/v1/food-orders/{id}/cancel:
+    patch:
+      description: Membatalkan pesanan makanan. Tidak bisa membatalkan pesanan yang
+        sudah served.
+      parameters:
+      - description: Food Order ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.FoodOrder'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Batalkan pesanan
+      tags:
+      - FoodOrder
+  /api/v1/food-orders/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: 'Mengubah status pesanan. Alur: pending → preparing → served. Dapat
+        dibatalkan (cancelled) dari status apapun kecuali served.'
+      parameters:
+      - description: Food Order ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.UpdateOrderStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.FoodOrder'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update status pesanan
+      tags:
+      - FoodOrder
+  /api/v1/food-orders/status:
+    get:
+      description: 'Filter pesanan berdasarkan status: pending, preparing, served,
+        cancelled'
+      parameters:
+      - description: Status pesanan
+        in: query
+        name: status
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.FoodOrder'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil pesanan berdasarkan status
+      tags:
+      - FoodOrder
+  /api/v1/menus:
+    get:
+      description: Mengembalikan seluruh daftar menu makanan & minuman (termasuk yang
+        tidak tersedia)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.MenuItem'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil semua menu
+      tags:
+      - Menu
+    post:
+      consumes:
+      - application/json
+      description: 'Admin membuat item menu baru. Kategori: food, drink, snack, other'
+      parameters:
+      - description: Data menu baru
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateMenuItemRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.MenuItem'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Buat menu baru
+      tags:
+      - Menu
+  /api/v1/menus/{id}:
+    delete:
+      description: Menghapus item menu secara permanen. Tidak bisa dihapus jika masih
+        ada pesanan aktif.
+      parameters:
+      - description: Menu ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Hapus menu
+      tags:
+      - Menu
+    get:
+      parameters:
+      - description: Menu ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.MenuItem'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil menu berdasarkan ID
+      tags:
+      - Menu
+    put:
+      consumes:
+      - application/json
+      description: Mengubah data menu (partial update). Semua field opsional.
+      parameters:
+      - description: Menu ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data yang diubah
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.UpdateMenuItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.MenuItem'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update menu
+      tags:
+      - Menu
+  /api/v1/menus/{id}/toggle:
+    patch:
+      description: Mengubah status tersedia/tidak tersedia menu
+      parameters:
+      - description: Menu ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.MenuItem'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Toggle ketersediaan menu
+      tags:
+      - Menu
+  /api/v1/menus/available:
+    get:
+      description: Mengembalikan hanya menu yang sedang tersedia, diurutkan per kategori
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.MenuItem'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil menu yang tersedia
+      tags:
+      - Menu
+  /api/v1/menus/category/{category}:
+    get:
+      description: 'Mengembalikan menu tersedia berdasarkan kategori: food, drink,
+        snack, other'
+      parameters:
+      - description: Kategori menu (food|drink|snack|other)
+        in: path
+        name: category
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.MenuItem'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil menu berdasarkan kategori
+      tags:
+      - Menu
   /api/v1/payments:
     post:
       consumes:
@@ -1273,6 +2553,38 @@ paths:
       summary: Akhiri sesi rental
       tags:
       - Sesi Rental
+  /api/v1/sessions/{session_id}/food-orders:
+    get:
+      description: Mengembalikan semua pesanan makanan yang terhubung ke sesi PS tertentu
+      parameters:
+      - description: Session ID (UUID)
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.FoodOrder'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil pesanan makanan dari satu sesi PS
+      tags:
+      - FoodOrder
   /api/v1/sessions/{session_id}/payment:
     get:
       description: Mengembalikan data pembayaran untuk sesi rental tertentu
@@ -1345,10 +2657,16 @@ paths:
     post:
       consumes:
       - application/json
-      description: Memulai sesi rental untuk konsol tertentu. Konsol harus dalam status
-        available. Event realtime dikirim ke semua client yang terhubung.
+      description: Memulai sesi rental untuk konsol dan langsung menyelesaikan pembayaran
+        di depan dalam satu transaksi.\n\n**Alur:**\n1. Konsol harus berstatus `available`\n2.
+        Harga dihitung dari `bookedDurationMinutes × pricePerHour / 60`\n3. Diskon
+        otomatis (happy hour, member) diterapkan\n4. Voucher opsional diterapkan jika
+        `voucherCode` diberikan\n5. `cashReceived` harus ≥ harga setelah diskon\n\nResponse
+        mencakup `session` (dengan `endScheduledAt` untuk countdown) dan `payment`
+        (dengan `changeAmount` kembalian).\n\nEvent realtime `session_started` dikirim
+        ke semua client WebSocket.
       parameters:
-      - description: Data sesi baru
+      - description: Data sesi dan pembayaran
         in: body
         name: body
         required: true
@@ -1364,10 +2682,10 @@ paths:
             - $ref: '#/definitions/response.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/entity.Session'
+                  $ref: '#/definitions/usecase.StartSessionResponse'
               type: object
         "400":
-          description: Konsol tidak tersedia atau request tidak valid
+          description: Konsol tidak tersedia, uang kurang, atau voucher tidak valid
           schema:
             $ref: '#/definitions/response.ErrorResponse'
         "401":
@@ -1380,7 +2698,7 @@ paths:
             $ref: '#/definitions/response.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Mulai sesi rental baru
+      summary: Mulai sesi rental + pembayaran di depan
       tags:
       - Sesi Rental
   /api/v1/shifts:
@@ -1668,9 +2986,11 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Membuat voucher diskon baru. Tipe diskon: ''percentage'' (persen
-        dari total) atau ''fixed_amount'' (nominal tetap). Kode akan otomatis diubah
-        ke huruf kapital.'
+      description: Membuat voucher diskon baru.\n\n**Nilai discountType yang valid:**\n-
+        `percentage` — diskon persen dari total (discountValue = 0–100)\n- `fixed_amount`
+        — diskon nominal Rp tetap\n\n**Format expiresAt:** RFC3339/ISO8601, contoh
+        `2026-06-26T00:00:00Z`. Kirim `null` jika tidak ada batas waktu.\n\nKode otomatis
+        diubah ke UPPERCASE.
       parameters:
       - description: Data voucher baru
         in: body
@@ -1691,7 +3011,8 @@ paths:
                   $ref: '#/definitions/entity.Voucher'
               type: object
         "400":
-          description: Kode sudah digunakan atau validasi gagal
+          description: Validasi gagal — cek discountType (percentage|fixed_amount)
+            dan format expiresAt (RFC3339)
           schema:
             $ref: '#/definitions/response.ErrorResponse'
         "401":
@@ -1699,7 +3020,7 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Hanya admin atau superadmin
           schema:
             $ref: '#/definitions/response.ErrorResponse'
       security:

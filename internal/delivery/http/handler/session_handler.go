@@ -84,15 +84,15 @@ func (h *SessionHandler) GetByID(c *fiber.Ctx) error {
 }
 
 // Start godoc
-// @Summary      Mulai sesi rental baru
-// @Description  Memulai sesi rental untuk konsol tertentu. Konsol harus dalam status available. Event realtime dikirim ke semua client yang terhubung.
+// @Summary      Mulai sesi rental + pembayaran di depan
+// @Description  Memulai sesi rental untuk konsol dan langsung menyelesaikan pembayaran di depan dalam satu transaksi.\n\n**Alur:**\n1. Konsol harus berstatus `available`\n2. Harga dihitung dari `bookedDurationMinutes × pricePerHour / 60`\n3. Diskon otomatis (happy hour, member) diterapkan\n4. Voucher opsional diterapkan jika `voucherCode` diberikan\n5. `cashReceived` harus ≥ harga setelah diskon\n\nResponse mencakup `session` (dengan `endScheduledAt` untuk countdown) dan `payment` (dengan `changeAmount` kembalian).\n\nEvent realtime `session_started` dikirim ke semua client WebSocket.
 // @Tags         Sesi Rental
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Param        body  body      usecase.StartSessionRequest  true  "Data sesi baru"
-// @Success      201   {object}  response.Response{data=entity.Session}
-// @Failure      400   {object}  response.ErrorResponse  "Konsol tidak tersedia atau request tidak valid"
+// @Param        body  body      usecase.StartSessionRequest   true  "Data sesi dan pembayaran"
+// @Success      201   {object}  response.Response{data=usecase.StartSessionResponse}
+// @Failure      400   {object}  response.ErrorResponse  "Konsol tidak tersedia, uang kurang, atau voucher tidak valid"
 // @Failure      401   {object}  response.ErrorResponse
 // @Failure      500   {object}  response.ErrorResponse
 // @Router       /api/v1/sessions/start [post]
@@ -105,14 +105,14 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
 
-	session, err := h.sessionUC.StartSession(c.Context(), req)
+	result, err := h.sessionUC.StartSession(c.Context(), req)
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionStarted, session))
+	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionStarted, result))
 
-	return response.Created(c, "Sesi rental berhasil dimulai", session)
+	return response.Created(c, "Sesi rental berhasil dimulai dan pembayaran lunas", result)
 }
 
 // End godoc

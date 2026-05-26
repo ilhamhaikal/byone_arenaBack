@@ -22,7 +22,7 @@ func NewConsoleHandler(consoleUC usecase.ConsoleUseCase, v *validator.Validator)
 
 // GetAll godoc
 // @Summary      Ambil semua konsol
-// @Description  Mengembalikan daftar seluruh unit konsol PlayStation
+// @Description  Mengembalikan daftar seluruh unit konsol / TV Android
 // @Tags         Konsol
 // @Produce      json
 // @Security     BearerAuth
@@ -167,4 +167,22 @@ func (h *ConsoleHandler) Delete(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 	return response.OK(c, "Konsol berhasil dihapus", nil)
+}
+
+// GetOverview godoc
+// @Summary      Dashboard overview semua konsol
+// @Description  Mengembalikan semua konsol beserta sesi aktif masing-masing (jika ada).\n\nSetiap item mencakup:\n- Data konsol (nama, tipe, IP, status, harga/jam)\n- `activeSession`: null jika konsol kosong, atau berisi info sesi aktif termasuk `remainingMinutes` (sisa menit dari durasi yang dipesan; -1 = open-ended).\n\nGunakan endpoint ini untuk tampilan dashboard / monitor konsol secara realtime.
+// @Tags         Konsol
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  response.Response{data=[]usecase.ConsoleOverviewItem}
+// @Failure      401  {object}  response.ErrorResponse
+// @Failure      500  {object}  response.ErrorResponse
+// @Router       /api/v1/consoles/overview [get]
+func (h *ConsoleHandler) GetOverview(c *fiber.Ctx) error {
+	items, err := h.consoleUC.GetConsoleOverview(c.Context())
+	if err != nil {
+		return response.InternalServerError(c, "Gagal mengambil overview konsol")
+	}
+	return response.OK(c, "Overview konsol berhasil diambil", items)
 }

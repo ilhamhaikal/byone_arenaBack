@@ -90,26 +90,35 @@ func main() {
 	userRepo := pgRepo.NewUserRepository(db)
 	shiftRepo := pgRepo.NewShiftRepository(db)
 	voucherRepo := pgRepo.NewVoucherRepository(db)
+	discountRuleRepo := pgRepo.NewDiscountRuleRepository(db)
+	menuRepo := pgRepo.NewMenuItemRepository(db)
+	foodOrderRepo := pgRepo.NewFoodOrderRepository(db)
 
 	// Inisialisasi use case (business logic layer)
-	consoleUC := usecase.NewConsoleUseCase(consoleRepo)
+	consoleUC := usecase.NewConsoleUseCase(consoleRepo, sessionRepo)
 	sessionUC := usecase.NewSessionUseCase(sessionRepo, consoleRepo)
 	customerUC := usecase.NewCustomerUseCase(customerRepo)
 	paymentUC := usecase.NewPaymentUseCase(paymentRepo, sessionRepo)
 	authUC := usecase.NewAuthUseCase(userRepo, shiftRepo, cfg)
 	shiftUC := usecase.NewShiftUseCase(shiftRepo, userRepo)
 	voucherUC := usecase.NewVoucherUseCase(voucherRepo)
+	discountRuleUC := usecase.NewDiscountRuleUseCase(discountRuleRepo)
+	menuUC := usecase.NewMenuItemUseCase(menuRepo)
+	foodOrderUC := usecase.NewFoodOrderUseCase(foodOrderRepo)
 
 	// Inisialisasi handler (delivery layer)
 	handlers := &router.Handlers{
-		Auth:     handler.NewAuthHandler(authUC, validate),
-		Console:  handler.NewConsoleHandler(consoleUC, validate),
-		Session:  handler.NewSessionHandler(sessionUC, validate, hub),
-		Customer: handler.NewCustomerHandler(customerUC, validate),
-		Payment:  handler.NewPaymentHandler(paymentUC, validate, hub),
-		Shift:    handler.NewShiftHandler(shiftUC),
-		Voucher:  handler.NewVoucherHandler(voucherUC, validate),
-		Hub:      hub,
+		Auth:      handler.NewAuthHandler(authUC, validate),
+		Console:   handler.NewConsoleHandler(consoleUC, validate),
+		Session:   handler.NewSessionHandler(sessionUC, validate, hub),
+		Customer:  handler.NewCustomerHandler(customerUC, validate),
+		Payment:   handler.NewPaymentHandler(paymentUC, validate, hub),
+		Shift:     handler.NewShiftHandler(shiftUC),
+		Voucher:   handler.NewVoucherHandler(voucherUC, validate),
+		Discount:  handler.NewDiscountHandler(discountRuleUC, validate),
+		Menu:      handler.NewMenuItemHandler(menuUC, validate),
+		FoodOrder: handler.NewFoodOrderHandler(foodOrderUC, validate),
+		Hub:       hub,
 	}
 
 	// Inisialisasi Fiber app

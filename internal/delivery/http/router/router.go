@@ -17,14 +17,17 @@ import (
 
 // Handlers mengumpulkan semua handler yang diperlukan router
 type Handlers struct {
-	Auth     *handler.AuthHandler
-	Console  *handler.ConsoleHandler
-	Session  *handler.SessionHandler
-	Customer *handler.CustomerHandler
-	Payment  *handler.PaymentHandler
-	Shift    *handler.ShiftHandler
-	Voucher  *handler.VoucherHandler
-	Hub      *wsHandler.Hub
+	Auth      *handler.AuthHandler
+	Console   *handler.ConsoleHandler
+	Session   *handler.SessionHandler
+	Customer  *handler.CustomerHandler
+	Payment   *handler.PaymentHandler
+	Shift     *handler.ShiftHandler
+	Voucher   *handler.VoucherHandler
+	Discount  *handler.DiscountHandler
+	Menu      *handler.MenuItemHandler
+	FoodOrder *handler.FoodOrderHandler
+	Hub       *wsHandler.Hub
 }
 
 // Setup mendaftarkan semua route ke Fiber app
@@ -79,6 +82,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	consoles := protected.Group("/consoles")
 	consoles.Get("/", h.Console.GetAll)
 	consoles.Get("/available", h.Console.GetAvailable)
+	consoles.Get("/overview", h.Console.GetOverview) // dashboard: semua konsol + sesi aktif + remaining minutes
 	consoles.Get("/:id", h.Console.GetByID)
 	consoles.Post("/", h.Console.Create)
 	consoles.Put("/:id", h.Console.Update)
@@ -128,6 +132,40 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	vouchers.Put("/:id", h.Voucher.Update)
 	vouchers.Patch("/:id/toggle", h.Voucher.Toggle)
 	vouchers.Delete("/:id", h.Voucher.Delete)
+
+	// Discount rule routes (admin & superadmin only)
+	discounts := protected.Group("/discounts", middleware.AdminOnly())
+	discounts.Get("/", h.Discount.GetAll)
+	discounts.Get("/active", h.Discount.GetActive)
+	discounts.Get("/:id", h.Discount.GetByID)
+	discounts.Post("/", h.Discount.Create)
+	discounts.Put("/:id", h.Discount.Update)
+	discounts.Patch("/:id/toggle", h.Discount.Toggle)
+	discounts.Delete("/:id", h.Discount.Delete)
+
+	// Menu routes — list & detail bisa diakses semua role, CRUD hanya admin
+	menus := protected.Group("/menus")
+	menus.Get("/", h.Menu.GetAll)
+	menus.Get("/available", h.Menu.GetAvailable)
+	menus.Get("/category/:category", h.Menu.GetByCategory)
+	menus.Get("/:id", h.Menu.GetByID)
+	menus.Post("/", middleware.AdminOnly(), h.Menu.Create)
+	menus.Put("/:id", middleware.AdminOnly(), h.Menu.Update)
+	menus.Patch("/:id/toggle", middleware.AdminOnly(), h.Menu.Toggle)
+	menus.Delete("/:id", middleware.AdminOnly(), h.Menu.Delete)
+
+	// Food order routes — semua role bisa buat & lihat, status update hanya admin
+	foodOrders := protected.Group("/food-orders")
+	foodOrders.Get("/", h.FoodOrder.GetAll)
+	foodOrders.Get("/status", h.FoodOrder.GetByStatus)
+	foodOrders.Get("/:id", h.FoodOrder.GetByID)
+	foodOrders.Post("/", h.FoodOrder.Create)
+	foodOrders.Patch("/:id/status", middleware.AdminOnly(), h.FoodOrder.UpdateStatus)
+	foodOrders.Patch("/:id/cancel", h.FoodOrder.Cancel)
+	foodOrders.Delete("/:id", middleware.AdminOnly(), h.FoodOrder.Delete)
+
+	// Food orders terhubung ke sesi PS
+	sessions.Get("/:session_id/food-orders", h.FoodOrder.GetBySession)
 
 	// 404 handler
 	app.Use(func(c *fiber.Ctx) error {
