@@ -65,6 +65,39 @@ definitions:
       updatedAt:
         type: string
     type: object
+  entity.DashboardSummary:
+    properties:
+      activeSessions:
+        type: integer
+      availableConsoles:
+        type: integer
+      date:
+        type: string
+      generatedAt:
+        type: string
+      totalAutoDiscount:
+        type: number
+      totalBaseAmount:
+        type: number
+      totalCashReceived:
+        type: number
+      totalChange:
+        type: number
+      totalConsoles:
+        type: integer
+      totalDiscount:
+        type: number
+      totalRevenue:
+        type: number
+      totalTransactions:
+        type: integer
+      voucherDetails:
+        items:
+          $ref: '#/definitions/entity.VoucherUsageDetail'
+        type: array
+      voucherUsageCount:
+        type: integer
+    type: object
   entity.DiscountRule:
     properties:
       createdAt:
@@ -256,6 +289,9 @@ definitions:
         description: Relasi
       sessionId:
         type: string
+      totalPayment:
+        description: jumlah final dibayar = amount - discount - auto_discount
+        type: number
       updatedAt:
         type: string
       voucher:
@@ -441,6 +477,17 @@ definitions:
         type: string
       usageCount:
         type: integer
+    type: object
+  entity.VoucherUsageDetail:
+    properties:
+      totalDiscount:
+        type: number
+      usageCount:
+        type: integer
+      voucherCode:
+        type: string
+      voucherName:
+        type: string
     type: object
   response.ErrorResponse:
     properties:
@@ -1314,11 +1361,11 @@ paths:
       - Konsol
   /api/v1/consoles/overview:
     get:
-      description: 'Mengembalikan semua konsol beserta sesi aktif masing-masing (jika
-        ada).\n\nSetiap item mencakup:\n- Data konsol (nama, tipe, IP, status, harga/jam)\n-
-        `activeSession`: null jika konsol kosong, atau berisi info sesi aktif termasuk
-        `remainingMinutes` (sisa menit dari durasi yang dipesan; -1 = open-ended).\n\nGunakan
-        endpoint ini untuk tampilan dashboard / monitor konsol secara realtime.'
+      description: 'Endpoint publik untuk client Android TV — mengembalikan semua
+        konsol beserta sesi aktif masing-masing (jika ada).\n\nTidak memerlukan autentikasi.\n\nSetiap
+        item mencakup:\n- Data konsol (nama, tipe, IP, status, harga/jam)\n- `activeSession`:
+        null jika konsol kosong, atau berisi info sesi aktif termasuk `remainingMinutes`
+        (sisa menit dari durasi yang dipesan; -1 = open-ended).'
       produces:
       - application/json
       responses:
@@ -1333,17 +1380,11 @@ paths:
                     $ref: '#/definitions/usecase.ConsoleOverviewItem'
                   type: array
               type: object
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Dashboard overview semua konsol
+      summary: Dashboard overview semua konsol (PUBLIK)
       tags:
       - Konsol
   /api/v1/customers:
@@ -1528,6 +1569,41 @@ paths:
       summary: Update data pelanggan
       tags:
       - Pelanggan
+  /api/v1/dashboard/summary:
+    get:
+      description: 'Mengembalikan ringkasan pendapatan harian, penggunaan voucher,
+        sesi aktif, dan status konsol.\n\n**Memerlukan autentikasi.**\n\nQuery param
+        `date` opsional (default hari ini): `?date=2026-07-03`'
+      parameters:
+      - description: Tanggal (YYYY-MM-DD), default hari ini
+        in: query
+        name: date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.DashboardSummary'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ringkasan dashboard
+      tags:
+      - Dashboard
   /api/v1/discounts:
     get:
       description: Mengembalikan seluruh aturan diskon otomatis (happy hour, member,

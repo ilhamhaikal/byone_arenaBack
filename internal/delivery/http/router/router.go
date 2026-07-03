@@ -27,6 +27,7 @@ type Handlers struct {
 	Discount  *handler.DiscountHandler
 	Menu      *handler.MenuItemHandler
 	FoodOrder *handler.FoodOrderHandler
+	Dashboard *handler.DashboardHandler
 	Hub       *wsHandler.Hub
 }
 
@@ -75,8 +76,14 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	auth.Post("/login", h.Auth.Login)
 	auth.Post("/register", h.Auth.Register) // Sebaiknya dinonaktifkan di production
 
+	// Console overview — publik, digunakan oleh client Android TV tanpa login
+	api.Get("/consoles/overview", h.Console.GetOverview)
+
 	// Protected routes (memerlukan JWT)
 	protected := api.Group("", middleware.AuthMiddleware(cfg))
+
+	// Dashboard summary — memerlukan autentikasi
+	protected.Get("/dashboard/summary", h.Dashboard.GetSummary)
 
 	// Console routes
 	consoles := protected.Group("/consoles")

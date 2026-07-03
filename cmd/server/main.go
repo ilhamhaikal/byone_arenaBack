@@ -118,6 +118,7 @@ func main() {
 		Discount:  handler.NewDiscountHandler(discountRuleUC, validate),
 		Menu:      handler.NewMenuItemHandler(menuUC, validate),
 		FoodOrder: handler.NewFoodOrderHandler(foodOrderUC, validate),
+		Dashboard: handler.NewDashboardHandler(paymentRepo),
 		Hub:       hub,
 	}
 

@@ -312,19 +312,14 @@ const docTemplate = `{
         },
         "/api/v1/consoles/overview": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Mengembalikan semua konsol beserta sesi aktif masing-masing (jika ada).\\n\\nSetiap item mencakup:\\n- Data konsol (nama, tipe, IP, status, harga/jam)\\n- ` + "`" + `activeSession` + "`" + `: null jika konsol kosong, atau berisi info sesi aktif termasuk ` + "`" + `remainingMinutes` + "`" + ` (sisa menit dari durasi yang dipesan; -1 = open-ended).\\n\\nGunakan endpoint ini untuk tampilan dashboard / monitor konsol secara realtime.",
+                "description": "Endpoint publik untuk client Android TV — mengembalikan semua konsol beserta sesi aktif masing-masing (jika ada).\\n\\nTidak memerlukan autentikasi.\\n\\nSetiap item mencakup:\\n- Data konsol (nama, tipe, IP, status, harga/jam)\\n- ` + "`" + `activeSession` + "`" + `: null jika konsol kosong, atau berisi info sesi aktif termasuk ` + "`" + `remainingMinutes` + "`" + ` (sisa menit dari durasi yang dipesan; -1 = open-ended).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Konsol"
                 ],
-                "summary": "Dashboard overview semua konsol",
+                "summary": "Dashboard overview semua konsol (PUBLIK)",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -345,12 +340,6 @@ const docTemplate = `{
                                     }
                                 }
                             ]
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "500": {
@@ -844,6 +833,63 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan ringkasan pendapatan harian, penggunaan voucher, sesi aktif, dan status konsol.\\n\\n**Memerlukan autentikasi.**\\n\\nQuery param ` + "`" + `date` + "`" + ` opsional (default hari ini): ` + "`" + `?date=2026-07-03` + "`" + `",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Ringkasan dashboard",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tanggal (YYYY-MM-DD), default hari ini",
+                        "name": "date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.DashboardSummary"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -3745,6 +3791,56 @@ const docTemplate = `{
                 }
             }
         },
+        "entity.DashboardSummary": {
+            "type": "object",
+            "properties": {
+                "activeSessions": {
+                    "type": "integer"
+                },
+                "availableConsoles": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "generatedAt": {
+                    "type": "string"
+                },
+                "totalAutoDiscount": {
+                    "type": "number"
+                },
+                "totalBaseAmount": {
+                    "type": "number"
+                },
+                "totalCashReceived": {
+                    "type": "number"
+                },
+                "totalChange": {
+                    "type": "number"
+                },
+                "totalConsoles": {
+                    "type": "integer"
+                },
+                "totalDiscount": {
+                    "type": "number"
+                },
+                "totalRevenue": {
+                    "type": "number"
+                },
+                "totalTransactions": {
+                    "type": "integer"
+                },
+                "voucherDetails": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.VoucherUsageDetail"
+                    }
+                },
+                "voucherUsageCount": {
+                    "type": "integer"
+                }
+            }
+        },
         "entity.DiscountRule": {
             "type": "object",
             "properties": {
@@ -4023,6 +4119,10 @@ const docTemplate = `{
                 "sessionId": {
                     "type": "string"
                 },
+                "totalPayment": {
+                    "description": "jumlah final dibayar = amount - discount - auto_discount",
+                    "type": "number"
+                },
                 "updatedAt": {
                     "type": "string"
                 },
@@ -4286,6 +4386,23 @@ const docTemplate = `{
                 },
                 "usageCount": {
                     "type": "integer"
+                }
+            }
+        },
+        "entity.VoucherUsageDetail": {
+            "type": "object",
+            "properties": {
+                "totalDiscount": {
+                    "type": "number"
+                },
+                "usageCount": {
+                    "type": "integer"
+                },
+                "voucherCode": {
+                    "type": "string"
+                },
+                "voucherName": {
+                    "type": "string"
                 }
             }
         },

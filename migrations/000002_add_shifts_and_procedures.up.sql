@@ -137,7 +137,7 @@ DECLARE
     v_total_price    NUMERIC;
 BEGIN
     -- Ambil sesi dengan lock
-    SELECT * INTO v_session FROM sessions WHERE id = p_session_id FOR UPDATE;
+    SELECT * INTO v_session FROM sessions WHERE sessions.id = p_session_id FOR UPDATE;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'SESSION_NOT_FOUND: Sesi tidak ditemukan';
@@ -148,7 +148,7 @@ BEGIN
     END IF;
 
     -- Ambil harga per jam konsol
-    SELECT price_per_hour INTO v_price_per_hour FROM consoles WHERE id = v_session.console_id;
+    SELECT price_per_hour INTO v_price_per_hour FROM consoles WHERE consoles.id = v_session.console_id;
 
     -- Hitung durasi dan harga
     v_duration_min := EXTRACT(EPOCH FROM (NOW() - v_session.start_time))::INT / 60;
@@ -165,15 +165,15 @@ BEGIN
         total_price      = v_total_price,
         status           = 'completed',
         updated_at       = NOW()
-    WHERE id = p_session_id;
+    WHERE sessions.id = p_session_id;
 
     -- Kembalikan status konsol
-    UPDATE consoles SET status = 'available', updated_at = NOW() WHERE id = v_session.console_id;
+    UPDATE consoles SET status = 'available', updated_at = NOW() WHERE consoles.id = v_session.console_id;
 
     RETURN QUERY
-        SELECT s.id, s.console_id, s.customer_id, s.start_time, s.end_time,
-               s.duration_minutes, s.total_price, s.status, s.notes, s.created_at, s.updated_at
-        FROM sessions s WHERE s.id = p_session_id;
+        SELECT sessions.id, sessions.console_id, sessions.customer_id, sessions.start_time, sessions.end_time,
+               sessions.duration_minutes, sessions.total_price, sessions.status, sessions.notes, sessions.created_at, sessions.updated_at
+        FROM sessions WHERE sessions.id = p_session_id;
 END;
 $$;
 

@@ -143,6 +143,7 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 		BaseAmount          float64     `gorm:"column:base_amount"`
 		DiscountAmount      float64     `gorm:"column:discount_amount"`
 		AutoDiscountAmount  float64     `gorm:"column:auto_discount_amount"`
+		TotalPayment        float64     `gorm:"column:total_payment"`
 		CashReceived        float64     `gorm:"column:cash_received"`
 		ChangeAmount        float64     `gorm:"column:change_amount"`
 		VoucherID           *uuid.UUID  `gorm:"column:voucher_id"`
@@ -177,6 +178,7 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 		Amount:             result.BaseAmount,
 		DiscountAmount:     result.DiscountAmount,
 		AutoDiscountAmount: result.AutoDiscountAmount,
+		TotalPayment:       result.TotalPayment,
 		CashReceived:       result.CashReceived,
 		ChangeAmount:       result.ChangeAmount,
 		VoucherID:          result.VoucherID,

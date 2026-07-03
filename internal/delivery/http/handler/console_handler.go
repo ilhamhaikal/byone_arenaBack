@@ -170,13 +170,11 @@ func (h *ConsoleHandler) Delete(c *fiber.Ctx) error {
 }
 
 // GetOverview godoc
-// @Summary      Dashboard overview semua konsol
-// @Description  Mengembalikan semua konsol beserta sesi aktif masing-masing (jika ada).\n\nSetiap item mencakup:\n- Data konsol (nama, tipe, IP, status, harga/jam)\n- `activeSession`: null jika konsol kosong, atau berisi info sesi aktif termasuk `remainingMinutes` (sisa menit dari durasi yang dipesan; -1 = open-ended).\n\nGunakan endpoint ini untuk tampilan dashboard / monitor konsol secara realtime.
+// @Summary      Dashboard overview semua konsol (PUBLIK)
+// @Description  Endpoint publik untuk client Android TV — mengembalikan semua konsol beserta sesi aktif masing-masing (jika ada).\n\nTidak memerlukan autentikasi.\n\nSetiap item mencakup:\n- Data konsol (nama, tipe, IP, status, harga/jam)\n- `activeSession`: null jika konsol kosong, atau berisi info sesi aktif termasuk `remainingMinutes` (sisa menit dari durasi yang dipesan; -1 = open-ended).
 // @Tags         Konsol
 // @Produce      json
-// @Security     BearerAuth
 // @Success      200  {object}  response.Response{data=[]usecase.ConsoleOverviewItem}
-// @Failure      401  {object}  response.ErrorResponse
 // @Failure      500  {object}  response.ErrorResponse
 // @Router       /api/v1/consoles/overview [get]
 func (h *ConsoleHandler) GetOverview(c *fiber.Ctx) error {
