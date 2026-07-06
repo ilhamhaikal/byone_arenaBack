@@ -7,17 +7,19 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // ConsoleHandler menangani HTTP request untuk manajemen konsol
 type ConsoleHandler struct {
 	consoleUC usecase.ConsoleUseCase
 	validator *validator.Validator
+	db        *gorm.DB
 }
 
 // NewConsoleHandler membuat instance baru ConsoleHandler
-func NewConsoleHandler(consoleUC usecase.ConsoleUseCase, v *validator.Validator) *ConsoleHandler {
-	return &ConsoleHandler{consoleUC: consoleUC, validator: v}
+func NewConsoleHandler(consoleUC usecase.ConsoleUseCase, v *validator.Validator, db *gorm.DB) *ConsoleHandler {
+	return &ConsoleHandler{consoleUC: consoleUC, validator: v, db: db}
 }
 
 // GetAll godoc
@@ -184,3 +186,69 @@ func (h *ConsoleHandler) GetOverview(c *fiber.Ctx) error {
 	}
 	return response.OK(c, "Overview konsol berhasil diambil", items)
 }
+
+// PreviewPrice godoc
+// @Summary      Kalkulasi harga sebelum sewa
+// @Description  Menghitung estimasi harga untuk durasi tertentu. Termasuk diskon otomatis (happy hour, member) dan validasi voucher opsional.
+// @Tags         Konsol
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id           path      string  true   "Console ID"
+// @Param        duration     query     int     true   "Durasi (menit), minimal 30"
+// @Param        voucherCode  query     string  false  "Kode voucher (opsional)"
+// @Param        customerId   query     string  false  "Customer ID (opsional, untuk cek member)"
+// @Success      200  {object}  response.Response
+// @Failure      400  {object}  response.ErrorResponse
+// @Failure      401  {object}  response.ErrorResponse
+// @Router       /api/v1/consoles/{id}/price [get]
+func (h *ConsoleHandler) PreviewPrice(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+
+	duration := c.QueryInt("duration", 0)
+	if duration < 30 {
+		return response.BadRequest(c, "Durasi minimal 30 menit")
+	}
+
+	voucherCode := c.Query("voucherCode", "")
+	customerID := c.Query("customerId", "")
+
+	type spResult struct {
+		PricePerHour   float64 `gorm:"column:price_per_hour"`
+		DurationMin    int     `gorm:"column:duration_minutes"`
+		BaseAmount     float64 `gorm:"column:base_amount"`
+		AutoDiscount   float64 `gorm:"column:auto_discount"`
+		VoucherDisc    float64 `gorm:"column:voucher_discount"`
+		TotalDiscount  float64 `gorm:"column:total_discount"`
+		FinalAmount    float64 `gorm:"column:final_amount"`
+		VoucherApplied bool    `gorm:"column:voucher_applied"`
+		VoucherName    *string `gorm:"column:voucher_name"`
+		Message        string  `gorm:"column:message"`
+	}
+
+	var result spResult
+	tx := h.db.WithContext(c.Context()).Raw(
+		`SELECT * FROM "byonePreviewPrice"(?, ?, ?, NULLIF(?, '')::UUID)`,
+		id, duration, voucherCode, customerID,
+	).Scan(&result)
+
+	if tx.Error != nil {
+		return response.BadRequest(c, tx.Error.Error())
+	}
+
+	return response.OK(c, result.Message, fiber.Map{
+		"consoleId":       id,
+		"durationMinutes": result.DurationMin,
+		"pricePerHour":    result.PricePerHour,
+		"baseAmount":      result.BaseAmount,
+		"autoDiscount":    result.AutoDiscount,
+		"voucherDiscount": result.VoucherDisc,
+		"totalDiscount":   result.TotalDiscount,
+		"finalAmount":     result.FinalAmount,
+		"voucherApplied":  result.VoucherApplied,
+		"voucherName":     result.VoucherName,
+	})
+}
+

@@ -1,12 +1,12 @@
 -- Migration: 000008_add_total_payment.down.sql
 
-DROP FUNCTION IF EXISTS sp_start_session_with_payment(UUID, UUID, TEXT, INTEGER, NUMERIC, VARCHAR);
-DROP FUNCTION IF EXISTS sp_create_payment(UUID, NUMERIC, TEXT, VARCHAR);
+DROP FUNCTION IF EXISTS byoneStartSessionWithPayment(UUID, UUID, TEXT, INTEGER, NUMERIC, VARCHAR);
+DROP FUNCTION IF EXISTS byoneCreatePayment(UUID, NUMERIC, TEXT, VARCHAR);
 
 ALTER TABLE payments DROP COLUMN IF EXISTS total_payment;
 
--- Kembalikan sp_create_payment versi 000004
-CREATE OR REPLACE FUNCTION sp_create_payment(
+-- Kembalikan byoneCreatePayment versi 000004
+CREATE OR REPLACE FUNCTION byoneCreatePayment(
     p_session_id    UUID,
     p_cash_received NUMERIC,
     p_notes         TEXT    DEFAULT NULL,
@@ -30,8 +30,8 @@ BEGIN
     IF EXISTS(SELECT 1 FROM payments WHERE session_id=p_session_id AND payment_status!='refunded') THEN RAISE EXCEPTION 'PAYMENT_EXISTS: Sudah ada'; END IF;
     v_amount:=v_session.total_price;
     IF v_session.customer_id IS NOT NULL THEN SELECT COALESCE(is_member,FALSE) INTO v_is_member FROM customers WHERE id=v_session.customer_id; END IF;
-    v_auto_discount:=sp_evaluate_discount_rules(v_amount,v_session.start_time,v_is_member);
-    IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code)!='' THEN SELECT va.voucher_id,va.discount_amount INTO v_voucher_id,v_voucher_discount FROM sp_apply_voucher(p_voucher_code,v_amount)va; UPDATE vouchers SET usage_count=usage_count+1,updated_at=v_now WHERE id=v_voucher_id; END IF;
+    v_auto_discount:=byoneEvaluateDiscountRules(v_amount,v_session.start_time,v_is_member);
+    IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code)!='' THEN SELECT va.voucher_id,va.discount_amount INTO v_voucher_id,v_voucher_discount FROM byoneApplyVoucher(p_voucher_code,v_amount)va; UPDATE vouchers SET usage_count=usage_count+1,updated_at=v_now WHERE id=v_voucher_id; END IF;
     v_total_discount:=v_auto_discount+v_voucher_discount;
     IF v_total_discount>v_amount THEN v_total_discount:=v_amount; IF v_auto_discount>v_amount THEN v_auto_discount:=v_amount;v_voucher_discount:=0;ELSE v_voucher_discount:=v_amount-v_auto_discount;END IF;END IF;
     v_final_amount:=GREATEST(v_amount-v_total_discount,0);
@@ -41,8 +41,8 @@ BEGIN
     RETURN QUERY SELECT v_payment_id,v_amount,v_voucher_discount,v_auto_discount,p_cash_received,v_change,v_voucher_id,v_now;
 END; $$;
 
--- Kembalikan sp_start_session_with_payment versi 000007
-CREATE OR REPLACE FUNCTION sp_start_session_with_payment(
+-- Kembalikan byoneStartSessionWithPayment versi 000007
+CREATE OR REPLACE FUNCTION byoneStartSessionWithPayment(
     p_console_id UUID, p_customer_id UUID, p_notes TEXT,
     p_booked_duration_minutes INTEGER, p_cash_received NUMERIC,
     p_voucher_code VARCHAR DEFAULT NULL
@@ -71,8 +71,8 @@ BEGIN
     v_amount:=ROUND((p_booked_duration_minutes::NUMERIC/60.0)*v_price_per_hour,2);
     v_end_scheduled:=v_now+(p_booked_duration_minutes*INTERVAL '1 minute');
     IF p_customer_id IS NOT NULL THEN SELECT COALESCE(is_member,FALSE) INTO v_is_member FROM customers WHERE id=p_customer_id; END IF;
-    v_auto_discount:=sp_evaluate_discount_rules(v_amount,v_now,v_is_member);
-    IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code)!='' THEN SELECT va.voucher_id,va.discount_amount INTO v_voucher_id,v_voucher_discount FROM sp_apply_voucher(p_voucher_code,v_amount)va; UPDATE vouchers SET usage_count=usage_count+1,updated_at=v_now WHERE id=v_voucher_id; END IF;
+    v_auto_discount:=byoneEvaluateDiscountRules(v_amount,v_now,v_is_member);
+    IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code)!='' THEN SELECT va.voucher_id,va.discount_amount INTO v_voucher_id,v_voucher_discount FROM byoneApplyVoucher(p_voucher_code,v_amount)va; UPDATE vouchers SET usage_count=usage_count+1,updated_at=v_now WHERE id=v_voucher_id; END IF;
     v_total_discount:=v_auto_discount+v_voucher_discount;
     IF v_total_discount>v_amount THEN v_total_discount:=v_amount;IF v_auto_discount>v_amount THEN v_auto_discount:=v_amount;v_voucher_discount:=0;ELSE v_voucher_discount:=v_amount-v_auto_discount;END IF;END IF;
     v_final_amount:=GREATEST(v_amount-v_total_discount,0);

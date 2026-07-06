@@ -91,7 +91,7 @@ func (r *sessionRepository) FindActiveSession(ctx context.Context) ([]*entity.Se
 	return sessions, result.Error
 }
 
-// Create menggunakan stored procedure sp_start_session untuk atomisitas
+// Create menggunakan byoneStartSession untuk atomisitas
 func (r *sessionRepository) Create(ctx context.Context, session *entity.Session) error {
 	type spResult struct {
 		ID                    uuid.UUID  `gorm:"column:id"`
@@ -111,7 +111,7 @@ func (r *sessionRepository) Create(ctx context.Context, session *entity.Session)
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM sp_start_session(?, ?, ?, ?)",
+		"SELECT * FROM \"byoneStartSession\"(?, ?, ?, ?)",
 		session.ConsoleID,
 		session.CustomerID,
 		session.Notes,
@@ -128,7 +128,7 @@ func (r *sessionRepository) Create(ctx context.Context, session *entity.Session)
 	return nil
 }
 
-// CreateWithPayment menggunakan sp_start_session_with_payment:
+// CreateWithPayment menggunakan byoneStartSessionWithPayment:
 // membuat sesi + pembayaran di depan dalam satu transaksi atomik.
 func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string) (*entity.Payment, error) {
 	type spResult struct {
@@ -152,7 +152,7 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM sp_start_session_with_payment(?, ?, ?, ?, ?, ?)",
+		"SELECT * FROM \"byoneStartSessionWithPayment\"(?, ?, ?, ?, ?, ?)",
 		session.ConsoleID,
 		session.CustomerID,
 		session.Notes,
@@ -188,10 +188,10 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 	return payment, nil
 }
 
-// Update menggunakan stored procedure sp_end_session
+// Update menggunakan byoneEndSession
 func (r *sessionRepository) Update(ctx context.Context, session *entity.Session) error {
-	// Update hanya dipanggil saat end session → gunakan stored procedure
-	tx := r.db.WithContext(ctx).Exec("SELECT sp_end_session(?)", session.ID)
+	// Update hanya dipanggil saat end session
+	tx := r.db.WithContext(ctx).Exec("SELECT \"byoneEndSession\"(?)", session.ID)
 	if tx.Error != nil {
 		return parseStoredProcError(tx.Error)
 	}
@@ -203,7 +203,7 @@ func (r *sessionRepository) Update(ctx context.Context, session *entity.Session)
 func (r *sessionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status entity.SessionStatus) error {
 	if status == entity.SessionStatusCancelled {
 		// Gunakan stored procedure untuk membatalkan (atomic dengan update konsol)
-		tx := r.db.WithContext(ctx).Exec("SELECT sp_cancel_session(?)", id)
+		tx := r.db.WithContext(ctx).Exec("SELECT \"byoneCancelSession\"(?)", id)
 		return parseStoredProcError(tx.Error)
 	}
 	// Fallback GORM untuk status lain

@@ -19,4 +19,6 @@ type PaymentRepository interface {
 	// GetDashboardSummary mengambil ringkasan pendapatan untuk dashboard.
 	// date: format YYYY-MM-DD (default hari ini jika kosong)
 	GetDashboardSummary(ctx context.Context, date string) (*entity.DashboardSummary, error)
+	// GetReportSummary mengambil laporan komprehensif untuk rentang tanggal.
+	GetReportSummary(ctx context.Context, startDate, endDate string) (*entity.ReportSummary, error)
 }

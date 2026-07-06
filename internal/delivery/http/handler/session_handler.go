@@ -8,18 +8,28 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
+
+// ExtendSessionRequest payload untuk menambah waktu sewa
+type ExtendSessionRequest struct {
+	AdditionalMinutes int     `json:"additionalMinutes" validate:"required,min=30" example:"60"`
+	CashReceived      float64 `json:"cashReceived"      validate:"required,gt=0"  example:"20000"`
+	VoucherCode       string  `json:"voucherCode"       example:""`
+	Notes             string  `json:"notes"             example:"Tambah 1 jam"`
+}
 
 // SessionHandler menangani HTTP request untuk manajemen sesi rental
 type SessionHandler struct {
 	sessionUC usecase.SessionUseCase
 	validator *validator.Validator
 	hub       *websocket.Hub
+	db        *gorm.DB
 }
 
 // NewSessionHandler membuat instance baru SessionHandler
-func NewSessionHandler(sessionUC usecase.SessionUseCase, v *validator.Validator, hub *websocket.Hub) *SessionHandler {
-	return &SessionHandler{sessionUC: sessionUC, validator: v, hub: hub}
+func NewSessionHandler(sessionUC usecase.SessionUseCase, v *validator.Validator, hub *websocket.Hub, db *gorm.DB) *SessionHandler {
+	return &SessionHandler{sessionUC: sessionUC, validator: v, hub: hub, db: db}
 }
 
 // GetAll godoc
@@ -111,6 +121,10 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 	}
 
 	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionStarted, result))
+	// Auto-wake TV
+	h.hub.Broadcast(websocket.NewEvent(websocket.EventTVWake, fiber.Map{
+		"consoleId": req.ConsoleID,
+	}))
 
 	return response.Created(c, "Sesi rental berhasil dimulai dan pembayaran lunas", result)
 }
@@ -138,6 +152,10 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 	}
 
 	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionEnded, session))
+	// Auto-sleep TV
+	h.hub.Broadcast(websocket.NewEvent(websocket.EventTVSleep, fiber.Map{
+		"consoleId": session.ConsoleID,
+	}))
 
 	return response.OK(c, "Sesi rental berhasil diakhiri", session)
 }
@@ -166,4 +184,73 @@ func (h *SessionHandler) Cancel(c *fiber.Ctx) error {
 	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionCancelled, fiber.Map{"session_id": id}))
 
 	return response.OK(c, "Sesi rental berhasil dibatalkan", nil)
+}
+
+// Extend godoc
+// @Summary      Tambah waktu sewa (extend session)
+// @Description  Menambah durasi sewa untuk sesi yang sedang aktif. Membuat pembayaran baru dengan status **pending** — admin harus konfirmasi via `POST /payments/:id/confirm`.\n\nMinimal tambahan 30 menit. Voucher opsional.
+// @Tags         Sesi Rental
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id    path      string               true  "Session ID"
+// @Param        body  body      handler.ExtendSessionRequest  true  "Data tambah waktu"
+// @Success      200   {object}  response.Response
+// @Failure      400   {object}  response.ErrorResponse
+// @Router       /api/v1/sessions/{id}/extend [post]
+func (h *SessionHandler) Extend(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+
+	req := new(ExtendSessionRequest)
+	if err := c.BodyParser(req); err != nil {
+		return response.BadRequest(c, "Format request tidak valid")
+	}
+	if err := h.validator.ValidateStruct(req); err != nil {
+		return response.BadRequest(c, validator.FormatError(err))
+	}
+
+	type spResult struct {
+		SessionID            uuid.UUID  `gorm:"column:session_id"`
+		SessionBookedMinutes int        `gorm:"column:session_booked_minutes"`
+		SessionEndScheduled  interface{} `gorm:"column:session_end_scheduled"`
+		PaymentID            uuid.UUID  `gorm:"column:payment_id"`
+		PaymentAmount        float64    `gorm:"column:payment_amount"`
+		PaymentDiscount      float64    `gorm:"column:payment_discount"`
+		PaymentTotal         float64    `gorm:"column:payment_total"`
+		PaymentCashReceived  float64    `gorm:"column:payment_cash_received"`
+		PaymentChange        float64    `gorm:"column:payment_change"`
+		PaymentVoucherID     *uuid.UUID `gorm:"column:payment_voucher_id"`
+		PaymentStatus        string     `gorm:"column:payment_status"`
+	}
+
+	var result spResult
+	tx := h.db.WithContext(c.Context()).Raw(
+		`SELECT * FROM "byoneExtendSession"(?, ?, ?, ?, ?)`,
+		id, req.AdditionalMinutes, req.CashReceived, req.VoucherCode, req.Notes,
+	).Scan(&result)
+
+	if tx.Error != nil {
+		return response.BadRequest(c, tx.Error.Error())
+	}
+
+	return response.OK(c, "Waktu sewa berhasil ditambah, pembayaran pending", fiber.Map{
+		"session": fiber.Map{
+			"id":                result.SessionID,
+			"bookedDurationMinutes": result.SessionBookedMinutes,
+			"endScheduledAt":    result.SessionEndScheduled,
+		},
+		"payment": fiber.Map{
+			"id":             result.PaymentID,
+			"amount":         result.PaymentAmount,
+			"discountAmount": result.PaymentDiscount,
+			"totalPayment":   result.PaymentTotal,
+			"cashReceived":   result.PaymentCashReceived,
+			"changeAmount":   result.PaymentChange,
+			"voucherId":      result.PaymentVoucherID,
+			"status":         result.PaymentStatus,
+		},
+	})
 }

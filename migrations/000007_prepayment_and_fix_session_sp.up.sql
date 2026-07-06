@@ -1,13 +1,13 @@
 -- Migration: 000007_prepayment_and_fix_session_sp.up.sql
--- 1. Fix bug "column reference id is ambiguous" di sp_start_session
--- 2. Tambah sp_start_session_with_payment (buat sesi + bayar di depan, satu transaksi atomik)
+-- 1. Fix bug "column reference id is ambiguous" di byoneStartSession
+-- 2. Tambah byoneStartSessionWithPayment (buat sesi + bayar di depan, satu transaksi atomik)
 
 -- =============================================
--- 1. Fix sp_start_session — gunakan table name penuh agar tidak ambigu
+-- 1. Fix byoneStartSession — gunakan table name penuh agar tidak ambigu
 -- =============================================
-DROP FUNCTION IF EXISTS sp_start_session(UUID, UUID, TEXT, INTEGER);
+DROP FUNCTION IF EXISTS byoneStartSession(UUID, UUID, TEXT, INTEGER);
 
-CREATE OR REPLACE FUNCTION sp_start_session(
+CREATE OR REPLACE FUNCTION byoneStartSession(
     p_console_id              UUID,
     p_customer_id             UUID,   -- nullable (walk-in)
     p_notes                   TEXT,
@@ -70,7 +70,7 @@ BEGIN
         'active', p_notes, NOW(), NOW()
     );
 
-    UPDATE consoles SET status = 'in_use', updated_at = NOW() WHERE id = p_console_id;
+    UPDATE consoles SET status = 'in_use', updated_at = NOW() WHERE consoles.id = p_console_id;
 
     -- Gunakan nama tabel penuh (bukan alias) untuk hindari ambiguitas dengan output column
     RETURN QUERY
@@ -95,12 +95,12 @@ $$;
 
 
 -- =============================================
--- 2. sp_start_session_with_payment
+-- 2. byoneStartSessionWithPayment
 -- Membuat sesi + pembayaran di depan dalam satu transaksi atomik.
 -- Harga dihitung dari booked_duration_minutes × price_per_hour.
 -- Diskon otomatis (happy hour, member, dll) + voucher opsional diterapkan.
 -- =============================================
-CREATE OR REPLACE FUNCTION sp_start_session_with_payment(
+CREATE OR REPLACE FUNCTION byoneStartSessionWithPayment(
     p_console_id              UUID,
     p_customer_id             UUID,   -- nullable (walk-in)
     p_notes                   TEXT,
@@ -183,13 +183,13 @@ BEGIN
     END IF;
 
     -- Evaluasi diskon otomatis (happy hour, member, day_of_week, dll)
-    v_auto_discount := sp_evaluate_discount_rules(v_amount, v_now, v_is_member);
+    v_auto_discount := byoneEvaluateDiscountRules(v_amount, v_now, v_is_member);
 
     -- Proses voucher jika ada
     IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code) != '' THEN
         SELECT va.voucher_id, va.discount_amount
         INTO v_voucher_id, v_voucher_discount
-        FROM sp_apply_voucher(p_voucher_code, v_amount) va;
+        FROM byoneApplyVoucher(p_voucher_code, v_amount) va;
 
         UPDATE vouchers
         SET usage_count = usage_count + 1,

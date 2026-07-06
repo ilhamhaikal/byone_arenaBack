@@ -3,7 +3,7 @@
 # Kompatibel: Windows (PowerShell/Git Bash) & Linux/macOS
 # ==========================================
 
-.PHONY: help build run dev docker-up docker-down docker-dev migrate tidy test clean
+.PHONY: help build run dev docker-up docker-down docker-dev migrate migrate-local tidy test clean
 
 # Variabel
 BINARY_NAME=byone-arena
@@ -115,19 +115,15 @@ docker-logs:
 docker-ps:
 	$(DOCKER_COMPOSE) ps
 
-## migrate: Jalankan migration database (via Docker)
+## migrate: Jalankan migration database otomatis (semua .up.sql yang belum dijalankan)
 migrate:
-	@echo ">> Menjalankan migration database (Docker)..."
-	@docker exec -i byone-arena-db psql -U $${DB_USER:-postgres} -d $${DB_NAME:-byone_arena} < migrations/000001_init_schema.up.sql
-	@docker exec -i byone-arena-db psql -U $${DB_USER:-postgres} -d $${DB_NAME:-byone_arena} < migrations/000002_add_shifts_and_procedures.up.sql
-	@echo ">> Migration selesai."
+	@echo ">> Menjalankan migrasi database..."
+	@go run ./cmd/migrate/
 
-## migrate-local: Jalankan migration database langsung via psql (tanpa Docker)
-migrate-local:
-	@echo ">> Menjalankan migration database (lokal)..."
-	psql -h $${DB_HOST:-localhost} -p $${DB_PORT:-5432} -U $${DB_USER:-postgres} -d $${DB_NAME:-byone_arena} -f migrations/000001_init_schema.up.sql
-	psql -h $${DB_HOST:-localhost} -p $${DB_PORT:-5432} -U $${DB_USER:-postgres} -d $${DB_NAME:-byone_arena} -f migrations/000002_add_shifts_and_procedures.up.sql
-	@echo ">> Migration selesai."
+## migrate-local: Jalankan migration database (via Docker)
+migrate-docker:
+	@echo ">> Menjalankan migrasi database (Docker)..."
+	@docker compose run --rm app go run ./cmd/migrate/
 
 ## db-shell: Masuk ke shell PostgreSQL
 db-shell:

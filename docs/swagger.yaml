@@ -2,6 +2,8 @@ basePath: /
 definitions:
   entity.Console:
     properties:
+      adbPort:
+        type: integer
       consoleType:
         $ref: '#/definitions/entity.ConsoleType'
       createdAt:
@@ -12,10 +14,14 @@ definitions:
         type: string
       ipAddress:
         type: string
+      macAddress:
+        type: string
       name:
         type: string
       pricePerHour:
         type: number
+      screenStatus:
+        $ref: '#/definitions/entity.ScreenStatus'
       status:
         $ref: '#/definitions/entity.ConsoleStatus'
       updatedAt:
@@ -41,12 +47,14 @@ definitions:
     - PS4
     - PS5
     - AndroidTV
+    - Switch
     type: string
     x-enum-varnames:
     - ConsoleTypePS3
     - ConsoleTypePS4
     - ConsoleTypePS5
     - ConsoleTypeAndroidTV
+    - ConsoleTypeSwitch
   entity.Customer:
     properties:
       createdAt:
@@ -238,6 +246,16 @@ definitions:
     - MenuCategoryDrink
     - MenuCategorySnack
     - MenuCategoryOther
+  entity.NotificationPriority:
+    enum:
+    - low
+    - normal
+    - high
+    type: string
+    x-enum-varnames:
+    - NotificationPriorityLow
+    - NotificationPriorityNormal
+    - NotificationPriorityHigh
   entity.OrderStatus:
     enum:
     - pending
@@ -315,6 +333,131 @@ definitions:
     - PaymentStatusPending
     - PaymentStatusPaid
     - PaymentStatusRefunded
+  entity.ReportConsoleUsage:
+    properties:
+      consoleName:
+        type: string
+      consoleType:
+        type: string
+      totalMinutes:
+        type: integer
+      totalSessions:
+        type: integer
+    type: object
+  entity.ReportDailyItem:
+    properties:
+      date:
+        type: string
+      playMinutes:
+        type: integer
+      revenue:
+        type: number
+      sessions:
+        type: integer
+      transactions:
+        type: integer
+    type: object
+  entity.ReportDiscountRule:
+    properties:
+      discountType:
+        type: string
+      discountValue:
+        type: number
+      isActive:
+        type: boolean
+      ruleName:
+        type: string
+      ruleType:
+        type: string
+    type: object
+  entity.ReportPeriod:
+    properties:
+      endDate:
+        type: string
+      startDate:
+        type: string
+      totalDays:
+        type: integer
+    type: object
+  entity.ReportRevenue:
+    properties:
+      autoDiscount:
+        type: number
+      totalBaseAmount:
+        type: number
+      totalCashReceived:
+        type: number
+      totalChange:
+        type: number
+      totalDiscount:
+        type: number
+      totalRevenue:
+        type: number
+      voucherDiscount:
+        type: number
+    type: object
+  entity.ReportSessions:
+    properties:
+      averageMinutes:
+        type: integer
+      totalPlayHours:
+        type: number
+      totalPlayMinutes:
+        type: integer
+      totalSessions:
+        type: integer
+    type: object
+  entity.ReportSummary:
+    properties:
+      activeDiscountRules:
+        items:
+          $ref: '#/definitions/entity.ReportDiscountRule'
+        type: array
+      consoles:
+        items:
+          $ref: '#/definitions/entity.ReportConsoleUsage'
+        type: array
+      dailyBreakdown:
+        items:
+          $ref: '#/definitions/entity.ReportDailyItem'
+        type: array
+      generatedAt:
+        type: string
+      period:
+        $ref: '#/definitions/entity.ReportPeriod'
+      revenue:
+        $ref: '#/definitions/entity.ReportRevenue'
+      sessions:
+        $ref: '#/definitions/entity.ReportSessions'
+      transactions:
+        $ref: '#/definitions/entity.ReportTransactions'
+      vouchers:
+        items:
+          $ref: '#/definitions/entity.ReportVoucherUsage'
+        type: array
+    type: object
+  entity.ReportTransactions:
+    properties:
+      averagePerDay:
+        type: number
+      totalTransactions:
+        type: integer
+      voucherTransactions:
+        type: integer
+    type: object
+  entity.ReportVoucherUsage:
+    properties:
+      discountType:
+        type: string
+      totalDiscount:
+        type: number
+      usageCount:
+        type: integer
+      voucherCode:
+        type: string
+      voucherName:
+        type: string
+    type: object
   entity.RuleType:
     enum:
     - always
@@ -332,6 +475,16 @@ definitions:
     - RuleTypeHappyHour
     - RuleTypeMember
     - RuleTypeDayOfWeek
+  entity.ScreenStatus:
+    enum:
+    - "on"
+    - "off"
+    - screensaver
+    type: string
+    x-enum-varnames:
+    - ScreenStatusOn
+    - ScreenStatusOff
+    - ScreenStatusScreensaver
   entity.Session:
     properties:
       bookedDurationMinutes:
@@ -419,6 +572,46 @@ definitions:
     x-enum-varnames:
     - ShiftStatusActive
     - ShiftStatusInactive
+  entity.TvNotification:
+    properties:
+      activeSessionsOnly:
+        description: hanya TV dengan sesi aktif
+        type: boolean
+      consoleIds:
+        description: Field transient — untuk input/output API
+        items:
+          type: string
+        type: array
+      createdAt:
+        type: string
+      id:
+        type: string
+      imageUrl:
+        type: string
+      isActive:
+        type: boolean
+      loopEnabled:
+        type: boolean
+      loopInterval:
+        type: integer
+      message:
+        type: string
+      priority:
+        $ref: '#/definitions/entity.NotificationPriority'
+      targetAll:
+        type: boolean
+      targetConsoleIds:
+        description: array of UUID
+        items:
+          type: string
+        type: array
+      targetConsoleType:
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+    type: object
   entity.User:
     properties:
       createdAt:
@@ -489,6 +682,25 @@ definitions:
       voucherName:
         type: string
     type: object
+  handler.ExtendSessionRequest:
+    properties:
+      additionalMinutes:
+        example: 60
+        minimum: 30
+        type: integer
+      cashReceived:
+        example: 20000
+        type: number
+      notes:
+        example: Tambah 1 jam
+        type: string
+      voucherCode:
+        example: ""
+        type: string
+    required:
+    - additionalMinutes
+    - cashReceived
+    type: object
   response.ErrorResponse:
     properties:
       error:
@@ -530,6 +742,8 @@ definitions:
     properties:
       activeSession:
         $ref: '#/definitions/usecase.ActiveSessionInfo'
+      adbPort:
+        type: integer
       consoleType:
         $ref: '#/definitions/entity.ConsoleType'
       createdAt:
@@ -540,10 +754,14 @@ definitions:
         type: string
       ipAddress:
         type: string
+      macAddress:
+        type: string
       name:
         type: string
       pricePerHour:
         type: number
+      screenStatus:
+        $ref: '#/definitions/entity.ScreenStatus'
       status:
         $ref: '#/definitions/entity.ConsoleStatus'
       updatedAt:
@@ -566,16 +784,16 @@ definitions:
     type: object
   usecase.CreateConsoleRequest:
     properties:
+      adbPort:
+        example: 5555
+        type: integer
       consoleType:
         allOf:
         - $ref: '#/definitions/entity.ConsoleType'
-        description: 'Tipe konsol: PS3, PS4, PS5, atau AndroidTV'
-        enum:
-        - PS3
-        - PS4
-        - PS5
-        - AndroidTV
-        example: AndroidTV
+        description: 'Tipe konsol: PS3, PS4, PS5, AndroidTV, Switch, atau lainnya'
+        example: Switch
+        maxLength: 50
+        minLength: 2
       description:
         example: TV 43 inch ruang A
         type: string
@@ -583,6 +801,10 @@ definitions:
         description: Alamat IP TV Android (wajib untuk AndroidTV)
         example: 192.168.1.101
         maxLength: 50
+        type: string
+      macAddress:
+        example: AA:BB:CC:DD:EE:FF
+        maxLength: 20
         type: string
       name:
         description: 'Nama tampilan konsol, contoh: "TV 01"'
@@ -701,6 +923,55 @@ definitions:
     - category
     - name
     - price
+    type: object
+  usecase.CreateNotificationRequest:
+    properties:
+      activeSessionsOnly:
+        description: ActiveSessionsOnly — hanya kirim ke konsol dengan sesi aktif
+        example: false
+        type: boolean
+      consoleIds:
+        description: ConsoleIDs — daftar UUID konsol yang ditarget (jika targetAll=false)
+        example:
+        - '["bd7edb34-..."'
+        - '"b49b20d9-..."]'
+        items:
+          type: string
+        type: array
+      imageUrl:
+        example: https://example.com/promo.jpg
+        type: string
+      loopEnabled:
+        example: false
+        type: boolean
+      loopInterval:
+        example: 30
+        minimum: 5
+        type: integer
+      message:
+        example: Diskon 20% jam 14:00-17:00!
+        maxLength: 1000
+        minLength: 2
+        type: string
+      priority:
+        allOf:
+        - $ref: '#/definitions/entity.NotificationPriority'
+        enum:
+        - low
+        - normal
+        - high
+        example: normal
+      targetAll:
+        example: true
+        type: boolean
+      title:
+        example: Promo Spesial!
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - message
+    - title
     type: object
   usecase.CreateShiftRequest:
     properties:
@@ -839,10 +1110,10 @@ definitions:
   usecase.StartSessionRequest:
     properties:
       bookedDurationMinutes:
-        description: 'Durasi yang dipesan dalam menit. Harus kelipatan 60 (per jam).
-          Contoh: 60, 120, 180'
-        example: 120
-        minimum: 60
+        description: 'Durasi yang dipesan dalam menit. Minimal 30 menit. Kelipatan
+          bebas. Contoh: 30, 60, 90, 120'
+        example: 90
+        minimum: 30
         type: integer
       cashReceived:
         description: Uang tunai yang diberikan pelanggan di depan (harus >= harga
@@ -877,20 +1148,22 @@ definitions:
     type: object
   usecase.UpdateConsoleRequest:
     properties:
+      adbPort:
+        type: integer
       consoleType:
         allOf:
         - $ref: '#/definitions/entity.ConsoleType'
-        enum:
-        - PS3
-        - PS4
-        - PS5
-        - AndroidTV
-        example: AndroidTV
+        example: Switch
+        maxLength: 50
+        minLength: 2
       description:
         type: string
       ipAddress:
         example: 192.168.1.101
         maxLength: 50
+        type: string
+      macAddress:
+        maxLength: 20
         type: string
       name:
         example: TV 01
@@ -900,6 +1173,13 @@ definitions:
       pricePerHour:
         example: 10000
         type: number
+      screenStatus:
+        allOf:
+        - $ref: '#/definitions/entity.ScreenStatus'
+        enum:
+        - "on"
+        - "off"
+        - screensaver
       status:
         allOf:
         - $ref: '#/definitions/entity.ConsoleStatus'
@@ -1329,6 +1609,89 @@ paths:
       summary: Update data konsol
       tags:
       - Konsol
+  /api/v1/consoles/{id}/price:
+    get:
+      description: Menghitung estimasi harga untuk durasi tertentu. Termasuk diskon
+        otomatis (happy hour, member) dan validasi voucher opsional.
+      parameters:
+      - description: Console ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Durasi (menit), minimal 30
+        in: query
+        name: duration
+        required: true
+        type: integer
+      - description: Kode voucher (opsional)
+        in: query
+        name: voucherCode
+        type: string
+      - description: Customer ID (opsional, untuk cek member)
+        in: query
+        name: customerId
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Kalkulasi harga sebelum sewa
+      tags:
+      - Konsol
+  /api/v1/consoles/{id}/sleep:
+    post:
+      parameters:
+      - description: Console ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Matikan/sleep TV
+      tags:
+      - Kontrol TV
+  /api/v1/consoles/{id}/wake:
+    post:
+      parameters:
+      - description: Console ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Nyalakan TV (kirim event wake)
+      tags:
+      - Kontrol TV
   /api/v1/consoles/available:
     get:
       description: Mengembalikan daftar konsol dengan status available
@@ -2376,6 +2739,176 @@ paths:
       summary: Ambil menu berdasarkan kategori
       tags:
       - Menu
+  /api/v1/notifications:
+    get:
+      description: Endpoint publik untuk TV client mengambil notifikasi aktif. Gunakan
+        query `?active=true` untuk hanya notifikasi yang sedang aktif.
+      parameters:
+      - description: Hanya notifikasi aktif
+        in: query
+        name: active
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.TvNotification'
+                  type: array
+              type: object
+      summary: Ambil semua notifikasi (PUBLIK)
+      tags:
+      - Notifikasi TV
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Data notifikasi
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateNotificationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.TvNotification'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Buat notifikasi baru
+      tags:
+      - Notifikasi TV
+  /api/v1/notifications/{id}:
+    delete:
+      parameters:
+      - description: Notification ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Hapus notifikasi
+      tags:
+      - Notifikasi TV
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Notification ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data notifikasi
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/usecase.CreateNotificationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.TvNotification'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update notifikasi
+      tags:
+      - Notifikasi TV
+  /api/v1/notifications/{id}/toggle:
+    patch:
+      parameters:
+      - description: Notification ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.TvNotification'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Aktif/nonaktifkan notifikasi
+      tags:
+      - Notifikasi TV
+  /api/v1/notifications/loop/start:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Mulai loop notifikasi
+      tags:
+      - Notifikasi TV
+  /api/v1/notifications/loop/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Cek status loop notifikasi
+      tags:
+      - Notifikasi TV
+  /api/v1/notifications/loop/stop:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Hentikan loop notifikasi
+      tags:
+      - Notifikasi TV
   /api/v1/payments:
     post:
       consumes:
@@ -2457,6 +2990,32 @@ paths:
       summary: Ambil pembayaran berdasarkan ID
       tags:
       - Pembayaran
+  /api/v1/payments/{id}/confirm:
+    post:
+      description: Admin mengkonfirmasi pembayaran tambahan (extend session) yang
+        masih pending menjadi paid.
+      parameters:
+      - description: Payment ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Konfirmasi pembayaran pending (admin)
+      tags:
+      - Pembayaran
   /api/v1/payments/{id}/refund:
     patch:
       description: Membatalkan pembayaran dan mengembalikan status ke refunded. Hanya
@@ -2496,6 +3055,46 @@ paths:
       summary: Proses refund pembayaran
       tags:
       - Pembayaran
+  /api/v1/reports/summary:
+    get:
+      description: 'Mengembalikan laporan lengkap: pendapatan, penggunaan voucher,
+        total jam main, rincian per konsol, rincian per hari.\n\n**Memerlukan autentikasi.**\n\nQuery
+        param:\n- `startDate` (YYYY-MM-DD, default 7 hari lalu)\n- `endDate` (YYYY-MM-DD,
+        default hari ini)'
+      parameters:
+      - description: Tanggal mulai (YYYY-MM-DD)
+        in: query
+        name: startDate
+        type: string
+      - description: Tanggal akhir (YYYY-MM-DD)
+        in: query
+        name: endDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ReportSummary'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Laporan komprehensif (rentang tanggal)
+      tags:
+      - Laporan
   /api/v1/sessions:
     get:
       description: Mengembalikan daftar seluruh sesi rental (aktif, selesai, dibatalkan)
@@ -2627,6 +3226,41 @@ paths:
       security:
       - BearerAuth: []
       summary: Akhiri sesi rental
+      tags:
+      - Sesi Rental
+  /api/v1/sessions/{id}/extend:
+    post:
+      consumes:
+      - application/json
+      description: Menambah durasi sewa untuk sesi yang sedang aktif. Membuat pembayaran
+        baru dengan status **pending** — admin harus konfirmasi via `POST /payments/:id/confirm`.\n\nMinimal
+        tambahan 30 menit. Voucher opsional.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data tambah waktu
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ExtendSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Tambah waktu sewa (extend session)
       tags:
       - Sesi Rental
   /api/v1/sessions/{session_id}/food-orders:

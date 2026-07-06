@@ -54,10 +54,12 @@ func NewConsoleUseCase(consoleRepo repository.ConsoleRepository, sessionRepo rep
 type CreateConsoleRequest struct {
 	// Nama tampilan konsol, contoh: "TV 01"
 	Name         string             `json:"name"         validate:"required,min=2,max=100"                       example:"TV 01"`
-	// Tipe konsol: PS3, PS4, PS5, atau AndroidTV
-	ConsoleType  entity.ConsoleType `json:"consoleType"  validate:"required,oneof=PS3 PS4 PS5 AndroidTV" enums:"PS3,PS4,PS5,AndroidTV" example:"AndroidTV"`
+	// Tipe konsol: PS3, PS4, PS5, AndroidTV, Switch, atau lainnya
+	ConsoleType  entity.ConsoleType `json:"consoleType"  validate:"required,min=2,max=50"                       example:"Switch"`
 	// Alamat IP TV Android (wajib untuk AndroidTV)
 	IPAddress    *string            `json:"ipAddress"    validate:"omitempty,max=50"                           example:"192.168.1.101"`
+	ADBPort      int                `json:"adbPort"                                                           example:"5555"`
+	MACAddress   *string            `json:"macAddress"   validate:"omitempty,max=20"                          example:"AA:BB:CC:DD:EE:FF"`
 	PricePerHour float64            `json:"pricePerHour" validate:"required,gt=0"                              example:"10000"`
 	Description  string             `json:"description"                                                        example:"TV 43 inch ruang A"`
 }
@@ -65,9 +67,12 @@ type CreateConsoleRequest struct {
 // UpdateConsoleRequest payload untuk memperbarui data konsol
 type UpdateConsoleRequest struct {
 	Name         string               `json:"name"         validate:"omitempty,min=2,max=100"                       example:"TV 01"`
-	ConsoleType  entity.ConsoleType   `json:"consoleType"  validate:"omitempty,oneof=PS3 PS4 PS5 AndroidTV" enums:"PS3,PS4,PS5,AndroidTV" example:"AndroidTV"`
+	ConsoleType  entity.ConsoleType   `json:"consoleType"  validate:"omitempty,min=2,max=50"                       example:"Switch"`
 	IPAddress    *string              `json:"ipAddress"    validate:"omitempty,max=50"                           example:"192.168.1.101"`
+	ADBPort      *int                 `json:"adbPort"`
+	MACAddress   *string              `json:"macAddress"   validate:"omitempty,max=20"`
 	Status       entity.ConsoleStatus `json:"status"       validate:"omitempty,oneof=available in_use maintenance" example:"available"`
+	ScreenStatus *entity.ScreenStatus `json:"screenStatus" validate:"omitempty,oneof=on off screensaver"`
 	PricePerHour float64              `json:"pricePerHour" validate:"omitempty,gt=0"                              example:"10000"`
 	Description  string               `json:"description"`
 }
@@ -140,7 +145,10 @@ func (uc *consoleUseCase) CreateConsole(ctx context.Context, req *CreateConsoleR
 		Name:         req.Name,
 		ConsoleType:  req.ConsoleType,
 		IPAddress:    req.IPAddress,
+		ADBPort:      req.ADBPort,
+		MACAddress:   req.MACAddress,
 		Status:       entity.ConsoleStatusAvailable,
+		ScreenStatus: entity.ScreenStatusOff,
 		PricePerHour: req.PricePerHour,
 		Description:  req.Description,
 		CreatedAt:    now,
@@ -171,8 +179,17 @@ func (uc *consoleUseCase) UpdateConsole(ctx context.Context, id uuid.UUID, req *
 	if req.IPAddress != nil {
 		console.IPAddress = req.IPAddress
 	}
+	if req.ADBPort != nil {
+		console.ADBPort = *req.ADBPort
+	}
+	if req.MACAddress != nil {
+		console.MACAddress = req.MACAddress
+	}
 	if req.Status != "" {
 		console.Status = req.Status
+	}
+	if req.ScreenStatus != nil {
+		console.ScreenStatus = *req.ScreenStatus
 	}
 	if req.PricePerHour > 0 {
 		console.PricePerHour = req.PricePerHour

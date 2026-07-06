@@ -14,7 +14,7 @@ type FoodOrderRepository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*entity.FoodOrder, error)
 	FindBySessionID(ctx context.Context, sessionID uuid.UUID) ([]*entity.FoodOrder, error)
 	FindByStatus(ctx context.Context, status entity.OrderStatus) ([]*entity.FoodOrder, error)
-	// Create menggunakan stored procedure sp_create_food_order (atomik: order + items + total)
+	// Create menggunakan byoneCreateFoodOrder (atomik: order + items + total)
 	Create(ctx context.Context, order *entity.FoodOrder, items []FoodOrderItemInput) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status entity.OrderStatus) error
 	Delete(ctx context.Context, id uuid.UUID) error

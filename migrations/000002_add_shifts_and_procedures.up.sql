@@ -50,10 +50,10 @@ ALTER TABLE payments
 -- =============================================
 
 -- --------------------------------------------
--- SP: sp_start_session
+-- SP: byoneStartSession
 -- Memulai sesi rental dengan validasi dan update status konsol (atomic)
 -- --------------------------------------------
-CREATE OR REPLACE FUNCTION sp_start_session(
+CREATE OR REPLACE FUNCTION byoneStartSession(
     p_console_id    UUID,
     p_customer_id   UUID,   -- nullable
     p_notes         TEXT
@@ -111,10 +111,10 @@ END;
 $$;
 
 -- --------------------------------------------
--- SP: sp_end_session
+-- SP: byoneEndSession
 -- Mengakhiri sesi dan menghitung total harga (atomic)
 -- --------------------------------------------
-CREATE OR REPLACE FUNCTION sp_end_session(p_session_id UUID)
+CREATE OR REPLACE FUNCTION byoneEndSession(p_session_id UUID)
 RETURNS TABLE (
     id               UUID,
     console_id       UUID,
@@ -178,10 +178,10 @@ END;
 $$;
 
 -- --------------------------------------------
--- SP: sp_cancel_session
+-- SP: byoneCancelSession
 -- Membatalkan sesi aktif dan mengembalikan status konsol
 -- --------------------------------------------
-CREATE OR REPLACE FUNCTION sp_cancel_session(p_session_id UUID)
+CREATE OR REPLACE FUNCTION byoneCancelSession(p_session_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
@@ -206,10 +206,10 @@ END;
 $$;
 
 -- --------------------------------------------
--- SP: sp_create_payment
+-- SP: byoneCreatePayment
 -- Membuat tagihan pembayaran tunai untuk sesi yang sudah selesai
 -- --------------------------------------------
-CREATE OR REPLACE FUNCTION sp_create_payment(
+CREATE OR REPLACE FUNCTION byoneCreatePayment(
     p_session_id    UUID,
     p_cash_received NUMERIC,
     p_notes         TEXT
@@ -277,10 +277,10 @@ END;
 $$;
 
 -- --------------------------------------------
--- SP: sp_refund_payment
+-- SP: byoneRefundPayment
 -- Proses refund pembayaran tunai yang sudah lunas
 -- --------------------------------------------
-CREATE OR REPLACE FUNCTION sp_refund_payment(p_payment_id UUID)
+CREATE OR REPLACE FUNCTION byoneRefundPayment(p_payment_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
@@ -302,11 +302,11 @@ END;
 $$;
 
 -- --------------------------------------------
--- SP: sp_validate_kasir_shift
+-- SP: byoneValidateKasirShift
 -- Validasi apakah kasir dapat login sesuai jadwal shift-nya
 -- Mengembalikan TRUE jika diizinkan, FALSE jika tidak
 -- --------------------------------------------
-CREATE OR REPLACE FUNCTION sp_validate_kasir_shift(p_user_id UUID)
+CREATE OR REPLACE FUNCTION byoneValidateKasirShift(p_user_id UUID)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 AS $$

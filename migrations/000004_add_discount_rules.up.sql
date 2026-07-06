@@ -44,11 +44,11 @@ ALTER TABLE payments
     ADD COLUMN IF NOT EXISTS auto_discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0;
 
 -- =============================================
--- FUNCTION: sp_evaluate_discount_rules
+-- FUNCTION: byoneEvaluateDiscountRules
 -- Mengevaluasi semua aturan diskon aktif untuk satu sesi
 -- Mengembalikan total nominal diskon otomatis
 -- =============================================
-CREATE OR REPLACE FUNCTION sp_evaluate_discount_rules(
+CREATE OR REPLACE FUNCTION byoneEvaluateDiscountRules(
     p_total_price        NUMERIC,
     p_session_start_time TIMESTAMPTZ,
     p_is_member          BOOLEAN DEFAULT FALSE
@@ -140,14 +140,14 @@ END;
 $$;
 
 -- =============================================
--- UPDATE STORED PROCEDURE: sp_create_payment
+-- UPDATE STORED PROCEDURE: byoneCreatePayment
 -- Menambahkan dukungan diskon otomatis (auto_discount_amount)
 -- Diskon otomatis + diskon voucher dapat digabungkan
 -- =============================================
 -- DROP dulu karena return type berubah (tambah kolom auto_discount_amount)
-DROP FUNCTION IF EXISTS sp_create_payment(UUID, NUMERIC, TEXT, VARCHAR);
+DROP FUNCTION IF EXISTS byoneCreatePayment(UUID, NUMERIC, TEXT, VARCHAR);
 
-CREATE OR REPLACE FUNCTION sp_create_payment(
+CREATE OR REPLACE FUNCTION byoneCreatePayment(
     p_session_id    UUID,
     p_cash_received NUMERIC,
     p_notes         TEXT    DEFAULT NULL,
@@ -205,13 +205,13 @@ BEGIN
     END IF;
 
     -- Evaluasi diskon otomatis berdasarkan aturan aktif
-    v_auto_discount := sp_evaluate_discount_rules(v_amount, v_session.start_time, v_is_member);
+    v_auto_discount := byoneEvaluateDiscountRules(v_amount, v_session.start_time, v_is_member);
 
     -- Proses voucher jika diberikan (dihitung dari total sebelum auto discount)
     IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code) != '' THEN
         SELECT va.voucher_id, va.discount_amount
         INTO v_voucher_id, v_voucher_discount
-        FROM sp_apply_voucher(p_voucher_code, v_amount) va;
+        FROM byoneApplyVoucher(p_voucher_code, v_amount) va;
 
         -- Tambah usage count voucher
         UPDATE vouchers

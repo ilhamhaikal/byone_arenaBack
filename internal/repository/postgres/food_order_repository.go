@@ -69,7 +69,7 @@ func (r *foodOrderRepository) FindByStatus(ctx context.Context, status entity.Or
 	return orders, err
 }
 
-// Create menggunakan stored procedure sp_create_food_order untuk atomisitas
+// Create menggunakan byoneCreateFoodOrder untuk atomisitas
 func (r *foodOrderRepository) Create(ctx context.Context, order *entity.FoodOrder, items []repository.FoodOrderItemInput) error {
 	// Bangun JSON array untuk items
 	type spItem struct {
@@ -99,7 +99,7 @@ func (r *foodOrderRepository) Create(ctx context.Context, order *entity.FoodOrde
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM sp_create_food_order(?, ?, ?, ?::jsonb)",
+		"SELECT * FROM \"byoneCreateFoodOrder\"(?, ?, ?, ?::jsonb)",
 		order.SessionID,
 		order.CustomerID,
 		order.Notes,
@@ -119,7 +119,7 @@ func (r *foodOrderRepository) Create(ctx context.Context, order *entity.FoodOrde
 
 // UpdateStatus menggunakan stored procedure untuk validasi transisi status
 func (r *foodOrderRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status entity.OrderStatus) error {
-	tx := r.db.WithContext(ctx).Exec("SELECT sp_update_food_order_status(?, ?)", id, status)
+	tx := r.db.WithContext(ctx).Exec("SELECT \"byoneUpdateFoodOrderStatus\"(?, ?)", id, status)
 	return parseStoredProcError(tx.Error)
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // PaymentHandler menangani HTTP request untuk manajemen pembayaran
@@ -15,11 +16,12 @@ type PaymentHandler struct {
 	paymentUC usecase.PaymentUseCase
 	validator *validator.Validator
 	hub       *websocket.Hub
+	db        *gorm.DB
 }
 
 // NewPaymentHandler membuat instance baru PaymentHandler
-func NewPaymentHandler(paymentUC usecase.PaymentUseCase, v *validator.Validator, hub *websocket.Hub) *PaymentHandler {
-	return &PaymentHandler{paymentUC: paymentUC, validator: v, hub: hub}
+func NewPaymentHandler(paymentUC usecase.PaymentUseCase, v *validator.Validator, hub *websocket.Hub, db *gorm.DB) *PaymentHandler {
+	return &PaymentHandler{paymentUC: paymentUC, validator: v, hub: hub, db: db}
 }
 
 // GetByID godoc
@@ -133,5 +135,43 @@ func (h *PaymentHandler) Refund(c *fiber.Ctx) error {
 	h.hub.Broadcast(websocket.NewEvent(websocket.EventPaymentRefunded, payment))
 
 	return response.OK(c, "Pembayaran berhasil direfund", payment)
+}
+
+// Confirm godoc
+// @Summary      Konfirmasi pembayaran pending (admin)
+// @Description  Admin mengkonfirmasi pembayaran tambahan (extend session) yang masih pending menjadi paid.
+// @Tags         Pembayaran
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "Payment ID (UUID)"
+// @Success      200  {object}  response.Response
+// @Failure      400  {object}  response.ErrorResponse
+// @Router       /api/v1/payments/{id}/confirm [post]
+func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+
+	type spResult struct {
+		PaymentID     uuid.UUID  `gorm:"column:payment_id"`
+		PaymentStatus string     `gorm:"column:payment_status"`
+		PaidAt        interface{} `gorm:"column:paid_at"`
+	}
+
+	var result spResult
+	tx := h.db.WithContext(c.Context()).Raw(
+		`SELECT * FROM "byoneConfirmExtendPayment"(?)`, id,
+	).Scan(&result)
+
+	if tx.Error != nil {
+		return response.BadRequest(c, tx.Error.Error())
+	}
+
+	return response.OK(c, "Pembayaran berhasil dikonfirmasi", fiber.Map{
+		"paymentId": result.PaymentID,
+		"status":    result.PaymentStatus,
+		"paidAt":    result.PaidAt,
+	})
 }
 

@@ -30,6 +30,7 @@ import (
 	"byone-arena/internal/delivery/http/handler"
 	"byone-arena/internal/delivery/http/router"
 	wsHub "byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/domain/entity"
 	pgRepo "byone-arena/internal/repository/postgres"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/config"
@@ -79,7 +80,21 @@ func main() {
 
 	// Inisialisasi WebSocket Hub
 	hub := wsHub.NewHub(log)
+	hub.SetDB(db)
 	go hub.Run()
+	go hub.StartAutoStop() // auto-stop sesi expired
+
+	// Auto-start notification loop jika ada notifikasi loop yang aktif
+	go func() {
+		time.Sleep(2 * time.Second) // tunggu DB ready
+		var count int64
+		db.Model(&entity.TvNotification{}).Where("loop_enabled = ? AND is_active = ?", true, true).Count(&count)
+		if count > 0 {
+			hub.StartNotificationLoop()
+			log.Info("Notification loop auto-started", zap.Int64("active_notifications", count))
+		}
+	}()
+
 	log.Info("WebSocket Hub berjalan")
 
 	// Inisialisasi repository (infrastructure layer)
@@ -109,16 +124,18 @@ func main() {
 	// Inisialisasi handler (delivery layer)
 	handlers := &router.Handlers{
 		Auth:      handler.NewAuthHandler(authUC, validate),
-		Console:   handler.NewConsoleHandler(consoleUC, validate),
-		Session:   handler.NewSessionHandler(sessionUC, validate, hub),
+		Console:   handler.NewConsoleHandler(consoleUC, validate, db),
+		Session:   handler.NewSessionHandler(sessionUC, validate, hub, db),
 		Customer:  handler.NewCustomerHandler(customerUC, validate),
-		Payment:   handler.NewPaymentHandler(paymentUC, validate, hub),
+		Payment:   handler.NewPaymentHandler(paymentUC, validate, hub, db),
 		Shift:     handler.NewShiftHandler(shiftUC),
 		Voucher:   handler.NewVoucherHandler(voucherUC, validate),
 		Discount:  handler.NewDiscountHandler(discountRuleUC, validate),
 		Menu:      handler.NewMenuItemHandler(menuUC, validate),
 		FoodOrder: handler.NewFoodOrderHandler(foodOrderUC, validate),
 		Dashboard: handler.NewDashboardHandler(paymentRepo),
+		Report:    handler.NewReportHandler(paymentRepo),
+		Notify:    handler.NewNotificationHandler(db, hub, consoleUC, validate),
 		Hub:       hub,
 	}
 

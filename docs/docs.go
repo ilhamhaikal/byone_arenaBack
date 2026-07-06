@@ -539,6 +539,137 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/consoles/{id}/price": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menghitung estimasi harga untuk durasi tertentu. Termasuk diskon otomatis (happy hour, member) dan validasi voucher opsional.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Konsol"
+                ],
+                "summary": "Kalkulasi harga sebelum sewa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Console ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Durasi (menit), minimal 30",
+                        "name": "duration",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kode voucher (opsional)",
+                        "name": "voucherCode",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Customer ID (opsional, untuk cek member)",
+                        "name": "customerId",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/consoles/{id}/sleep": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Kontrol TV"
+                ],
+                "summary": "Matikan/sleep TV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Console ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/consoles/{id}/wake": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Kontrol TV"
+                ],
+                "summary": "Nyalakan TV (kirim event wake)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Console ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/customers": {
             "get": {
                 "security": [
@@ -2177,6 +2308,297 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/notifications": {
+            "get": {
+                "description": "Endpoint publik untuk TV client mengambil notifikasi aktif. Gunakan query ` + "`" + `?active=true` + "`" + ` untuk hanya notifikasi yang sedang aktif.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifikasi TV"
+                ],
+                "summary": "Ambil semua notifikasi (PUBLIK)",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Hanya notifikasi aktif",
+                        "name": "active",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.TvNotification"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifikasi TV"
+                ],
+                "summary": "Buat notifikasi baru",
+                "parameters": [
+                    {
+                        "description": "Data notifikasi",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/usecase.CreateNotificationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.TvNotification"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notifications/loop/start": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifikasi TV"
+                ],
+                "summary": "Mulai loop notifikasi",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notifications/loop/status": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifikasi TV"
+                ],
+                "summary": "Cek status loop notifikasi",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notifications/loop/stop": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifikasi TV"
+                ],
+                "summary": "Hentikan loop notifikasi",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notifications/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifikasi TV"
+                ],
+                "summary": "Update notifikasi",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data notifikasi",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/usecase.CreateNotificationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.TvNotification"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifikasi TV"
+                ],
+                "summary": "Hapus notifikasi",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notifications/{id}/toggle": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifikasi TV"
+                ],
+                "summary": "Aktif/nonaktifkan notifikasi",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.TvNotification"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/payments": {
             "post": {
                 "security": [
@@ -2310,6 +2732,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/payments/{id}/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin mengkonfirmasi pembayaran tambahan (extend session) yang masih pending menjadi paid.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pembayaran"
+                ],
+                "summary": "Konfirmasi pembayaran pending (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Payment ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/payments/{id}/refund": {
             "patch": {
                 "security": [
@@ -2367,6 +2829,69 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan laporan lengkap: pendapatan, penggunaan voucher, total jam main, rincian per konsol, rincian per hari.\\n\\n**Memerlukan autentikasi.**\\n\\nQuery param:\\n- ` + "`" + `startDate` + "`" + ` (YYYY-MM-DD, default 7 hari lalu)\\n- ` + "`" + `endDate` + "`" + ` (YYYY-MM-DD, default hari ini)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Laporan"
+                ],
+                "summary": "Laporan komprehensif (rentang tanggal)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tanggal mulai (YYYY-MM-DD)",
+                        "name": "startDate",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Tanggal akhir (YYYY-MM-DD)",
+                        "name": "endDate",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.ReportSummary"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -2708,6 +3233,58 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{id}/extend": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menambah durasi sewa untuk sesi yang sedang aktif. Membuat pembayaran baru dengan status **pending** — admin harus konfirmasi via ` + "`" + `POST /payments/:id/confirm` + "`" + `.\\n\\nMinimal tambahan 30 menit. Voucher opsional.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sesi Rental"
+                ],
+                "summary": "Tambah waktu sewa (extend session)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data tambah waktu",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ExtendSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -3702,6 +4279,9 @@ const docTemplate = `{
         "entity.Console": {
             "type": "object",
             "properties": {
+                "adbPort": {
+                    "type": "integer"
+                },
                 "consoleType": {
                     "$ref": "#/definitions/entity.ConsoleType"
                 },
@@ -3717,11 +4297,17 @@ const docTemplate = `{
                 "ipAddress": {
                     "type": "string"
                 },
+                "macAddress": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
                 "pricePerHour": {
                     "type": "number"
+                },
+                "screenStatus": {
+                    "$ref": "#/definitions/entity.ScreenStatus"
                 },
                 "status": {
                     "$ref": "#/definitions/entity.ConsoleStatus"
@@ -3755,13 +4341,15 @@ const docTemplate = `{
                 "PS3",
                 "PS4",
                 "PS5",
-                "AndroidTV"
+                "AndroidTV",
+                "Switch"
             ],
             "x-enum-varnames": [
                 "ConsoleTypePS3",
                 "ConsoleTypePS4",
                 "ConsoleTypePS5",
-                "ConsoleTypeAndroidTV"
+                "ConsoleTypeAndroidTV",
+                "ConsoleTypeSwitch"
             ]
         },
         "entity.Customer": {
@@ -4047,6 +4635,19 @@ const docTemplate = `{
                 "MenuCategoryOther"
             ]
         },
+        "entity.NotificationPriority": {
+            "type": "string",
+            "enum": [
+                "low",
+                "normal",
+                "high"
+            ],
+            "x-enum-varnames": [
+                "NotificationPriorityLow",
+                "NotificationPriorityNormal",
+                "NotificationPriorityHigh"
+            ]
+        },
         "entity.OrderStatus": {
             "type": "string",
             "enum": [
@@ -4156,6 +4757,198 @@ const docTemplate = `{
                 "PaymentStatusRefunded"
             ]
         },
+        "entity.ReportConsoleUsage": {
+            "type": "object",
+            "properties": {
+                "consoleName": {
+                    "type": "string"
+                },
+                "consoleType": {
+                    "type": "string"
+                },
+                "totalMinutes": {
+                    "type": "integer"
+                },
+                "totalSessions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entity.ReportDailyItem": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "playMinutes": {
+                    "type": "integer"
+                },
+                "revenue": {
+                    "type": "number"
+                },
+                "sessions": {
+                    "type": "integer"
+                },
+                "transactions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entity.ReportDiscountRule": {
+            "type": "object",
+            "properties": {
+                "discountType": {
+                    "type": "string"
+                },
+                "discountValue": {
+                    "type": "number"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "ruleName": {
+                    "type": "string"
+                },
+                "ruleType": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.ReportPeriod": {
+            "type": "object",
+            "properties": {
+                "endDate": {
+                    "type": "string"
+                },
+                "startDate": {
+                    "type": "string"
+                },
+                "totalDays": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entity.ReportRevenue": {
+            "type": "object",
+            "properties": {
+                "autoDiscount": {
+                    "type": "number"
+                },
+                "totalBaseAmount": {
+                    "type": "number"
+                },
+                "totalCashReceived": {
+                    "type": "number"
+                },
+                "totalChange": {
+                    "type": "number"
+                },
+                "totalDiscount": {
+                    "type": "number"
+                },
+                "totalRevenue": {
+                    "type": "number"
+                },
+                "voucherDiscount": {
+                    "type": "number"
+                }
+            }
+        },
+        "entity.ReportSessions": {
+            "type": "object",
+            "properties": {
+                "averageMinutes": {
+                    "type": "integer"
+                },
+                "totalPlayHours": {
+                    "type": "number"
+                },
+                "totalPlayMinutes": {
+                    "type": "integer"
+                },
+                "totalSessions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entity.ReportSummary": {
+            "type": "object",
+            "properties": {
+                "activeDiscountRules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.ReportDiscountRule"
+                    }
+                },
+                "consoles": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.ReportConsoleUsage"
+                    }
+                },
+                "dailyBreakdown": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.ReportDailyItem"
+                    }
+                },
+                "generatedAt": {
+                    "type": "string"
+                },
+                "period": {
+                    "$ref": "#/definitions/entity.ReportPeriod"
+                },
+                "revenue": {
+                    "$ref": "#/definitions/entity.ReportRevenue"
+                },
+                "sessions": {
+                    "$ref": "#/definitions/entity.ReportSessions"
+                },
+                "transactions": {
+                    "$ref": "#/definitions/entity.ReportTransactions"
+                },
+                "vouchers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.ReportVoucherUsage"
+                    }
+                }
+            }
+        },
+        "entity.ReportTransactions": {
+            "type": "object",
+            "properties": {
+                "averagePerDay": {
+                    "type": "number"
+                },
+                "totalTransactions": {
+                    "type": "integer"
+                },
+                "voucherTransactions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entity.ReportVoucherUsage": {
+            "type": "object",
+            "properties": {
+                "discountType": {
+                    "type": "string"
+                },
+                "totalDiscount": {
+                    "type": "number"
+                },
+                "usageCount": {
+                    "type": "integer"
+                },
+                "voucherCode": {
+                    "type": "string"
+                },
+                "voucherName": {
+                    "type": "string"
+                }
+            }
+        },
         "entity.RuleType": {
             "type": "string",
             "enum": [
@@ -4175,6 +4968,19 @@ const docTemplate = `{
                 "RuleTypeHappyHour",
                 "RuleTypeMember",
                 "RuleTypeDayOfWeek"
+            ]
+        },
+        "entity.ScreenStatus": {
+            "type": "string",
+            "enum": [
+                "on",
+                "off",
+                "screensaver"
+            ],
+            "x-enum-varnames": [
+                "ScreenStatusOn",
+                "ScreenStatusOff",
+                "ScreenStatusScreensaver"
             ]
         },
         "entity.Session": {
@@ -4303,6 +5109,65 @@ const docTemplate = `{
                 "ShiftStatusInactive"
             ]
         },
+        "entity.TvNotification": {
+            "type": "object",
+            "properties": {
+                "activeSessionsOnly": {
+                    "description": "hanya TV dengan sesi aktif",
+                    "type": "boolean"
+                },
+                "consoleIds": {
+                    "description": "Field transient — untuk input/output API",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "loopEnabled": {
+                    "type": "boolean"
+                },
+                "loopInterval": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "priority": {
+                    "$ref": "#/definitions/entity.NotificationPriority"
+                },
+                "targetAll": {
+                    "type": "boolean"
+                },
+                "targetConsoleIds": {
+                    "description": "array of UUID",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "targetConsoleType": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
         "entity.User": {
             "type": "object",
             "properties": {
@@ -4406,6 +5271,32 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.ExtendSessionRequest": {
+            "type": "object",
+            "required": [
+                "additionalMinutes",
+                "cashReceived"
+            ],
+            "properties": {
+                "additionalMinutes": {
+                    "type": "integer",
+                    "minimum": 30,
+                    "example": 60
+                },
+                "cashReceived": {
+                    "type": "number",
+                    "example": 20000
+                },
+                "notes": {
+                    "type": "string",
+                    "example": "Tambah 1 jam"
+                },
+                "voucherCode": {
+                    "type": "string",
+                    "example": ""
+                }
+            }
+        },
         "response.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -4468,6 +5359,9 @@ const docTemplate = `{
                 "activeSession": {
                     "$ref": "#/definitions/usecase.ActiveSessionInfo"
                 },
+                "adbPort": {
+                    "type": "integer"
+                },
                 "consoleType": {
                     "$ref": "#/definitions/entity.ConsoleType"
                 },
@@ -4483,11 +5377,17 @@ const docTemplate = `{
                 "ipAddress": {
                     "type": "string"
                 },
+                "macAddress": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
                 "pricePerHour": {
                     "type": "number"
+                },
+                "screenStatus": {
+                    "$ref": "#/definitions/entity.ScreenStatus"
                 },
                 "status": {
                     "$ref": "#/definitions/entity.ConsoleStatus"
@@ -4527,20 +5427,20 @@ const docTemplate = `{
                 "pricePerHour"
             ],
             "properties": {
+                "adbPort": {
+                    "type": "integer",
+                    "example": 5555
+                },
                 "consoleType": {
-                    "description": "Tipe konsol: PS3, PS4, PS5, atau AndroidTV",
-                    "enum": [
-                        "PS3",
-                        "PS4",
-                        "PS5",
-                        "AndroidTV"
-                    ],
+                    "description": "Tipe konsol: PS3, PS4, PS5, AndroidTV, Switch, atau lainnya",
+                    "maxLength": 50,
+                    "minLength": 2,
                     "allOf": [
                         {
                             "$ref": "#/definitions/entity.ConsoleType"
                         }
                     ],
-                    "example": "AndroidTV"
+                    "example": "Switch"
                 },
                 "description": {
                     "type": "string",
@@ -4551,6 +5451,11 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 50,
                     "example": "192.168.1.101"
+                },
+                "macAddress": {
+                    "type": "string",
+                    "maxLength": 20,
+                    "example": "AA:BB:CC:DD:EE:FF"
                 },
                 "name": {
                     "description": "Nama tampilan konsol, contoh: \"TV 01\"",
@@ -4712,6 +5617,73 @@ const docTemplate = `{
                 "price": {
                     "type": "number",
                     "minimum": 0
+                }
+            }
+        },
+        "usecase.CreateNotificationRequest": {
+            "type": "object",
+            "required": [
+                "message",
+                "title"
+            ],
+            "properties": {
+                "activeSessionsOnly": {
+                    "description": "ActiveSessionsOnly — hanya kirim ke konsol dengan sesi aktif",
+                    "type": "boolean",
+                    "example": false
+                },
+                "consoleIds": {
+                    "description": "ConsoleIDs — daftar UUID konsol yang ditarget (jika targetAll=false)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"bd7edb34-...\"",
+                        "\"b49b20d9-...\"]"
+                    ]
+                },
+                "imageUrl": {
+                    "type": "string",
+                    "example": "https://example.com/promo.jpg"
+                },
+                "loopEnabled": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "loopInterval": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "example": 30
+                },
+                "message": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "minLength": 2,
+                    "example": "Diskon 20% jam 14:00-17:00!"
+                },
+                "priority": {
+                    "enum": [
+                        "low",
+                        "normal",
+                        "high"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.NotificationPriority"
+                        }
+                    ],
+                    "example": "normal"
+                },
+                "targetAll": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 2,
+                    "example": "Promo Spesial!"
                 }
             }
         },
@@ -4903,10 +5875,10 @@ const docTemplate = `{
             ],
             "properties": {
                 "bookedDurationMinutes": {
-                    "description": "Durasi yang dipesan dalam menit. Harus kelipatan 60 (per jam). Contoh: 60, 120, 180",
+                    "description": "Durasi yang dipesan dalam menit. Minimal 30 menit. Kelipatan bebas. Contoh: 30, 60, 90, 120",
                     "type": "integer",
-                    "minimum": 60,
-                    "example": 120
+                    "minimum": 30,
+                    "example": 90
                 },
                 "cashReceived": {
                     "description": "Uang tunai yang diberikan pelanggan di depan (harus \u003e= harga setelah diskon)",
@@ -4947,19 +5919,18 @@ const docTemplate = `{
         "usecase.UpdateConsoleRequest": {
             "type": "object",
             "properties": {
+                "adbPort": {
+                    "type": "integer"
+                },
                 "consoleType": {
-                    "enum": [
-                        "PS3",
-                        "PS4",
-                        "PS5",
-                        "AndroidTV"
-                    ],
+                    "maxLength": 50,
+                    "minLength": 2,
                     "allOf": [
                         {
                             "$ref": "#/definitions/entity.ConsoleType"
                         }
                     ],
-                    "example": "AndroidTV"
+                    "example": "Switch"
                 },
                 "description": {
                     "type": "string"
@@ -4968,6 +5939,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 50,
                     "example": "192.168.1.101"
+                },
+                "macAddress": {
+                    "type": "string",
+                    "maxLength": 20
                 },
                 "name": {
                     "type": "string",
@@ -4978,6 +5953,18 @@ const docTemplate = `{
                 "pricePerHour": {
                     "type": "number",
                     "example": 10000
+                },
+                "screenStatus": {
+                    "enum": [
+                        "on",
+                        "off",
+                        "screensaver"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.ScreenStatus"
+                        }
+                    ]
                 },
                 "status": {
                     "enum": [

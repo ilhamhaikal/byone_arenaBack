@@ -1,9 +1,9 @@
 -- Migration: 000007_prepayment_and_fix_session_sp.down.sql
-DROP FUNCTION IF EXISTS sp_start_session_with_payment(UUID, UUID, TEXT, INTEGER, NUMERIC, VARCHAR);
-DROP FUNCTION IF EXISTS sp_start_session(UUID, UUID, TEXT, INTEGER);
+DROP FUNCTION IF EXISTS byoneStartSessionWithPayment(UUID, UUID, TEXT, INTEGER, NUMERIC, VARCHAR);
+DROP FUNCTION IF EXISTS byoneStartSession(UUID, UUID, TEXT, INTEGER);
 
--- Kembalikan sp_start_session dari migration 000006
-CREATE OR REPLACE FUNCTION sp_start_session(
+-- Kembalikan byoneStartSession dari migration 000006
+CREATE OR REPLACE FUNCTION byoneStartSession(
     p_console_id              UUID,
     p_customer_id             UUID,
     p_notes                   TEXT,

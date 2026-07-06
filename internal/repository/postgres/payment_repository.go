@@ -51,7 +51,7 @@ func (r *paymentRepository) FindBySessionID(ctx context.Context, sessionID uuid.
 	return &payment, nil
 }
 
-// Create menggunakan stored procedure sp_create_payment untuk validasi dan atomisitas
+// Create menggunakan byoneCreatePayment untuk validasi dan atomisitas
 func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment) error {
 	type spResult struct {
 		PaymentID          uuid.UUID  `gorm:"column:payment_id"`
@@ -66,7 +66,7 @@ func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment)
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM sp_create_payment(?, ?, ?, ?)",
+		"SELECT * FROM \"byoneCreatePayment\"(?, ?, ?, ?)",
 		payment.SessionID,
 		payment.CashReceived,
 		payment.Notes,
@@ -96,7 +96,7 @@ func (r *paymentRepository) Update(ctx context.Context, payment *entity.Payment)
 func (r *paymentRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status entity.PaymentStatus) error {
 	if status == entity.PaymentStatusRefunded {
 		// Gunakan stored procedure untuk refund
-		tx := r.db.WithContext(ctx).Exec("SELECT sp_refund_payment(?)", id)
+		tx := r.db.WithContext(ctx).Exec("SELECT \"byoneRefundPayment\"(?)", id)
 		return parseStoredProcError(tx.Error)
 	}
 	return r.db.WithContext(ctx).
@@ -105,7 +105,7 @@ func (r *paymentRepository) UpdateStatus(ctx context.Context, id uuid.UUID, stat
 		Update("payment_status", status).Error
 }
 
-// GetDashboardSummary memanggil sp_dashboard_summary untuk ringkasan pendapatan
+// GetDashboardSummary memanggil byoneDashboardSummary untuk ringkasan pendapatan
 func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string) (*entity.DashboardSummary, error) {
 	// Default: hari ini jika date kosong
 	if date == "" {
@@ -129,7 +129,7 @@ func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM sp_dashboard_summary(?::DATE)",
+		"SELECT * FROM \"byoneDashboardSummary\"(?::DATE)",
 		date,
 	).Scan(&result)
 
@@ -165,5 +165,36 @@ func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string
 	}
 
 	return summary, nil
+}
+
+// GetReportSummary memanggil byoneReportSummary untuk laporan komprehensif
+func (r *paymentRepository) GetReportSummary(ctx context.Context, startDate, endDate string) (*entity.ReportSummary, error) {
+	if startDate == "" {
+		startDate = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+	}
+	if endDate == "" {
+		endDate = time.Now().Format("2006-01-02")
+	}
+
+	type spResult struct {
+		Report json.RawMessage `gorm:"column:report;type:jsonb"`
+	}
+
+	var result spResult
+	tx := r.db.WithContext(ctx).Raw(
+		`SELECT * FROM "byoneReportSummary"(?::DATE, ?::DATE)`,
+		startDate, endDate,
+	).Scan(&result)
+
+	if tx.Error != nil {
+		return nil, parseStoredProcError(tx.Error)
+	}
+
+	var summary entity.ReportSummary
+	if err := json.Unmarshal(result.Report, &summary); err != nil {
+		return nil, err
+	}
+
+	return &summary, nil
 }
 

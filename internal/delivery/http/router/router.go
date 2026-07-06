@@ -28,6 +28,8 @@ type Handlers struct {
 	Menu      *handler.MenuItemHandler
 	FoodOrder *handler.FoodOrderHandler
 	Dashboard *handler.DashboardHandler
+	Report    *handler.ReportHandler
+	Notify    *handler.NotificationHandler
 	Hub       *wsHandler.Hub
 }
 
@@ -79,11 +81,32 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	// Console overview — publik, digunakan oleh client Android TV tanpa login
 	api.Get("/consoles/overview", h.Console.GetOverview)
 
+	// Routes publik lain — HARUS sebelum protected group
+	api.Get("/notifications", h.Notify.GetAllNotifications)
+	api.Get("/notifications/loop/status", h.Notify.LoopStatus)
+
 	// Protected routes (memerlukan JWT)
 	protected := api.Group("", middleware.AuthMiddleware(cfg))
 
 	// Dashboard summary — memerlukan autentikasi
 	protected.Get("/dashboard/summary", h.Dashboard.GetSummary)
+
+	// Report routes — memerlukan autentikasi
+	reports := protected.Group("/reports")
+	reports.Get("/summary", h.Report.GetSummary)
+
+	// Notification routes — CRUD admin only
+	notifications := protected.Group("/notifications", middleware.AdminOnly())
+	notifications.Post("/", h.Notify.CreateNotification)
+	notifications.Put("/:id", h.Notify.UpdateNotification)
+	notifications.Delete("/:id", h.Notify.DeleteNotification)
+	notifications.Patch("/:id/toggle", h.Notify.ToggleNotification)
+	notifications.Post("/loop/start", h.Notify.StartLoop)
+	notifications.Post("/loop/stop", h.Notify.StopLoop)
+
+	// GET notifications + loop/status HARUS publik — daftar langsung di app, bypass group
+	app.Get("/api/v1/notifications", h.Notify.GetAllNotifications)
+	app.Get("/api/v1/notifications/loop/status", h.Notify.LoopStatus)
 
 	// Console routes
 	consoles := protected.Group("/consoles")
@@ -94,6 +117,10 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	consoles.Post("/", h.Console.Create)
 	consoles.Put("/:id", h.Console.Update)
 	consoles.Delete("/:id", h.Console.Delete)
+	consoles.Get("/:id/price", h.Console.PreviewPrice) // kalkulasi harga
+	// TV Control — admin only
+	consoles.Post("/:id/wake", middleware.AdminOnly(), h.Notify.WakeConsole)
+	consoles.Post("/:id/sleep", middleware.AdminOnly(), h.Notify.SleepConsole)
 
 	// Session routes
 	sessions := protected.Group("/sessions")
@@ -103,6 +130,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	sessions.Post("/start", h.Session.Start)
 	sessions.Patch("/:id/end", h.Session.End)
 	sessions.Patch("/:id/cancel", h.Session.Cancel)
+	sessions.Post("/:id/extend", h.Session.Extend) // tambah waktu sewa
 	sessions.Get("/:session_id/payment", h.Payment.GetBySession)
 
 	// Customer routes
@@ -118,6 +146,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	payments.Get("/:id", h.Payment.GetByID)
 	payments.Post("/", h.Payment.Create)
 	payments.Patch("/:id/refund", h.Payment.Refund)
+	payments.Post("/:id/confirm", h.Payment.Confirm) // admin konfirmasi pembayaran extend
 
 	// Shift routes (admin & superadmin only)
 	shifts := protected.Group("/shifts", middleware.AdminOnly())

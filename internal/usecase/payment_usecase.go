@@ -65,7 +65,7 @@ func (uc *paymentUseCase) CreateCashPayment(ctx context.Context, req *CreateCash
 		Notes:         req.Notes,
 	}
 
-	// sp_create_payment menangani: validasi sesi, apply voucher, hitung kembalian, set status paid
+	// byoneCreatePayment menangani: validasi sesi, apply voucher, hitung kembalian, set status paid
 	if err := uc.paymentRepo.Create(ctx, payment); err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (uc *paymentUseCase) RefundPayment(ctx context.Context, id uuid.UUID) (*ent
 		return nil, errors.New("data pembayaran tidak ditemukan")
 	}
 
-	// sp_refund_payment menangani validasi status
+	// byoneRefundPayment menangani validasi status
 	if err := uc.paymentRepo.UpdateStatus(ctx, id, entity.PaymentStatusRefunded); err != nil {
 		return nil, err
 	}

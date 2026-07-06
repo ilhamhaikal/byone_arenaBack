@@ -14,11 +14,11 @@ SET total_payment = amount - COALESCE(discount_amount, 0) - COALESCE(auto_discou
 WHERE total_payment = 0;
 
 -- =============================================
--- 2. Update sp_create_payment — tambah total_payment ke RETURN dan INSERT
+-- 2. Update byoneCreatePayment — tambah total_payment ke RETURN dan INSERT
 -- =============================================
-DROP FUNCTION IF EXISTS sp_create_payment(UUID, NUMERIC, TEXT, VARCHAR);
+DROP FUNCTION IF EXISTS byoneCreatePayment(UUID, NUMERIC, TEXT, VARCHAR);
 
-CREATE OR REPLACE FUNCTION sp_create_payment(
+CREATE OR REPLACE FUNCTION byoneCreatePayment(
     p_session_id    UUID,
     p_cash_received NUMERIC,
     p_notes         TEXT    DEFAULT NULL,
@@ -73,12 +73,12 @@ BEGIN
         WHERE id = v_session.customer_id;
     END IF;
 
-    v_auto_discount := sp_evaluate_discount_rules(v_amount, v_session.start_time, v_is_member);
+    v_auto_discount := byoneEvaluateDiscountRules(v_amount, v_session.start_time, v_is_member);
 
     IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code) != '' THEN
         SELECT va.voucher_id, va.discount_amount
         INTO v_voucher_id, v_voucher_discount
-        FROM sp_apply_voucher(p_voucher_code, v_amount) va;
+        FROM byoneApplyVoucher(p_voucher_code, v_amount) va;
 
         UPDATE vouchers
         SET usage_count = usage_count + 1, updated_at = v_now
@@ -127,11 +127,11 @@ END;
 $$;
 
 -- =============================================
--- 3. Update sp_start_session_with_payment — tambah total_payment
+-- 3. Update byoneStartSessionWithPayment — tambah total_payment
 -- =============================================
-DROP FUNCTION IF EXISTS sp_start_session_with_payment(UUID, UUID, TEXT, INTEGER, NUMERIC, VARCHAR);
+DROP FUNCTION IF EXISTS byoneStartSessionWithPayment(UUID, UUID, TEXT, INTEGER, NUMERIC, VARCHAR);
 
-CREATE OR REPLACE FUNCTION sp_start_session_with_payment(
+CREATE OR REPLACE FUNCTION byoneStartSessionWithPayment(
     p_console_id              UUID,
     p_customer_id             UUID,
     p_notes                   TEXT,
@@ -205,12 +205,12 @@ BEGIN
         FROM customers WHERE id = p_customer_id;
     END IF;
 
-    v_auto_discount := sp_evaluate_discount_rules(v_amount, v_now, v_is_member);
+    v_auto_discount := byoneEvaluateDiscountRules(v_amount, v_now, v_is_member);
 
     IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code) != '' THEN
         SELECT va.voucher_id, va.discount_amount
         INTO v_voucher_id, v_voucher_discount
-        FROM sp_apply_voucher(p_voucher_code, v_amount) va;
+        FROM byoneApplyVoucher(p_voucher_code, v_amount) va;
 
         UPDATE vouchers
         SET usage_count = usage_count + 1, updated_at = v_now

@@ -1,8 +1,8 @@
 -- Migration: 000004_add_discount_rules.down.sql
 -- Rollback sistem diskon otomatis
 
--- Kembalikan sp_create_payment ke versi sebelumnya (dari 000003)
-CREATE OR REPLACE FUNCTION sp_create_payment(
+-- Kembalikan byoneCreatePayment ke versi sebelumnya (dari 000003)
+CREATE OR REPLACE FUNCTION byoneCreatePayment(
     p_session_id    UUID,
     p_cash_received NUMERIC,
     p_notes         TEXT    DEFAULT NULL,
@@ -40,7 +40,7 @@ BEGIN
 
     IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code) != '' THEN
         SELECT va.voucher_id, va.discount_amount INTO v_voucher_id, v_discount
-        FROM sp_apply_voucher(p_voucher_code, v_amount) va;
+        FROM byoneApplyVoucher(p_voucher_code, v_amount) va;
         UPDATE vouchers SET usage_count = usage_count + 1, updated_at = v_now WHERE id = v_voucher_id;
     END IF;
 
@@ -64,7 +64,7 @@ BEGIN
 END;
 $$;
 
-DROP FUNCTION IF EXISTS sp_evaluate_discount_rules(NUMERIC, TIMESTAMPTZ, BOOLEAN);
+DROP FUNCTION IF EXISTS byoneEvaluateDiscountRules(NUMERIC, TIMESTAMPTZ, BOOLEAN);
 
 ALTER TABLE payments DROP COLUMN IF EXISTS auto_discount_amount;
 

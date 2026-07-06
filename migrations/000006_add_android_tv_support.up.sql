@@ -20,11 +20,11 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS end_scheduled_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_sessions_end_scheduled_at ON sessions(end_scheduled_at);
 
 -- =============================================
--- 3. Update sp_start_session agar terima durasi pre-book
+-- 3. Update byoneStartSession agar terima durasi pre-book
 -- =============================================
-DROP FUNCTION IF EXISTS sp_start_session(UUID, UUID, TEXT);
+DROP FUNCTION IF EXISTS byoneStartSession(UUID, UUID, TEXT);
 
-CREATE OR REPLACE FUNCTION sp_start_session(
+CREATE OR REPLACE FUNCTION byoneStartSession(
     p_console_id              UUID,
     p_customer_id             UUID,   -- nullable (walk-in)
     p_notes                   TEXT,
@@ -96,7 +96,7 @@ BEGIN
     -- Tandai konsol sebagai sedang digunakan
     UPDATE consoles
     SET status = 'in_use', updated_at = NOW()
-    WHERE id = p_console_id;
+    WHERE consoles.id = p_console_id;
 
     -- Kembalikan data sesi yang baru dibuat
     RETURN QUERY

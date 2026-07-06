@@ -92,11 +92,11 @@ END;
 $$;
 
 -- =============================================
--- FUNCTION: sp_create_food_order
+-- FUNCTION: byoneCreateFoodOrder
 -- Membuat pesanan makanan secara atomik
 -- Input items dalam format JSON array: [{"menu_item_id":"uuid","quantity":2,"notes":"..."}]
 -- =============================================
-CREATE OR REPLACE FUNCTION sp_create_food_order(
+CREATE OR REPLACE FUNCTION byoneCreateFoodOrder(
     p_session_id  UUID,
     p_customer_id UUID,
     p_notes       TEXT,
@@ -172,10 +172,10 @@ END;
 $$;
 
 -- =============================================
--- FUNCTION: sp_update_food_order_status
+-- FUNCTION: byoneUpdateFoodOrderStatus
 -- Update status pesanan dengan validasi transisi
 -- =============================================
-CREATE OR REPLACE FUNCTION sp_update_food_order_status(
+CREATE OR REPLACE FUNCTION byoneUpdateFoodOrderStatus(
     p_order_id  UUID,
     p_status    VARCHAR
 )

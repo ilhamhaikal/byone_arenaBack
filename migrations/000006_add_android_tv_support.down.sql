@@ -1,9 +1,9 @@
 -- Migration: 000006_add_android_tv_support.down.sql
 
--- Kembalikan sp_start_session ke versi lama (3 parameter)
-DROP FUNCTION IF EXISTS sp_start_session(UUID, UUID, TEXT, INTEGER);
+-- Kembalikan byoneStartSession ke versi lama (3 parameter)
+DROP FUNCTION IF EXISTS byoneStartSession(UUID, UUID, TEXT, INTEGER);
 
-CREATE OR REPLACE FUNCTION sp_start_session(
+CREATE OR REPLACE FUNCTION byoneStartSession(
     p_console_id  UUID,
     p_customer_id UUID,
     p_notes       TEXT

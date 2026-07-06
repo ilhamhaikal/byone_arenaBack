@@ -1,7 +1,7 @@
 -- Migration: 000009_add_dashboard_summary_sp.up.sql
 -- Stored procedure untuk ringkasan dashboard + detail penggunaan voucher
 
-CREATE OR REPLACE FUNCTION sp_dashboard_summary(p_date DATE DEFAULT CURRENT_DATE)
+CREATE OR REPLACE FUNCTION byoneDashboardSummary(p_date DATE DEFAULT CURRENT_DATE)
 RETURNS TABLE (
     total_revenue       NUMERIC,
     total_base_amount   NUMERIC,
