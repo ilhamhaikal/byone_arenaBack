@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/validator"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -250,5 +252,22 @@ func (h *ConsoleHandler) PreviewPrice(c *fiber.Ctx) error {
 		"voucherApplied":  result.VoucherApplied,
 		"voucherName":     result.VoucherName,
 	})
+}
+
+// Heartbeat godoc
+// @Summary      TV heartbeat (PUBLIK)
+// @Description  TV Android mengirim heartbeat untuk update status online. Tidak memerlukan autentikasi.
+// @Tags         Konsol
+// @Produce      json
+// @Param        id   path  string  true  "Console ID"
+// @Success      200  {object}  response.Response
+// @Router       /api/v1/consoles/{id}/heartbeat [post]
+func (h *ConsoleHandler) Heartbeat(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+	h.db.WithContext(c.Context()).Model(&entity.Console{}).Where("id = ?", id).Update("last_seen_at", time.Now())
+	return response.OK(c, "ok", nil)
 }
 

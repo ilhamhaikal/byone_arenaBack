@@ -60,8 +60,12 @@ type CreateConsoleRequest struct {
 	IPAddress    *string            `json:"ipAddress"    validate:"omitempty,max=50"                           example:"192.168.1.101"`
 	ADBPort      int                `json:"adbPort"                                                           example:"5555"`
 	MACAddress   *string            `json:"macAddress"   validate:"omitempty,max=20"                          example:"AA:BB:CC:DD:EE:FF"`
-	PricePerHour float64            `json:"pricePerHour" validate:"required,gt=0"                              example:"10000"`
-	Description  string             `json:"description"                                                        example:"TV 43 inch ruang A"`
+	PricePerHour float64            `json:"pricePerHour" validate:"required,gt=0"                              example:"9000"`
+	DailyPrice   float64            `json:"dailyPrice"   validate:"omitempty,gte=0"                            example:"50000"`
+	// PricingTiers — tarif bertingkat opsional. Kosong = pakai pricePerHour flat.
+	// Contoh: jam pertama 9000/jam, jam berikutnya 8000/jam
+	PricingTiers entity.PricingTierList `json:"pricingTiers"  example:"[{\"startMinute\":0,\"endMinute\":60,\"price\":9000},{\"startMinute\":60,\"endMinute\":null,\"price\":8000}]"`
+	Description  string             `json:"description"       example:"TV 43 inch ruang A"`
 }
 
 // UpdateConsoleRequest payload untuk memperbarui data konsol
@@ -73,7 +77,9 @@ type UpdateConsoleRequest struct {
 	MACAddress   *string              `json:"macAddress"   validate:"omitempty,max=20"`
 	Status       entity.ConsoleStatus `json:"status"       validate:"omitempty,oneof=available in_use maintenance" example:"available"`
 	ScreenStatus *entity.ScreenStatus `json:"screenStatus" validate:"omitempty,oneof=on off screensaver"`
-	PricePerHour float64              `json:"pricePerHour" validate:"omitempty,gt=0"                              example:"10000"`
+	PricePerHour float64              `json:"pricePerHour" validate:"omitempty,gt=0"                              example:"9000"`
+	DailyPrice   *float64             `json:"dailyPrice"                                                         example:"50000"`
+	PricingTiers *entity.PricingTierList `json:"pricingTiers"  example:"[{\"startMinute\":0,\"endMinute\":60,\"price\":9000},{\"startMinute\":60,\"endMinute\":null,\"price\":8000}]"`
 	Description  string               `json:"description"`
 }
 
@@ -150,6 +156,8 @@ func (uc *consoleUseCase) CreateConsole(ctx context.Context, req *CreateConsoleR
 		Status:       entity.ConsoleStatusAvailable,
 		ScreenStatus: entity.ScreenStatusOff,
 		PricePerHour: req.PricePerHour,
+		DailyPrice:   req.DailyPrice,
+		PricingTiers: req.PricingTiers,
 		Description:  req.Description,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -193,6 +201,12 @@ func (uc *consoleUseCase) UpdateConsole(ctx context.Context, id uuid.UUID, req *
 	}
 	if req.PricePerHour > 0 {
 		console.PricePerHour = req.PricePerHour
+	}
+	if req.DailyPrice != nil {
+		console.DailyPrice = *req.DailyPrice
+	}
+	if req.PricingTiers != nil {
+		console.PricingTiers = *req.PricingTiers
 	}
 	if req.Description != "" {
 		console.Description = req.Description

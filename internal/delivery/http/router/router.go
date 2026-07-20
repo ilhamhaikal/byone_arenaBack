@@ -30,6 +30,8 @@ type Handlers struct {
 	Dashboard *handler.DashboardHandler
 	Report    *handler.ReportHandler
 	Notify    *handler.NotificationHandler
+	Rental    *handler.RentalHandler
+	Settings  *handler.SettingsHandler
 	Hub       *wsHandler.Hub
 }
 
@@ -81,6 +83,9 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	// Console overview — publik, digunakan oleh client Android TV tanpa login
 	api.Get("/consoles/overview", h.Console.GetOverview)
 
+	// Heartbeat — publik, dari TV Android
+	api.Post("/consoles/:id/heartbeat", h.Console.Heartbeat)
+
 	// Routes publik lain — HARUS sebelum protected group
 	api.Get("/notifications", h.Notify.GetAllNotifications)
 	api.Get("/notifications/loop/status", h.Notify.LoopStatus)
@@ -107,6 +112,22 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	// GET notifications + loop/status HARUS publik — daftar langsung di app, bypass group
 	app.Get("/api/v1/notifications", h.Notify.GetAllNotifications)
 	app.Get("/api/v1/notifications/loop/status", h.Notify.LoopStatus)
+
+	// Daily Rental routes
+	dailyRentals := protected.Group("/daily-rentals")
+	dailyRentals.Get("/", h.Rental.GetAllDailyRentals)
+	dailyRentals.Post("/", h.Rental.CreateDailyRental)
+	dailyRentals.Post("/:id/return", h.Rental.ReturnDailyRental)
+
+	// Booking routes
+	bookings := protected.Group("/bookings")
+	bookings.Get("/", h.Rental.GetAllBookings)
+	bookings.Post("/", h.Rental.CreateBooking)
+	bookings.Patch("/:id/status", h.Rental.UpdateBookingStatus)
+
+	// Settings routes — GET publik, PUT admin
+	api.Get("/settings/membership", h.Settings.GetMembershipPrice)
+	protected.Put("/settings/membership", middleware.AdminOnly(), h.Settings.UpdateMembershipPrice)
 
 	// Console routes
 	consoles := protected.Group("/consoles")
@@ -140,6 +161,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	customers.Post("/", h.Customer.Create)
 	customers.Put("/:id", h.Customer.Update)
 	customers.Delete("/:id", h.Customer.Delete)
+	customers.Post("/:id/membership", h.Customer.SellMembership) // jual membership
 
 	// Payment routes
 	payments := protected.Group("/payments")

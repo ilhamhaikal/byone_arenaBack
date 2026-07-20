@@ -35,6 +35,11 @@ type CreateCustomerRequest struct {
 	Name  string `json:"name" validate:"required,min=2,max=100"`
 	Phone string `json:"phone" validate:"required,min=8,max=20"`
 	Email string `json:"email" validate:"omitempty,email"`
+	IsMember        bool    `json:"isMember"`
+	MembershipType  *string `json:"membershipType"`
+	MembershipStart *string `json:"membershipStart"`
+	MembershipExpiry *string `json:"membershipExpiry"`
+	MembershipPrice float64 `json:"membershipPrice"`
 }
 
 // UpdateCustomerRequest payload untuk memperbarui data pelanggan
@@ -42,6 +47,11 @@ type UpdateCustomerRequest struct {
 	Name  string `json:"name" validate:"omitempty,min=2,max=100"`
 	Phone string `json:"phone" validate:"omitempty,min=8,max=20"`
 	Email string `json:"email" validate:"omitempty,email"`
+	IsMember        *bool    `json:"isMember"`
+	MembershipType  *string  `json:"membershipType"`
+	MembershipStart *string  `json:"membershipStart"`
+	MembershipExpiry *string `json:"membershipExpiry"`
+	MembershipPrice *float64 `json:"membershipPrice"`
 }
 
 func (uc *customerUseCase) GetAllCustomers(ctx context.Context) ([]*entity.Customer, error) {
@@ -79,8 +89,11 @@ func (uc *customerUseCase) CreateCustomer(ctx context.Context, req *CreateCustom
 		Name:      req.Name,
 		Phone:     req.Phone,
 		Email:     req.Email,
-		CreatedAt: now,
-		UpdatedAt: now,
+		// IsMember selalu false saat create — membership diaktifkan via SP oleh handler
+		IsMember:         false,
+		MembershipPrice:  0,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	if err := uc.customerRepo.Create(ctx, customer); err != nil {
@@ -106,6 +119,21 @@ func (uc *customerUseCase) UpdateCustomer(ctx context.Context, id uuid.UUID, req
 	}
 	if req.Email != "" {
 		customer.Email = req.Email
+	}
+	if req.IsMember != nil {
+		customer.IsMember = *req.IsMember
+	}
+	if req.MembershipType != nil {
+		customer.MembershipType = req.MembershipType
+	}
+	if req.MembershipStart != nil {
+		customer.MembershipStart = req.MembershipStart
+	}
+	if req.MembershipExpiry != nil {
+		customer.MembershipExpiry = req.MembershipExpiry
+	}
+	if req.MembershipPrice != nil {
+		customer.MembershipPrice = *req.MembershipPrice
 	}
 	customer.UpdatedAt = time.Now()
 

@@ -22,13 +22,17 @@ type ReportPeriod struct {
 }
 
 type ReportRevenue struct {
-	TotalRevenue      float64 `json:"totalRevenue"`
-	TotalBaseAmount   float64 `json:"totalBaseAmount"`
-	VoucherDiscount   float64 `json:"voucherDiscount"`
-	AutoDiscount      float64 `json:"autoDiscount"`
-	TotalDiscount     float64 `json:"totalDiscount"`
-	TotalCashReceived float64 `json:"totalCashReceived"`
-	TotalChange       float64 `json:"totalChange"`
+	TotalRevenue       float64 `json:"totalRevenue"`
+	TotalBaseAmount    float64 `json:"totalBaseAmount"`
+	VoucherDiscount    float64 `json:"voucherDiscount"`
+	AutoDiscount       float64 `json:"autoDiscount"`
+	TotalDiscount      float64 `json:"totalDiscount"`
+	TotalCashReceived  float64 `json:"totalCashReceived"`
+	TotalChange        float64 `json:"totalChange"`
+	DailyRentalRevenue float64 `json:"dailyRentalRevenue"`
+	DailyRentalCount   int     `json:"dailyRentalCount"`
+	MembershipRevenue  float64 `json:"membershipRevenue"`
+	MembershipCount    int     `json:"membershipCount"`
 }
 
 type ReportTransactions struct {

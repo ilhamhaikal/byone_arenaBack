@@ -1,5 +1,46 @@
 basePath: /
 definitions:
+  entity.Booking:
+    properties:
+      bookingDate:
+        type: string
+      console:
+        $ref: '#/definitions/entity.Console'
+      consoleId:
+        type: string
+      createdAt:
+        type: string
+      customer:
+        $ref: '#/definitions/entity.Customer'
+      customerId:
+        type: string
+      durationMinutes:
+        type: integer
+      id:
+        type: string
+      notes:
+        type: string
+      startHour:
+        type: integer
+      startMinute:
+        type: integer
+      status:
+        $ref: '#/definitions/entity.BookingStatus'
+      updatedAt:
+        type: string
+    type: object
+  entity.BookingStatus:
+    enum:
+    - pending
+    - confirmed
+    - cancelled
+    - completed
+    type: string
+    x-enum-varnames:
+    - BookingPending
+    - BookingConfirmed
+    - BookingCancelled
+    - BookingCompleted
   entity.Console:
     properties:
       adbPort:
@@ -8,11 +49,15 @@ definitions:
         $ref: '#/definitions/entity.ConsoleType'
       createdAt:
         type: string
+      dailyPrice:
+        type: number
       description:
         type: string
       id:
         type: string
       ipAddress:
+        type: string
+      lastSeenAt:
         type: string
       macAddress:
         type: string
@@ -20,6 +65,16 @@ definitions:
         type: string
       pricePerHour:
         type: number
+      pricingTiers:
+        description: |-
+          PricingTiers — tarif bertingkat (JSONB). Kosong/null = pakai pricePerHour flat.
+          Format: [{"startMinute":0,"endMinute":60,"price":9000},{"startMinute":60,"endMinute":null,"price":8000}]
+          startMinute: menit mulai tier (inklusif). endMinute: menit akhir (eksklusif), null=unlimited.
+          price: harga per JAM untuk tier tersebut.
+          Contoh di atas: jam pertama Rp 9000/jam, jam kedua dst Rp 8000/jam → 90 menit = Rp 9000 + Rp 4000 = Rp 13000
+        items:
+          $ref: '#/definitions/entity.PricingTierEntry'
+        type: array
       screenStatus:
         $ref: '#/definitions/entity.ScreenStatus'
       status:
@@ -37,6 +92,10 @@ definitions:
       ConsoleStatusAvailable: siap disewa / TV mati
       ConsoleStatusInUse: sedang aktif / TV menyala
       ConsoleStatusMaintenance: sedang diperbaiki
+    x-enum-descriptions:
+    - siap disewa / TV mati
+    - sedang aktif / TV menyala
+    - sedang diperbaiki
     x-enum-varnames:
     - ConsoleStatusAvailable
     - ConsoleStatusInUse
@@ -64,8 +123,18 @@ definitions:
       id:
         type: string
       isMember:
-        description: pelanggan member mendapat diskon otomatis
         type: boolean
+      membershipExpiry:
+        description: YYYY-MM-DD
+        type: string
+      membershipPrice:
+        type: number
+      membershipStart:
+        description: YYYY-MM-DD
+        type: string
+      membershipType:
+        description: Membership fields
+        type: string
       name:
         type: string
       phone:
@@ -73,16 +142,75 @@ definitions:
       updatedAt:
         type: string
     type: object
+  entity.DailyRental:
+    properties:
+      console:
+        $ref: '#/definitions/entity.Console'
+      consoleId:
+        type: string
+      createdAt:
+        type: string
+      customer:
+        $ref: '#/definitions/entity.Customer'
+      customerId:
+        type: string
+      dailyPrice:
+        type: number
+      discountAmount:
+        type: number
+      endDate:
+        type: string
+      finalAmount:
+        type: number
+      freeDaysUsed:
+        type: integer
+      id:
+        type: string
+      notes:
+        type: string
+      returnedAt:
+        type: string
+      startDate:
+        type: string
+      status:
+        $ref: '#/definitions/entity.DailyRentalStatus'
+      totalAmount:
+        type: number
+      totalDays:
+        type: integer
+      updatedAt:
+        type: string
+      voucherId:
+        type: string
+    type: object
+  entity.DailyRentalStatus:
+    enum:
+    - active
+    - returned
+    - overdue
+    type: string
+    x-enum-varnames:
+    - DailyRentalActive
+    - DailyRentalReturned
+    - DailyRentalOverdue
   entity.DashboardSummary:
     properties:
       activeSessions:
         type: integer
       availableConsoles:
         type: integer
+      dailyRentalCount:
+        type: integer
+      dailyRentalRevenue:
+        type: number
       date:
         type: string
       generatedAt:
         type: string
+      membershipCount:
+        type: integer
+      membershipRevenue:
+        type: number
       totalAutoDiscount:
         type: number
       totalBaseAmount:
@@ -150,13 +278,20 @@ definitions:
     enum:
     - percentage
     - fixed_amount
+    - free_days
     type: string
     x-enum-comments:
       DiscountTypeFixedAmount: diskon nominal tetap
+      DiscountTypeFreeDays: gratis N hari pada rental harian
       DiscountTypePercentage: diskon persen dari total
+    x-enum-descriptions:
+    - diskon persen dari total
+    - diskon nominal tetap
+    - gratis N hari pada rental harian
     x-enum-varnames:
     - DiscountTypePercentage
     - DiscountTypeFixedAmount
+    - DiscountTypeFreeDays
   entity.FoodOrder:
     properties:
       createdAt:
@@ -268,6 +403,11 @@ definitions:
       OrderStatusPending: pesanan baru, menunggu diproses dapur
       OrderStatusPreparing: sedang diproses dapur
       OrderStatusServed: sudah diantarkan ke pelanggan
+    x-enum-descriptions:
+    - pesanan baru, menunggu diproses dapur
+    - sedang diproses dapur
+    - sudah diantarkan ke pelanggan
+    - dibatalkan
     x-enum-varnames:
     - OrderStatusPending
     - OrderStatusPreparing
@@ -333,6 +473,18 @@ definitions:
     - PaymentStatusPending
     - PaymentStatusPaid
     - PaymentStatusRefunded
+  entity.PricingTierEntry:
+    properties:
+      endMinute:
+        description: menit akhir tier (eksklusif), null = unlimited
+        type: integer
+      price:
+        description: harga per jam untuk tier ini
+        type: number
+      startMinute:
+        description: menit mulai tier (inklusif)
+        type: integer
+    type: object
   entity.ReportConsoleUsage:
     properties:
       consoleName:
@@ -382,6 +534,14 @@ definitions:
   entity.ReportRevenue:
     properties:
       autoDiscount:
+        type: number
+      dailyRentalCount:
+        type: integer
+      dailyRentalRevenue:
+        type: number
+      membershipCount:
+        type: integer
+      membershipRevenue:
         type: number
       totalBaseAmount:
         type: number
@@ -470,6 +630,11 @@ definitions:
       RuleTypeDayOfWeek: berlaku pada hari tertentu
       RuleTypeHappyHour: berlaku pada jam tertentu
       RuleTypeMember: khusus pelanggan member
+    x-enum-descriptions:
+    - berlaku untuk semua transaksi
+    - berlaku pada jam tertentu
+    - khusus pelanggan member
+    - berlaku pada hari tertentu
     x-enum-varnames:
     - RuleTypeAlways
     - RuleTypeHappyHour
@@ -748,11 +913,15 @@ definitions:
         $ref: '#/definitions/entity.ConsoleType'
       createdAt:
         type: string
+      dailyPrice:
+        type: number
       description:
         type: string
       id:
         type: string
       ipAddress:
+        type: string
+      lastSeenAt:
         type: string
       macAddress:
         type: string
@@ -760,6 +929,16 @@ definitions:
         type: string
       pricePerHour:
         type: number
+      pricingTiers:
+        description: |-
+          PricingTiers — tarif bertingkat (JSONB). Kosong/null = pakai pricePerHour flat.
+          Format: [{"startMinute":0,"endMinute":60,"price":9000},{"startMinute":60,"endMinute":null,"price":8000}]
+          startMinute: menit mulai tier (inklusif). endMinute: menit akhir (eksklusif), null=unlimited.
+          price: harga per JAM untuk tier tersebut.
+          Contoh di atas: jam pertama Rp 9000/jam, jam kedua dst Rp 8000/jam → 90 menit = Rp 9000 + Rp 4000 = Rp 13000
+        items:
+          $ref: '#/definitions/entity.PricingTierEntry'
+        type: array
       screenStatus:
         $ref: '#/definitions/entity.ScreenStatus'
       status:
@@ -783,46 +962,20 @@ definitions:
     - sessionId
     type: object
   usecase.CreateConsoleRequest:
-    properties:
-      adbPort:
-        example: 5555
-        type: integer
-      consoleType:
-        allOf:
-        - $ref: '#/definitions/entity.ConsoleType'
-        description: 'Tipe konsol: PS3, PS4, PS5, AndroidTV, Switch, atau lainnya'
-        example: Switch
-        maxLength: 50
-        minLength: 2
-      description:
-        example: TV 43 inch ruang A
-        type: string
-      ipAddress:
-        description: Alamat IP TV Android (wajib untuk AndroidTV)
-        example: 192.168.1.101
-        maxLength: 50
-        type: string
-      macAddress:
-        example: AA:BB:CC:DD:EE:FF
-        maxLength: 20
-        type: string
-      name:
-        description: 'Nama tampilan konsol, contoh: "TV 01"'
-        example: TV 01
-        maxLength: 100
-        minLength: 2
-        type: string
-      pricePerHour:
-        example: 10000
-        type: number
-    required:
-    - consoleType
-    - name
-    - pricePerHour
     type: object
   usecase.CreateCustomerRequest:
     properties:
       email:
+        type: string
+      isMember:
+        type: boolean
+      membershipExpiry:
+        type: string
+      membershipPrice:
+        type: number
+      membershipStart:
+        type: string
+      membershipType:
         type: string
       name:
         maxLength: 100
@@ -1006,15 +1159,16 @@ definitions:
       discountType:
         allOf:
         - $ref: '#/definitions/entity.DiscountType'
-        description: 'Tipe diskon: "percentage" (persen) atau "fixed_amount" (nominal
-          Rp)'
+        description: 'Tipe diskon: "percentage" (persen), "fixed_amount" (nominal
+          Rp), "free_days" (gratis N hari, khusus rental harian)'
         enum:
         - percentage
         - fixed_amount
+        - free_days
         example: fixed_amount
       discountValue:
         description: 'Nilai diskon: jika percentage maka 0-100, jika fixed_amount
-          maka nominal Rp'
+          maka nominal Rp, jika free_days maka jumlah hari gratis (1,2,3...)'
         example: 24000
         type: number
       expiresAt:
@@ -1147,51 +1301,20 @@ definitions:
         $ref: '#/definitions/entity.Session'
     type: object
   usecase.UpdateConsoleRequest:
-    properties:
-      adbPort:
-        type: integer
-      consoleType:
-        allOf:
-        - $ref: '#/definitions/entity.ConsoleType'
-        example: Switch
-        maxLength: 50
-        minLength: 2
-      description:
-        type: string
-      ipAddress:
-        example: 192.168.1.101
-        maxLength: 50
-        type: string
-      macAddress:
-        maxLength: 20
-        type: string
-      name:
-        example: TV 01
-        maxLength: 100
-        minLength: 2
-        type: string
-      pricePerHour:
-        example: 10000
-        type: number
-      screenStatus:
-        allOf:
-        - $ref: '#/definitions/entity.ScreenStatus'
-        enum:
-        - "on"
-        - "off"
-        - screensaver
-      status:
-        allOf:
-        - $ref: '#/definitions/entity.ConsoleStatus'
-        enum:
-        - available
-        - in_use
-        - maintenance
-        example: available
     type: object
   usecase.UpdateCustomerRequest:
     properties:
       email:
+        type: string
+      isMember:
+        type: boolean
+      membershipExpiry:
+        type: string
+      membershipPrice:
+        type: number
+      membershipStart:
+        type: string
+      membershipType:
         type: string
       name:
         maxLength: 100
@@ -1309,10 +1432,11 @@ definitions:
       discountType:
         allOf:
         - $ref: '#/definitions/entity.DiscountType'
-        description: 'Tipe diskon: "percentage" atau "fixed_amount"'
+        description: 'Tipe diskon: "percentage", "fixed_amount", "free_days"'
         enum:
         - percentage
         - fixed_amount
+        - free_days
         example: fixed_amount
       discountValue:
         example: 24000
@@ -1424,6 +1548,80 @@ paths:
       summary: Daftarkan pengguna baru
       tags:
       - Autentikasi
+  /api/v1/bookings:
+    get:
+      parameters:
+      - description: Filter tanggal (YYYY-MM-DD)
+        in: query
+        name: date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Booking'
+                  type: array
+              type: object
+      security:
+      - BearerAuth: []
+      summary: List semua booking
+      tags:
+      - Booking
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 'Data booking: consoleId, customerId, bookingDate, startHour,
+          startMinute, durationMinutes, notes'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Buat booking/reservasi konsol
+      tags:
+      - Booking
+  /api/v1/bookings/{id}/status:
+    patch:
+      parameters:
+      - description: Booking ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Status baru: confirmed/cancelled/completed'
+        in: query
+        name: status
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update status booking (confirm/cancel/complete)
+      tags:
+      - Booking
   /api/v1/consoles:
     get:
       description: Mengembalikan daftar seluruh unit konsol / TV Android
@@ -1607,6 +1805,26 @@ paths:
       security:
       - BearerAuth: []
       summary: Update data konsol
+      tags:
+      - Konsol
+  /api/v1/consoles/{id}/heartbeat:
+    post:
+      description: TV Android mengirim heartbeat untuk update status online. Tidak
+        memerlukan autentikasi.
+      parameters:
+      - description: Console ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: TV heartbeat (PUBLIK)
       tags:
       - Konsol
   /api/v1/consoles/{id}/price:
@@ -1932,6 +2150,104 @@ paths:
       summary: Update data pelanggan
       tags:
       - Pelanggan
+  /api/v1/customers/{id}/membership:
+    post:
+      consumes:
+      - application/json
+      description: Mengaktifkan membership LIFETIME. **Harga & uang otomatis dari
+        pengaturan** — tidak perlu input apa pun. Body kosong atau isi `cashReceived`
+        jika ada kembalian.
+      parameters:
+      - description: Customer ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Opsional: {\'
+        in: body
+        name: body
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Jual membership ke customer
+      tags:
+      - Pelanggan
+  /api/v1/daily-rentals:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.DailyRental'
+                  type: array
+              type: object
+      security:
+      - BearerAuth: []
+      summary: List semua rental harian
+      tags:
+      - Rental Harian
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 'Data rental: consoleId, customerId, startDate, endDate, dailyPrice,
+          voucherCode, notes'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Buat rental harian (console dibawa pulang)
+      tags:
+      - Rental Harian
+  /api/v1/daily-rentals/{id}/return:
+    post:
+      parameters:
+      - description: Rental ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Kembalikan rental harian
+      tags:
+      - Rental Harian
   /api/v1/dashboard/summary:
     get:
       description: 'Mengembalikan ringkasan pendapatan harian, penggunaan voucher,
@@ -3411,6 +3727,80 @@ paths:
       summary: Mulai sesi rental + pembayaran di depan
       tags:
       - Sesi Rental
+  /api/v1/settings/daily-price:
+    get:
+      description: Mengembalikan harga sewa harian default yang dikonfigurasi.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Ambil harga sewa harian (PUBLIK)
+      tags:
+      - Pengaturan
+    put:
+      consumes:
+      - application/json
+      description: Admin mengatur harga sewa harian default.
+      parameters:
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update harga sewa harian (admin)
+      tags:
+      - Pengaturan
+  /api/v1/settings/membership:
+    get:
+      description: Mengembalikan harga membership yang dikonfigurasi. Frontend konsume
+        ini, tidak perlu hardcode harga.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Ambil harga membership (PUBLIK)
+      tags:
+      - Pengaturan
+    put:
+      consumes:
+      - application/json
+      description: Admin mengatur harga membership. Harga ini akan digunakan saat
+        menjual membership ke customer.
+      parameters:
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update harga membership (admin)
+      tags:
+      - Pengaturan
   /api/v1/shifts:
     get:
       description: Mengembalikan semua jadwal shift kasir beserta data pengguna terkait
@@ -3698,7 +4088,8 @@ paths:
       - application/json
       description: Membuat voucher diskon baru.\n\n**Nilai discountType yang valid:**\n-
         `percentage` — diskon persen dari total (discountValue = 0–100)\n- `fixed_amount`
-        — diskon nominal Rp tetap\n\n**Format expiresAt:** RFC3339/ISO8601, contoh
+        — diskon nominal Rp tetap\n- `free_days` — gratis N hari untuk rental harian
+        (discountValue = jumlah hari)\n\n**Format expiresAt:** RFC3339/ISO8601, contoh
         `2026-06-26T00:00:00Z`. Kirim `null` jika tidak ada batas waktu.\n\nKode otomatis
         diubah ke UPPERCASE.
       parameters:

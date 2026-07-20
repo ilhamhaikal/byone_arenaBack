@@ -126,7 +126,7 @@ func main() {
 		Auth:      handler.NewAuthHandler(authUC, validate),
 		Console:   handler.NewConsoleHandler(consoleUC, validate, db),
 		Session:   handler.NewSessionHandler(sessionUC, validate, hub, db),
-		Customer:  handler.NewCustomerHandler(customerUC, validate),
+		Customer:  handler.NewCustomerHandler(customerUC, validate, db),
 		Payment:   handler.NewPaymentHandler(paymentUC, validate, hub, db),
 		Shift:     handler.NewShiftHandler(shiftUC),
 		Voucher:   handler.NewVoucherHandler(voucherUC, validate),
@@ -136,6 +136,8 @@ func main() {
 		Dashboard: handler.NewDashboardHandler(paymentRepo),
 		Report:    handler.NewReportHandler(paymentRepo),
 		Notify:    handler.NewNotificationHandler(db, hub, consoleUC, validate),
+		Rental:    handler.NewRentalHandler(db, validate),
+		Settings:  handler.NewSettingsHandler(db, validate),
 		Hub:       hub,
 	}
 

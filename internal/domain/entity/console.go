@@ -46,7 +46,15 @@ type Console struct {
 	Status       ConsoleStatus `json:"status"                 gorm:"not null;default:'available';size:20"`
 	ScreenStatus ScreenStatus  `json:"screenStatus"           gorm:"not null;default:'off';size:20"`
 	PricePerHour float64       `json:"pricePerHour"           gorm:"not null;type:numeric(10,2)"`
+	DailyPrice   float64       `json:"dailyPrice"             gorm:"not null;default:0;type:numeric(10,2)"`
+	// PricingTiers — tarif bertingkat (JSONB). Kosong/null = pakai pricePerHour flat.
+	// Format: [{"startMinute":0,"endMinute":60,"price":9000},{"startMinute":60,"endMinute":null,"price":8000}]
+	// startMinute: menit mulai tier (inklusif). endMinute: menit akhir (eksklusif), null=unlimited.
+	// price: harga per JAM untuk tier tersebut.
+	// Contoh di atas: jam pertama Rp 9000/jam, jam kedua dst Rp 8000/jam → 90 menit = Rp 9000 + Rp 4000 = Rp 13000
+	PricingTiers PricingTierList `json:"pricingTiers,omitempty"  gorm:"type:jsonb;default:'[]';serializer:json"`
 	Description  string        `json:"description,omitempty" gorm:"type:text"`
+	LastSeenAt   *time.Time     `json:"lastSeenAt,omitempty"`
 	CreatedAt    time.Time     `json:"createdAt"              gorm:"autoCreateTime"`
 	UpdatedAt    time.Time     `json:"updatedAt"              gorm:"autoUpdateTime"`
 }

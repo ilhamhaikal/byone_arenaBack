@@ -12,6 +12,7 @@ type DiscountType string
 const (
 	DiscountTypePercentage  DiscountType = "percentage"   // diskon persen dari total
 	DiscountTypeFixedAmount DiscountType = "fixed_amount" // diskon nominal tetap
+	DiscountTypeFreeDays    DiscountType = "free_days"    // gratis N hari pada rental harian
 )
 
 // Voucher merepresentasikan kode diskon yang dapat digunakan saat pembayaran

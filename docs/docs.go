@@ -139,6 +139,129 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/bookings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Booking"
+                ],
+                "summary": "List semua booking",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter tanggal (YYYY-MM-DD)",
+                        "name": "date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.Booking"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Booking"
+                ],
+                "summary": "Buat booking/reservasi konsol",
+                "parameters": [
+                    {
+                        "description": "Data booking: consoleId, customerId, bookingDate, startHour, startMinute, durationMinutes, notes",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/bookings/{id}/status": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Booking"
+                ],
+                "summary": "Update status booking (confirm/cancel/complete)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Booking ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Status baru: confirmed/cancelled/completed",
+                        "name": "status",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/consoles": {
             "get": {
                 "security": [
@@ -534,6 +657,35 @@ const docTemplate = `{
                         "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/consoles/{id}/heartbeat": {
+            "post": {
+                "description": "TV Android mengirim heartbeat untuk update status online. Tidak memerlukan autentikasi.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Konsol"
+                ],
+                "summary": "TV heartbeat (PUBLIK)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Console ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
                         }
                     }
                 }
@@ -966,6 +1118,165 @@ const docTemplate = `{
                         "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/{id}/membership": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengaktifkan membership LIFETIME. **Harga \u0026 uang otomatis dari pengaturan** — tidak perlu input apa pun. Body kosong atau isi ` + "`" + `cashReceived` + "`" + ` jika ada kembalian.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pelanggan"
+                ],
+                "summary": "Jual membership ke customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Customer ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Opsional: {\\",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/daily-rentals": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rental Harian"
+                ],
+                "summary": "List semua rental harian",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/entity.DailyRental"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rental Harian"
+                ],
+                "summary": "Buat rental harian (console dibawa pulang)",
+                "parameters": [
+                    {
+                        "description": "Data rental: consoleId, customerId, startDate, endDate, dailyPrice, voucherCode, notes",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/daily-rentals/{id}/return": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rental Harian"
+                ],
+                "summary": "Kembalikan rental harian",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Rental ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
                         }
                     }
                 }
@@ -3411,6 +3722,120 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/settings/daily-price": {
+            "get": {
+                "description": "Mengembalikan harga sewa harian default yang dikonfigurasi.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengaturan"
+                ],
+                "summary": "Ambil harga sewa harian (PUBLIK)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin mengatur harga sewa harian default.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengaturan"
+                ],
+                "summary": "Update harga sewa harian (admin)",
+                "parameters": [
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/membership": {
+            "get": {
+                "description": "Mengembalikan harga membership yang dikonfigurasi. Frontend konsume ini, tidak perlu hardcode harga.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengaturan"
+                ],
+                "summary": "Ambil harga membership (PUBLIK)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin mengatur harga membership. Harga ini akan digunakan saat menjual membership ke customer.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pengaturan"
+                ],
+                "summary": "Update harga membership (admin)",
+                "parameters": [
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/shifts": {
             "get": {
                 "security": [
@@ -3878,7 +4303,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Membuat voucher diskon baru.\\n\\n**Nilai discountType yang valid:**\\n- ` + "`" + `percentage` + "`" + ` — diskon persen dari total (discountValue = 0–100)\\n- ` + "`" + `fixed_amount` + "`" + ` — diskon nominal Rp tetap\\n\\n**Format expiresAt:** RFC3339/ISO8601, contoh ` + "`" + `2026-06-26T00:00:00Z` + "`" + `. Kirim ` + "`" + `null` + "`" + ` jika tidak ada batas waktu.\\n\\nKode otomatis diubah ke UPPERCASE.",
+                "description": "Membuat voucher diskon baru.\\n\\n**Nilai discountType yang valid:**\\n- ` + "`" + `percentage` + "`" + ` — diskon persen dari total (discountValue = 0–100)\\n- ` + "`" + `fixed_amount` + "`" + ` — diskon nominal Rp tetap\\n- ` + "`" + `free_days` + "`" + ` — gratis N hari untuk rental harian (discountValue = jumlah hari)\\n\\n**Format expiresAt:** RFC3339/ISO8601, contoh ` + "`" + `2026-06-26T00:00:00Z` + "`" + `. Kirim ` + "`" + `null` + "`" + ` jika tidak ada batas waktu.\\n\\nKode otomatis diubah ke UPPERCASE.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4276,6 +4701,65 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "entity.Booking": {
+            "type": "object",
+            "properties": {
+                "bookingDate": {
+                    "type": "string"
+                },
+                "console": {
+                    "$ref": "#/definitions/entity.Console"
+                },
+                "consoleId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "customer": {
+                    "$ref": "#/definitions/entity.Customer"
+                },
+                "customerId": {
+                    "type": "string"
+                },
+                "durationMinutes": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "startHour": {
+                    "type": "integer"
+                },
+                "startMinute": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/entity.BookingStatus"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.BookingStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "confirmed",
+                "cancelled",
+                "completed"
+            ],
+            "x-enum-varnames": [
+                "BookingPending",
+                "BookingConfirmed",
+                "BookingCancelled",
+                "BookingCompleted"
+            ]
+        },
         "entity.Console": {
             "type": "object",
             "properties": {
@@ -4288,6 +4772,9 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "dailyPrice": {
+                    "type": "number"
+                },
                 "description": {
                     "type": "string"
                 },
@@ -4295,6 +4782,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ipAddress": {
+                    "type": "string"
+                },
+                "lastSeenAt": {
                     "type": "string"
                 },
                 "macAddress": {
@@ -4305,6 +4795,13 @@ const docTemplate = `{
                 },
                 "pricePerHour": {
                     "type": "number"
+                },
+                "pricingTiers": {
+                    "description": "PricingTiers — tarif bertingkat (JSONB). Kosong/null = pakai pricePerHour flat.\nFormat: [{\"startMinute\":0,\"endMinute\":60,\"price\":9000},{\"startMinute\":60,\"endMinute\":null,\"price\":8000}]\nstartMinute: menit mulai tier (inklusif). endMinute: menit akhir (eksklusif), null=unlimited.\nprice: harga per JAM untuk tier tersebut.\nContoh di atas: jam pertama Rp 9000/jam, jam kedua dst Rp 8000/jam → 90 menit = Rp 9000 + Rp 4000 = Rp 13000",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.PricingTierEntry"
+                    }
                 },
                 "screenStatus": {
                     "$ref": "#/definitions/entity.ScreenStatus"
@@ -4329,6 +4826,11 @@ const docTemplate = `{
                 "ConsoleStatusInUse": "sedang aktif / TV menyala",
                 "ConsoleStatusMaintenance": "sedang diperbaiki"
             },
+            "x-enum-descriptions": [
+                "siap disewa / TV mati",
+                "sedang aktif / TV menyala",
+                "sedang diperbaiki"
+            ],
             "x-enum-varnames": [
                 "ConsoleStatusAvailable",
                 "ConsoleStatusInUse",
@@ -4365,8 +4867,22 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "isMember": {
-                    "description": "pelanggan member mendapat diskon otomatis",
                     "type": "boolean"
+                },
+                "membershipExpiry": {
+                    "description": "YYYY-MM-DD",
+                    "type": "string"
+                },
+                "membershipPrice": {
+                    "type": "number"
+                },
+                "membershipStart": {
+                    "description": "YYYY-MM-DD",
+                    "type": "string"
+                },
+                "membershipType": {
+                    "description": "Membership fields",
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -4379,6 +4895,81 @@ const docTemplate = `{
                 }
             }
         },
+        "entity.DailyRental": {
+            "type": "object",
+            "properties": {
+                "console": {
+                    "$ref": "#/definitions/entity.Console"
+                },
+                "consoleId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "customer": {
+                    "$ref": "#/definitions/entity.Customer"
+                },
+                "customerId": {
+                    "type": "string"
+                },
+                "dailyPrice": {
+                    "type": "number"
+                },
+                "discountAmount": {
+                    "type": "number"
+                },
+                "endDate": {
+                    "type": "string"
+                },
+                "finalAmount": {
+                    "type": "number"
+                },
+                "freeDaysUsed": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "returnedAt": {
+                    "type": "string"
+                },
+                "startDate": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/entity.DailyRentalStatus"
+                },
+                "totalAmount": {
+                    "type": "number"
+                },
+                "totalDays": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "voucherId": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.DailyRentalStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "returned",
+                "overdue"
+            ],
+            "x-enum-varnames": [
+                "DailyRentalActive",
+                "DailyRentalReturned",
+                "DailyRentalOverdue"
+            ]
+        },
         "entity.DashboardSummary": {
             "type": "object",
             "properties": {
@@ -4388,11 +4979,23 @@ const docTemplate = `{
                 "availableConsoles": {
                     "type": "integer"
                 },
+                "dailyRentalCount": {
+                    "type": "integer"
+                },
+                "dailyRentalRevenue": {
+                    "type": "number"
+                },
                 "date": {
                     "type": "string"
                 },
                 "generatedAt": {
                     "type": "string"
+                },
+                "membershipCount": {
+                    "type": "integer"
+                },
+                "membershipRevenue": {
+                    "type": "number"
                 },
                 "totalAutoDiscount": {
                     "type": "number"
@@ -4490,15 +5093,23 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "percentage",
-                "fixed_amount"
+                "fixed_amount",
+                "free_days"
             ],
             "x-enum-comments": {
                 "DiscountTypeFixedAmount": "diskon nominal tetap",
+                "DiscountTypeFreeDays": "gratis N hari pada rental harian",
                 "DiscountTypePercentage": "diskon persen dari total"
             },
+            "x-enum-descriptions": [
+                "diskon persen dari total",
+                "diskon nominal tetap",
+                "gratis N hari pada rental harian"
+            ],
             "x-enum-varnames": [
                 "DiscountTypePercentage",
-                "DiscountTypeFixedAmount"
+                "DiscountTypeFixedAmount",
+                "DiscountTypeFreeDays"
             ]
         },
         "entity.FoodOrder": {
@@ -4662,6 +5273,12 @@ const docTemplate = `{
                 "OrderStatusPreparing": "sedang diproses dapur",
                 "OrderStatusServed": "sudah diantarkan ke pelanggan"
             },
+            "x-enum-descriptions": [
+                "pesanan baru, menunggu diproses dapur",
+                "sedang diproses dapur",
+                "sudah diantarkan ke pelanggan",
+                "dibatalkan"
+            ],
             "x-enum-varnames": [
                 "OrderStatusPending",
                 "OrderStatusPreparing",
@@ -4757,6 +5374,23 @@ const docTemplate = `{
                 "PaymentStatusRefunded"
             ]
         },
+        "entity.PricingTierEntry": {
+            "type": "object",
+            "properties": {
+                "endMinute": {
+                    "description": "menit akhir tier (eksklusif), null = unlimited",
+                    "type": "integer"
+                },
+                "price": {
+                    "description": "harga per jam untuk tier ini",
+                    "type": "number"
+                },
+                "startMinute": {
+                    "description": "menit mulai tier (inklusif)",
+                    "type": "integer"
+                }
+            }
+        },
         "entity.ReportConsoleUsage": {
             "type": "object",
             "properties": {
@@ -4832,6 +5466,18 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "autoDiscount": {
+                    "type": "number"
+                },
+                "dailyRentalCount": {
+                    "type": "integer"
+                },
+                "dailyRentalRevenue": {
+                    "type": "number"
+                },
+                "membershipCount": {
+                    "type": "integer"
+                },
+                "membershipRevenue": {
                     "type": "number"
                 },
                 "totalBaseAmount": {
@@ -4963,6 +5609,12 @@ const docTemplate = `{
                 "RuleTypeHappyHour": "berlaku pada jam tertentu",
                 "RuleTypeMember": "khusus pelanggan member"
             },
+            "x-enum-descriptions": [
+                "berlaku untuk semua transaksi",
+                "berlaku pada jam tertentu",
+                "khusus pelanggan member",
+                "berlaku pada hari tertentu"
+            ],
             "x-enum-varnames": [
                 "RuleTypeAlways",
                 "RuleTypeHappyHour",
@@ -5368,6 +6020,9 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "dailyPrice": {
+                    "type": "number"
+                },
                 "description": {
                     "type": "string"
                 },
@@ -5375,6 +6030,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ipAddress": {
+                    "type": "string"
+                },
+                "lastSeenAt": {
                     "type": "string"
                 },
                 "macAddress": {
@@ -5385,6 +6043,13 @@ const docTemplate = `{
                 },
                 "pricePerHour": {
                     "type": "number"
+                },
+                "pricingTiers": {
+                    "description": "PricingTiers — tarif bertingkat (JSONB). Kosong/null = pakai pricePerHour flat.\nFormat: [{\"startMinute\":0,\"endMinute\":60,\"price\":9000},{\"startMinute\":60,\"endMinute\":null,\"price\":8000}]\nstartMinute: menit mulai tier (inklusif). endMinute: menit akhir (eksklusif), null=unlimited.\nprice: harga per JAM untuk tier tersebut.\nContoh di atas: jam pertama Rp 9000/jam, jam kedua dst Rp 8000/jam → 90 menit = Rp 9000 + Rp 4000 = Rp 13000",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.PricingTierEntry"
+                    }
                 },
                 "screenStatus": {
                     "$ref": "#/definitions/entity.ScreenStatus"
@@ -5420,55 +6085,7 @@ const docTemplate = `{
             }
         },
         "usecase.CreateConsoleRequest": {
-            "type": "object",
-            "required": [
-                "consoleType",
-                "name",
-                "pricePerHour"
-            ],
-            "properties": {
-                "adbPort": {
-                    "type": "integer",
-                    "example": 5555
-                },
-                "consoleType": {
-                    "description": "Tipe konsol: PS3, PS4, PS5, AndroidTV, Switch, atau lainnya",
-                    "maxLength": 50,
-                    "minLength": 2,
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/entity.ConsoleType"
-                        }
-                    ],
-                    "example": "Switch"
-                },
-                "description": {
-                    "type": "string",
-                    "example": "TV 43 inch ruang A"
-                },
-                "ipAddress": {
-                    "description": "Alamat IP TV Android (wajib untuk AndroidTV)",
-                    "type": "string",
-                    "maxLength": 50,
-                    "example": "192.168.1.101"
-                },
-                "macAddress": {
-                    "type": "string",
-                    "maxLength": 20,
-                    "example": "AA:BB:CC:DD:EE:FF"
-                },
-                "name": {
-                    "description": "Nama tampilan konsol, contoh: \"TV 01\"",
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 2,
-                    "example": "TV 01"
-                },
-                "pricePerHour": {
-                    "type": "number",
-                    "example": 10000
-                }
-            }
+            "type": "object"
         },
         "usecase.CreateCustomerRequest": {
             "type": "object",
@@ -5478,6 +6095,21 @@ const docTemplate = `{
             ],
             "properties": {
                 "email": {
+                    "type": "string"
+                },
+                "isMember": {
+                    "type": "boolean"
+                },
+                "membershipExpiry": {
+                    "type": "string"
+                },
+                "membershipPrice": {
+                    "type": "number"
+                },
+                "membershipStart": {
+                    "type": "string"
+                },
+                "membershipType": {
                     "type": "string"
                 },
                 "name": {
@@ -5734,10 +6366,11 @@ const docTemplate = `{
                     "example": "HPH3"
                 },
                 "discountType": {
-                    "description": "Tipe diskon: \"percentage\" (persen) atau \"fixed_amount\" (nominal Rp)",
+                    "description": "Tipe diskon: \"percentage\" (persen), \"fixed_amount\" (nominal Rp), \"free_days\" (gratis N hari, khusus rental harian)",
                     "enum": [
                         "percentage",
-                        "fixed_amount"
+                        "fixed_amount",
+                        "free_days"
                     ],
                     "allOf": [
                         {
@@ -5747,7 +6380,7 @@ const docTemplate = `{
                     "example": "fixed_amount"
                 },
                 "discountValue": {
-                    "description": "Nilai diskon: jika percentage maka 0-100, jika fixed_amount maka nominal Rp",
+                    "description": "Nilai diskon: jika percentage maka 0-100, jika fixed_amount maka nominal Rp, jika free_days maka jumlah hari gratis (1,2,3...)",
                     "type": "number",
                     "example": 24000
                 },
@@ -5917,74 +6550,27 @@ const docTemplate = `{
             }
         },
         "usecase.UpdateConsoleRequest": {
-            "type": "object",
-            "properties": {
-                "adbPort": {
-                    "type": "integer"
-                },
-                "consoleType": {
-                    "maxLength": 50,
-                    "minLength": 2,
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/entity.ConsoleType"
-                        }
-                    ],
-                    "example": "Switch"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "ipAddress": {
-                    "type": "string",
-                    "maxLength": 50,
-                    "example": "192.168.1.101"
-                },
-                "macAddress": {
-                    "type": "string",
-                    "maxLength": 20
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 2,
-                    "example": "TV 01"
-                },
-                "pricePerHour": {
-                    "type": "number",
-                    "example": 10000
-                },
-                "screenStatus": {
-                    "enum": [
-                        "on",
-                        "off",
-                        "screensaver"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/entity.ScreenStatus"
-                        }
-                    ]
-                },
-                "status": {
-                    "enum": [
-                        "available",
-                        "in_use",
-                        "maintenance"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/entity.ConsoleStatus"
-                        }
-                    ],
-                    "example": "available"
-                }
-            }
+            "type": "object"
         },
         "usecase.UpdateCustomerRequest": {
             "type": "object",
             "properties": {
                 "email": {
+                    "type": "string"
+                },
+                "isMember": {
+                    "type": "boolean"
+                },
+                "membershipExpiry": {
+                    "type": "string"
+                },
+                "membershipPrice": {
+                    "type": "number"
+                },
+                "membershipStart": {
+                    "type": "string"
+                },
+                "membershipType": {
                     "type": "string"
                 },
                 "name": {
@@ -6154,10 +6740,11 @@ const docTemplate = `{
                     "example": "HPH3"
                 },
                 "discountType": {
-                    "description": "Tipe diskon: \"percentage\" atau \"fixed_amount\"",
+                    "description": "Tipe diskon: \"percentage\", \"fixed_amount\", \"free_days\"",
                     "enum": [
                         "percentage",
-                        "fixed_amount"
+                        "fixed_amount",
+                        "free_days"
                     ],
                     "allOf": [
                         {

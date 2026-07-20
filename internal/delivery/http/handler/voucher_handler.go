@@ -89,7 +89,7 @@ func (h *VoucherHandler) GetByCode(c *fiber.Ctx) error {
 
 // Create godoc
 // @Summary      Buat voucher baru
-// @Description  Membuat voucher diskon baru.\n\n**Nilai discountType yang valid:**\n- `percentage` — diskon persen dari total (discountValue = 0–100)\n- `fixed_amount` — diskon nominal Rp tetap\n\n**Format expiresAt:** RFC3339/ISO8601, contoh `2026-06-26T00:00:00Z`. Kirim `null` jika tidak ada batas waktu.\n\nKode otomatis diubah ke UPPERCASE.
+// @Description  Membuat voucher diskon baru.\n\n**Nilai discountType yang valid:**\n- `percentage` — diskon persen dari total (discountValue = 0–100)\n- `fixed_amount` — diskon nominal Rp tetap\n- `free_days` — gratis N hari untuk rental harian (discountValue = jumlah hari)\n\n**Format expiresAt:** RFC3339/ISO8601, contoh `2026-06-26T00:00:00Z`. Kirim `null` jika tidak ada batas waktu.\n\nKode otomatis diubah ke UPPERCASE.
 // @Tags         Voucher
 // @Accept       json
 // @Produce      json

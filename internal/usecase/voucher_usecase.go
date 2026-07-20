@@ -38,9 +38,9 @@ type CreateVoucherRequest struct {
 	Code string `json:"code" validate:"required,min=3,max=50" example:"HPH3"`
 	// Nama deskriptif voucher
 	Name string `json:"name" validate:"required,min=3,max=150" example:"Happy Hours 3 Jam"`
-	// Tipe diskon: "percentage" (persen) atau "fixed_amount" (nominal Rp)
-	DiscountType entity.DiscountType `json:"discountType" validate:"required,oneof=percentage fixed_amount" enums:"percentage,fixed_amount" example:"fixed_amount"`
-	// Nilai diskon: jika percentage maka 0-100, jika fixed_amount maka nominal Rp
+	// Tipe diskon: "percentage" (persen), "fixed_amount" (nominal Rp), "free_days" (gratis N hari, khusus rental harian)
+	DiscountType entity.DiscountType `json:"discountType" validate:"required,oneof=percentage fixed_amount free_days" enums:"percentage,fixed_amount,free_days" example:"fixed_amount"`
+	// Nilai diskon: jika percentage maka 0-100, jika fixed_amount maka nominal Rp, jika free_days maka jumlah hari gratis (1,2,3...)
 	DiscountValue float64 `json:"discountValue" validate:"required,gt=0" example:"24000"`
 	// Minimal total belanja sebelum voucher berlaku (0 = tidak ada minimum)
 	MinPurchase float64 `json:"minPurchase" validate:"gte=0" example:"24000"`
@@ -56,8 +56,8 @@ type CreateVoucherRequest struct {
 type UpdateVoucherRequest struct {
 	Code          string              `json:"code"          validate:"omitempty,min=3,max=50"          example:"HPH3"`
 	Name          string              `json:"name"          validate:"omitempty,min=3,max=150"         example:"Happy Hours 3 Jam"`
-	// Tipe diskon: "percentage" atau "fixed_amount"
-	DiscountType  entity.DiscountType `json:"discountType"  validate:"omitempty,oneof=percentage fixed_amount" enums:"percentage,fixed_amount" example:"fixed_amount"`
+	// Tipe diskon: "percentage", "fixed_amount", "free_days"
+	DiscountType  entity.DiscountType `json:"discountType"  validate:"omitempty,oneof=percentage fixed_amount free_days" enums:"percentage,fixed_amount,free_days" example:"fixed_amount"`
 	DiscountValue float64             `json:"discountValue" validate:"omitempty,gt=0"                   example:"24000"`
 	MinPurchase   *float64            `json:"minPurchase"   validate:"omitempty,gte=0"`
 	MaxDiscount   *float64            `json:"maxDiscount"   validate:"omitempty,gte=0"`
@@ -97,6 +97,12 @@ func (uc *voucherUseCase) CreateVoucher(ctx context.Context, req *CreateVoucherR
 	// Validasi: diskon persentase harus 1-100
 	if req.DiscountType == entity.DiscountTypePercentage && req.DiscountValue > 100 {
 		return nil, errors.New("diskon persentase tidak boleh melebihi 100%")
+	}
+	// Validasi: free_days harus bilangan bulat minimal 1
+	if req.DiscountType == entity.DiscountTypeFreeDays {
+		if req.DiscountValue != float64(int(req.DiscountValue)) || req.DiscountValue < 1 {
+			return nil, errors.New("nilai free_days harus bilangan bulat minimal 1 (jumlah hari gratis)")
+		}
 	}
 
 	// Cek duplikasi kode
@@ -154,6 +160,11 @@ func (uc *voucherUseCase) UpdateVoucher(ctx context.Context, id uuid.UUID, req *
 	if req.DiscountValue > 0 {
 		if voucher.DiscountType == entity.DiscountTypePercentage && req.DiscountValue > 100 {
 			return nil, errors.New("diskon persentase tidak boleh melebihi 100%")
+		}
+		if voucher.DiscountType == entity.DiscountTypeFreeDays {
+			if req.DiscountValue != float64(int(req.DiscountValue)) || req.DiscountValue < 1 {
+				return nil, errors.New("nilai free_days harus bilangan bulat minimal 1 (jumlah hari gratis)")
+			}
 		}
 		voucher.DiscountValue = req.DiscountValue
 	}

@@ -121,10 +121,14 @@ func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string
 		VoucherUsageCount int64           `gorm:"column:voucher_usage_count"`
 		TotalCashReceived float64         `gorm:"column:total_cash_received"`
 		TotalChange       float64         `gorm:"column:total_change"`
+		DailyRentalRevenue float64        `gorm:"column:daily_rental_revenue"`
+		DailyRentalCount  int64           `gorm:"column:daily_rental_count"`
+		MembershipRevenue float64         `gorm:"column:membership_revenue"`
+		MembershipCount   int64           `gorm:"column:membership_count"`
 		ActiveSessions    int             `gorm:"column:active_sessions"`
 		AvailableConsoles int             `gorm:"column:available_consoles"`
-		TotalConsoles     int     `gorm:"column:total_consoles"`
-		VoucherDetailsRaw []byte  `gorm:"column:voucher_details;type:jsonb"`
+		TotalConsoles     int             `gorm:"column:total_consoles"`
+		VoucherDetailsRaw []byte          `gorm:"column:voucher_details;type:jsonb"`
 	}
 
 	var result spResult
@@ -148,20 +152,24 @@ func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string
 	}
 
 	summary := &entity.DashboardSummary{
-		Date:              date,
-		TotalRevenue:      result.TotalRevenue,
-		TotalBaseAmount:   result.TotalBaseAmount,
-		TotalTransactions: result.TotalTransactions,
-		TotalDiscount:     result.TotalDiscount,
-		TotalAutoDiscount: result.TotalAutoDiscount,
-		VoucherUsageCount: result.VoucherUsageCount,
-		TotalCashReceived: result.TotalCashReceived,
-		TotalChange:       result.TotalChange,
-		ActiveSessions:    result.ActiveSessions,
-		AvailableConsoles: result.AvailableConsoles,
-		TotalConsoles:     result.TotalConsoles,
-		VoucherDetails:    voucherDetails,
-		GeneratedAt:       time.Now(),
+		Date:               date,
+		TotalRevenue:       result.TotalRevenue,
+		TotalBaseAmount:    result.TotalBaseAmount,
+		TotalTransactions:  result.TotalTransactions,
+		TotalDiscount:      result.TotalDiscount,
+		TotalAutoDiscount:  result.TotalAutoDiscount,
+		VoucherUsageCount:  result.VoucherUsageCount,
+		TotalCashReceived:  result.TotalCashReceived,
+		TotalChange:        result.TotalChange,
+		DailyRentalRevenue: result.DailyRentalRevenue,
+		DailyRentalCount:   result.DailyRentalCount,
+		MembershipRevenue:  result.MembershipRevenue,
+		MembershipCount:    result.MembershipCount,
+		ActiveSessions:     result.ActiveSessions,
+		AvailableConsoles:  result.AvailableConsoles,
+		TotalConsoles:      result.TotalConsoles,
+		VoucherDetails:     voucherDetails,
+		GeneratedAt:        time.Now(),
 	}
 
 	return summary, nil
