@@ -32,6 +32,7 @@ type Handlers struct {
 	Notify    *handler.NotificationHandler
 	Rental    *handler.RentalHandler
 	Settings  *handler.SettingsHandler
+	Activity  *handler.ActivityHandler
 	Hub       *wsHandler.Hub
 }
 
@@ -100,6 +101,10 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	reports := protected.Group("/reports")
 	reports.Get("/summary", h.Report.GetSummary)
 
+	// Activity routes — realtime activity feed
+	activities := protected.Group("/activities")
+	activities.Get("/recent", h.Activity.GetRecentActivities)
+
 	// Notification routes — CRUD admin only
 	notifications := protected.Group("/notifications", middleware.AdminOnly())
 	notifications.Post("/", h.Notify.CreateNotification)
@@ -165,6 +170,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 
 	// Payment routes
 	payments := protected.Group("/payments")
+	payments.Get("/pending", h.Payment.GetPendingExtensions) // list pending extend payments — HARUS sebelum /:id
 	payments.Get("/:id", h.Payment.GetByID)
 	payments.Post("/", h.Payment.Create)
 	payments.Patch("/:id/refund", h.Payment.Refund)

@@ -20,6 +20,7 @@ const (
 	EventSessionStarted   EventType = "SESSION_STARTED"
 	EventSessionEnded     EventType = "SESSION_ENDED"
 	EventSessionCancelled EventType = "SESSION_CANCELLED"
+	EventSessionExtended  EventType = "SESSION_EXTENDED"
 	EventPaymentCreated   EventType = "PAYMENT_CREATED"
 	EventPaymentConfirmed EventType = "PAYMENT_CONFIRMED"
 	EventPaymentRefunded  EventType = "PAYMENT_REFUNDED"

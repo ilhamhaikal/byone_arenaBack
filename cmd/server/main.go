@@ -138,6 +138,7 @@ func main() {
 		Notify:    handler.NewNotificationHandler(db, hub, consoleUC, validate),
 		Rental:    handler.NewRentalHandler(db, validate),
 		Settings:  handler.NewSettingsHandler(db, validate),
+		Activity:  handler.NewActivityHandler(db),
 		Hub:       hub,
 	}
 

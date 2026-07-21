@@ -847,24 +847,42 @@ definitions:
       voucherName:
         type: string
     type: object
+  handler.ActivityItem:
+    properties:
+      action:
+        type: string
+      detail:
+        type: string
+      timestamp:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+    type: object
   handler.ExtendSessionRequest:
     properties:
       additionalMinutes:
-        example: 60
-        minimum: 30
+        example: 120
+        minimum: 1
         type: integer
       cashReceived:
-        example: 20000
+        description: wajib jika payNow=true
+        example: 50000
+        minimum: 0
         type: number
       notes:
-        example: Tambah 1 jam
+        example: Tambah 2 jam
         type: string
+      payNow:
+        description: true = langsung bayar, false = tunda bayar
+        example: true
+        type: boolean
       voucherCode:
         example: ""
         type: string
     required:
     - additionalMinutes
-    - cashReceived
     type: object
   response.ErrorResponse:
     properties:
@@ -1264,10 +1282,10 @@ definitions:
   usecase.StartSessionRequest:
     properties:
       bookedDurationMinutes:
-        description: 'Durasi yang dipesan dalam menit. Minimal 30 menit. Kelipatan
-          bebas. Contoh: 30, 60, 90, 120'
-        example: 90
-        minimum: 30
+        description: 'Durasi yang dipesan dalam menit. Minimal 1 menit. Contoh: 1,
+          30, 60, 90'
+        example: 30
+        minimum: 1
         type: integer
       cashReceived:
         description: Uang tunai yang diberikan pelanggan di depan (harus >= harga
@@ -1476,6 +1494,34 @@ info:
   title: Byone Arena API
   version: "1.0"
 paths:
+  /api/v1/activities/recent:
+    get:
+      description: 'Mengembalikan aktivitas terbaru: perubahan konsol, harga, sesi,
+        rental, membership, pembayaran. `?limit=10` (default 10, max 50).'
+      parameters:
+      - description: Jumlah data (default 10, max 50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/handler.ActivityItem'
+                  type: array
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Aktivitas terbaru (realtime)
+      tags:
+      - Aktivitas
   /api/v1/auth/login:
     post:
       consumes:
@@ -1837,7 +1883,7 @@ paths:
         name: id
         required: true
         type: string
-      - description: Durasi (menit), minimal 30
+      - description: Durasi (menit), minimal 1
         in: query
         name: duration
         required: true
@@ -3371,6 +3417,22 @@ paths:
       summary: Proses refund pembayaran
       tags:
       - Pembayaran
+  /api/v1/payments/pending:
+    get:
+      description: Mengembalikan semua payment pending dari extend session. Frontend
+        polling ini untuk menampilkan alert.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List pembayaran extend yang belum dibayar (admin)
+      tags:
+      - Pembayaran
   /api/v1/reports/summary:
     get:
       description: 'Mengembalikan laporan lengkap: pendapatan, penggunaan voucher,
@@ -3548,9 +3610,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Menambah durasi sewa untuk sesi yang sedang aktif. Membuat pembayaran
-        baru dengan status **pending** — admin harus konfirmasi via `POST /payments/:id/confirm`.\n\nMinimal
-        tambahan 30 menit. Voucher opsional.
+      description: Menambah durasi sewa untuk sesi yang sedang aktif.\n//\n**payNow:**\n-
+        `true` — langsung bayar (cashReceived wajib > 0, status PAID)\n- `false` —
+        tunda bayar (cashReceived opsional, status PENDING)\n//\nMinimal tambahan
+        1 menit. Voucher opsional.
       parameters:
       - description: Session ID
         in: path

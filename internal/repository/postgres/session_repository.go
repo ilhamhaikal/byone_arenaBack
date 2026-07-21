@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
@@ -133,21 +134,21 @@ func (r *sessionRepository) Create(ctx context.Context, session *entity.Session)
 func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string) (*entity.Payment, error) {
 	type spResult struct {
 		// sesi
-		SessionID           uuid.UUID   `gorm:"column:session_id"`
-		SessionStatus       string      `gorm:"column:session_status"`
-		SessionStartTime    interface{} `gorm:"column:session_start_time"`
-		SessionBookedMin    int         `gorm:"column:session_booked_minutes"`
-		SessionEndScheduled interface{} `gorm:"column:session_end_scheduled"`
+		SessionID           uuid.UUID  `gorm:"column:session_id"`
+		SessionStatus       string     `gorm:"column:session_status"`
+		SessionStartTime    *time.Time `gorm:"column:session_start_time"`
+		SessionBookedMin    int        `gorm:"column:session_booked_minutes"`
+		SessionEndScheduled *time.Time `gorm:"column:session_end_scheduled"`
 		// pembayaran
-		PaymentID           uuid.UUID   `gorm:"column:payment_id"`
-		BaseAmount          float64     `gorm:"column:base_amount"`
-		DiscountAmount      float64     `gorm:"column:discount_amount"`
-		AutoDiscountAmount  float64     `gorm:"column:auto_discount_amount"`
-		TotalPayment        float64     `gorm:"column:total_payment"`
-		CashReceived        float64     `gorm:"column:cash_received"`
-		ChangeAmount        float64     `gorm:"column:change_amount"`
-		VoucherID           *uuid.UUID  `gorm:"column:voucher_id"`
-		PaidAt              interface{} `gorm:"column:paid_at"`
+		PaymentID           uuid.UUID  `gorm:"column:payment_id"`
+		BaseAmount          float64    `gorm:"column:base_amount"`
+		DiscountAmount      float64    `gorm:"column:discount_amount"`
+		AutoDiscountAmount  float64    `gorm:"column:auto_discount_amount"`
+		TotalPayment        float64    `gorm:"column:total_payment"`
+		CashReceived        float64    `gorm:"column:cash_received"`
+		ChangeAmount        float64    `gorm:"column:change_amount"`
+		VoucherID           *uuid.UUID `gorm:"column:voucher_id"`
+		PaidAt              *time.Time `gorm:"column:paid_at"`
 	}
 
 	var result spResult

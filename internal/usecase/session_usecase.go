@@ -38,8 +38,8 @@ func NewSessionUseCase(sessionRepo repository.SessionRepository, consoleRepo rep
 type StartSessionRequest struct {
 	ConsoleID uuid.UUID  `json:"consoleId"  validate:"required"   example:"550e8400-e29b-41d4-a716-446655440000"`
 	CustomerID *uuid.UUID `json:"customerId"                        example:"550e8400-e29b-41d4-a716-446655440001"` // opsional, walk-in tidak perlu
-	// Durasi yang dipesan dalam menit. Minimal 30 menit. Kelipatan bebas. Contoh: 30, 60, 90, 120
-	BookedDurationMinutes int `json:"bookedDurationMinutes" validate:"required,min=30" example:"90"`
+	// Durasi yang dipesan dalam menit. Minimal 1 menit. Contoh: 1, 30, 60, 90
+	BookedDurationMinutes int `json:"bookedDurationMinutes" validate:"required,min=1" example:"30"`
 	// Uang tunai yang diberikan pelanggan di depan (harus >= harga setelah diskon)
 	CashReceived float64 `json:"cashReceived" validate:"required,gt=0" example:"25000"`
 	// Kode voucher diskon (opsional)

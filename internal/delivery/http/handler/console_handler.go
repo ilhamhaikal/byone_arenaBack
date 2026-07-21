@@ -196,7 +196,7 @@ func (h *ConsoleHandler) GetOverview(c *fiber.Ctx) error {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        id           path      string  true   "Console ID"
-// @Param        duration     query     int     true   "Durasi (menit), minimal 30"
+// @Param        duration     query     int     true   "Durasi (menit), minimal 1"
 // @Param        voucherCode  query     string  false  "Kode voucher (opsional)"
 // @Param        customerId   query     string  false  "Customer ID (opsional, untuk cek member)"
 // @Success      200  {object}  response.Response
@@ -210,8 +210,8 @@ func (h *ConsoleHandler) PreviewPrice(c *fiber.Ctx) error {
 	}
 
 	duration := c.QueryInt("duration", 0)
-	if duration < 30 {
-		return response.BadRequest(c, "Durasi minimal 30 menit")
+	if duration < 1 {
+		return response.BadRequest(c, "Durasi minimal 1 menit")
 	}
 
 	voucherCode := c.Query("voucherCode", "")

@@ -2,9 +2,11 @@ package handler
 
 import (
 	"byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/validator"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -156,7 +158,7 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 	type spResult struct {
 		PaymentID     uuid.UUID  `gorm:"column:payment_id"`
 		PaymentStatus string     `gorm:"column:payment_status"`
-		PaidAt        interface{} `gorm:"column:paid_at"`
+		PaidAt        *time.Time `gorm:"column:paid_at"`
 	}
 
 	var result spResult
@@ -172,6 +174,28 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 		"paymentId": result.PaymentID,
 		"status":    result.PaymentStatus,
 		"paidAt":    result.PaidAt,
+	})
+}
+
+// GetPendingExtensions godoc
+// @Summary      List pembayaran extend yang belum dibayar (admin)
+// @Description  Mengembalikan semua payment pending dari extend session. Frontend polling ini untuk menampilkan alert.
+// @Tags         Pembayaran
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  response.Response
+// @Router       /api/v1/payments/pending [get]
+func (h *PaymentHandler) GetPendingExtensions(c *fiber.Ctx) error {
+	var list []entity.Payment
+	h.db.WithContext(c.Context()).
+		Preload("Session").Preload("Session.Console").
+		Where("payment_status = ?", entity.PaymentStatusPending).
+		Order("created_at DESC").
+		Find(&list)
+
+	return response.OK(c, "Data pembayaran pending", fiber.Map{
+		"pendingCount": len(list),
+		"payments":     list,
 	})
 }
 

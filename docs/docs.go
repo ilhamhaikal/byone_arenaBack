@@ -23,6 +23,54 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/activities/recent": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan aktivitas terbaru: perubahan konsol, harga, sesi, rental, membership, pembayaran. ` + "`" + `?limit=10` + "`" + ` (default 10, max 50).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Aktivitas"
+                ],
+                "summary": "Aktivitas terbaru (realtime)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Jumlah data (default 10, max 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/handler.ActivityItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/login": {
             "post": {
                 "description": "Autentikasi pengguna (admin, superadmin, kasir). Kasir hanya bisa login sesuai jadwal shift aktif.",
@@ -716,7 +764,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Durasi (menit), minimal 30",
+                        "description": "Durasi (menit), minimal 1",
                         "name": "duration",
                         "in": "query",
                         "required": true
@@ -2979,6 +3027,31 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/payments/pending": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan semua payment pending dari extend session. Frontend polling ini untuk menampilkan alert.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pembayaran"
+                ],
+                "summary": "List pembayaran extend yang belum dibayar (admin)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/payments/{id}": {
             "get": {
                 "security": [
@@ -3558,7 +3631,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Menambah durasi sewa untuk sesi yang sedang aktif. Membuat pembayaran baru dengan status **pending** — admin harus konfirmasi via ` + "`" + `POST /payments/:id/confirm` + "`" + `.\\n\\nMinimal tambahan 30 menit. Voucher opsional.",
+                "description": "Menambah durasi sewa untuk sesi yang sedang aktif.\\n//\\n**payNow:**\\n- ` + "`" + `true` + "`" + ` — langsung bayar (cashReceived wajib \u003e 0, status PAID)\\n- ` + "`" + `false` + "`" + ` — tunda bayar (cashReceived opsional, status PENDING)\\n//\\nMinimal tambahan 1 menit. Voucher opsional.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5923,25 +5996,51 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.ActivityItem": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "detail": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.ExtendSessionRequest": {
             "type": "object",
             "required": [
-                "additionalMinutes",
-                "cashReceived"
+                "additionalMinutes"
             ],
             "properties": {
                 "additionalMinutes": {
                     "type": "integer",
-                    "minimum": 30,
-                    "example": 60
+                    "minimum": 1,
+                    "example": 120
                 },
                 "cashReceived": {
+                    "description": "wajib jika payNow=true",
                     "type": "number",
-                    "example": 20000
+                    "minimum": 0,
+                    "example": 50000
                 },
                 "notes": {
                     "type": "string",
-                    "example": "Tambah 1 jam"
+                    "example": "Tambah 2 jam"
+                },
+                "payNow": {
+                    "description": "true = langsung bayar, false = tunda bayar",
+                    "type": "boolean",
+                    "example": true
                 },
                 "voucherCode": {
                     "type": "string",
@@ -6508,10 +6607,10 @@ const docTemplate = `{
             ],
             "properties": {
                 "bookedDurationMinutes": {
-                    "description": "Durasi yang dipesan dalam menit. Minimal 30 menit. Kelipatan bebas. Contoh: 30, 60, 90, 120",
+                    "description": "Durasi yang dipesan dalam menit. Minimal 1 menit. Contoh: 1, 30, 60, 90",
                     "type": "integer",
-                    "minimum": 30,
-                    "example": 90
+                    "minimum": 1,
+                    "example": 30
                 },
                 "cashReceived": {
                     "description": "Uang tunai yang diberikan pelanggan di depan (harus \u003e= harga setelah diskon)",
