@@ -712,26 +712,43 @@ const docTemplate = `{
         },
         "/api/v1/consoles/{id}/heartbeat": {
             "post": {
-                "description": "TV Android mengirim heartbeat untuk update status online. Tidak memerlukan autentikasi.",
+                "description": "TV Android mengirim heartbeat + status layar. ` + "`" + `screenStatus` + "`" + `: ` + "`" + `\"on\"` + "`" + ` / ` + "`" + `\"off\"` + "`" + ` / ` + "`" + `\"sleep\"` + "`" + ` / ` + "`" + `\"screensaver\"` + "`" + `. Jika screenStatus dikirim, log aktivitas TV dicatat otomatis. Tidak memerlukan autentikasi.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Konsol"
                 ],
-                "summary": "TV heartbeat (PUBLIK)",
+                "summary": "TV heartbeat (PUBLIK) + log aktivitas",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Console ID",
+                        "description": "Console ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Status layar TV: on, off, sleep, screensaver",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "screenStatus": {
+                                    "type": "string",
+                                    "enum": ["on", "off", "sleep", "screensaver"]
+                                }
+                            }
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "OK — mengembalikan logId, isAuthorized, sessionId, durationMin",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
                         }
@@ -830,6 +847,46 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/consoles/{id}/tv-logs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan log nyala/mati/sleep/screensaver TV beserta flag unauthorized. ` + "`" + `?date=YYYY-MM-DD` + "`" + ` untuk filter per hari. **` + "`" + `logs` + "`" + ` adalah array JSON asli, bukan string.**",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Konsol"
+                ],
+                "summary": "Log aktivitas TV per konsol",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Console ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Tanggal filter (YYYY-MM-DD), opsional",
+                        "name": "date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK — mengembalikan logs (array), unauthorizedCount, totalOnMinutes",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
                         }
@@ -5699,13 +5756,11 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "on",
-                "off",
-                "screensaver"
+                "off"
             ],
             "x-enum-varnames": [
                 "ScreenStatusOn",
-                "ScreenStatusOff",
-                "ScreenStatusScreensaver"
+                "ScreenStatusOff"
             ]
         },
         "entity.Session": {

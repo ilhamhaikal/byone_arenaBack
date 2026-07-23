@@ -160,15 +160,23 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 		"SELECT COUNT(*) as count FROM payments WHERE session_id = ? AND payment_status = 'pending'", id,
 	).Scan(&unpaidRow)
 
+	consoleIDStr := session.ConsoleID.String()
+
 	if unpaidRow.Count > 0 {
 		// Insert notifikasi: ada perpanjangan yg belum dibayar
-		consoleIDStr := session.ConsoleID.String()
 		h.db.WithContext(c.Context()).Exec(`
 			INSERT INTO tv_notifications (id, title, message, target_all, target_console_ids, active_sessions_only, loop_enabled, is_active, priority, created_at, updated_at)
 			VALUES (uuid_generate_v4(), 'Pembayaran Tertunda', ?, false, ?, false, false, true, 'high', NOW(), NOW())
 		`, fmt.Sprintf("Unit %s memiliki %d perpanjangan sesi yang belum dibayar. Segera konfirmasi pembayaran.", session.Console.Name, unpaidRow.Count),
 			fmt.Sprintf(`["%s"]`, consoleIDStr))
 	}
+
+	// Cleanup notifikasi "Sesi Diperpanjang" — sudah tidak relevan setelah sesi berakhir
+	h.db.WithContext(c.Context()).Exec(`
+		UPDATE tv_notifications SET is_active = false, updated_at = NOW()
+		WHERE title = 'Sesi Diperpanjang' AND is_active = true
+		AND target_console_ids::jsonb @> to_jsonb(?::TEXT)
+	`, consoleIDStr)
 
 	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionEnded, session))
 	// Auto-sleep TV
@@ -289,6 +297,12 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 
 	// Insert notifikasi untuk client polling
 	consoleIDStr := consoleID.String()
+	// Deactivate old "Sesi Diperpanjang" notif untuk console ini sebelum insert baru
+	h.db.WithContext(c.Context()).Exec(`
+		UPDATE tv_notifications SET is_active = false, updated_at = NOW()
+		WHERE title = 'Sesi Diperpanjang' AND is_active = true
+		AND target_console_ids::jsonb @> to_jsonb(?::TEXT)
+	`, consoleIDStr)
 	h.db.WithContext(c.Context()).Exec(`
 		INSERT INTO tv_notifications (id, title, message, target_all, target_console_ids, active_sessions_only, loop_enabled, is_active, priority, created_at, updated_at)
 		VALUES (uuid_generate_v4(), 'Sesi Diperpanjang', ?, false, ?, true, false, true, 'high', NOW(), NOW())

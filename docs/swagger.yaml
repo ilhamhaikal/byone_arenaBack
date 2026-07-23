@@ -644,12 +644,10 @@ definitions:
     enum:
     - "on"
     - "off"
-    - screensaver
     type: string
     x-enum-varnames:
     - ScreenStatusOn
     - ScreenStatusOff
-    - ScreenStatusScreensaver
   entity.Session:
     properties:
       bookedDurationMinutes:
@@ -1855,22 +1853,53 @@ paths:
       - Konsol
   /api/v1/consoles/{id}/heartbeat:
     post:
-      description: TV Android mengirim heartbeat untuk update status online. Tidak
-        memerlukan autentikasi.
+      consumes:
+      - application/json
+      description: 'TV Android mengirim heartbeat + status layar. `screenStatus`:
+        `"on"` / `"off"` / `"sleep"` / `"screensaver"`. Tidak memerlukan autentikasi.
+        Jika `screenStatus` dikirim, log aktivitas TV dicatat otomatis.'
       parameters:
-      - description: Console ID
+      - description: Console ID (UUID)
         in: path
         name: id
         required: true
         type: string
+      - description: Status layar TV
+        in: body
+        name: body
+        schema:
+          type: object
+          properties:
+            screenStatus:
+              type: string
+              enum: [on, off, sleep, screensaver]
+              description: Status layar TV saat ini
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/response.Response'
-      summary: TV heartbeat (PUBLIK)
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    logId:
+                      type: string
+                      description: ID log yang baru dibuat
+                    isAuthorized:
+                      type: boolean
+                      description: true jika ada sesi aktif
+                    sessionId:
+                      type: string
+                      description: ID sesi aktif (null jika unauthorized)
+                    durationMin:
+                      type: integer
+                      description: Durasi TV menyala (hanya event off/sleep/screensaver)
+      summary: TV heartbeat (PUBLIK) + log aktivitas
       tags:
       - Konsol
   /api/v1/consoles/{id}/price:
@@ -1936,6 +1965,72 @@ paths:
       summary: Matikan/sleep TV
       tags:
       - Kontrol TV
+  /api/v1/consoles/{id}/tv-logs:
+    get:
+      description: 'Mengembalikan log nyala/mati/sleep/screensaver TV beserta flag
+        unauthorized. `?date=YYYY-MM-DD` untuk filter per hari. **`logs` adalah array
+        JSON asli, bukan string.**'
+      parameters:
+      - description: Console ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Tanggal filter (YYYY-MM-DD), opsional
+        in: query
+        name: date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    logs:
+                      type: array
+                      description: Array log aktivitas TV (langsung array, bukan string JSON)
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            description: ID log
+                          event:
+                            type: string
+                            enum: [on, off, sleep, screensaver]
+                          isAuthorized:
+                            type: boolean
+                            description: TV menyala dengan sesi aktif?
+                          durationMinutes:
+                            type: integer
+                            description: Durasi dalam menit (null untuk event on)
+                          sessionId:
+                            type: string
+                            description: ID sesi terkait (null jika tidak ada)
+                          createdAt:
+                            type: string
+                            description: Timestamp UTC (ISO 8601)
+                          consoleName:
+                            type: string
+                            description: Nama konsol
+                    unauthorizedCount:
+                      type: integer
+                      description: Total event TV nyala tanpa sesi
+                    totalOnMinutes:
+                      type: integer
+                      description: Total menit TV menyala
+      security:
+      - BearerAuth: []
+      summary: Log aktivitas TV per konsol
+      tags:
+      - Konsol
   /api/v1/consoles/{id}/wake:
     post:
       parameters:

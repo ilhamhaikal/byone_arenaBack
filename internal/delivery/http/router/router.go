@@ -147,6 +147,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	// TV Control — admin only
 	consoles.Post("/:id/wake", middleware.AdminOnly(), h.Notify.WakeConsole)
 	consoles.Post("/:id/sleep", middleware.AdminOnly(), h.Notify.SleepConsole)
+	consoles.Get("/:id/tv-logs", h.Console.GetTvLogs) // log aktivitas TV
 
 	// Session routes
 	sessions := protected.Group("/sessions")

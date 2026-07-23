@@ -5,6 +5,7 @@ import (
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/validator"
+	"encoding/json"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -255,19 +256,129 @@ func (h *ConsoleHandler) PreviewPrice(c *fiber.Ctx) error {
 }
 
 // Heartbeat godoc
-// @Summary      TV heartbeat (PUBLIK)
-// @Description  TV Android mengirim heartbeat untuk update status online. Tidak memerlukan autentikasi.
+// @Summary      TV heartbeat (PUBLIK) + log aktivitas
+// @Description  TV Android mengirim heartbeat + status layar. `screenStatus`: `"on"` / `"off"` / `"sleep"` / `"screensaver"`. Jika screenStatus dikirim, log aktivitas TV dicatat otomatis. Tidak memerlukan autentikasi.
 // @Tags         Konsol
+// @Accept       json
 // @Produce      json
-// @Param        id   path  string  true  "Console ID"
-// @Success      200  {object}  response.Response
+// @Param        id    path  string  true  "Console ID (UUID)"
+// @Param        body  body  object  false  "{\"screenStatus\":\"on\"}"  "{\"screenStatus\": \"on\"}"
+// @Success      200   {object}  response.Response{data=object{logId=string,isAuthorized=bool,sessionId=string,durationMin=int}}
 // @Router       /api/v1/consoles/{id}/heartbeat [post]
 func (h *ConsoleHandler) Heartbeat(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
 		return response.BadRequest(c, "Format ID tidak valid")
 	}
+
+	// Update last_seen_at
 	h.db.WithContext(c.Context()).Model(&entity.Console{}).Where("id = ?", id).Update("last_seen_at", time.Now())
+
+	// Jika ada screenStatus, log aktivitas TV via SP
+	var body struct {
+		ScreenStatus string `json:"screenStatus"`
+	}
+	c.BodyParser(&body)
+
+	if body.ScreenStatus == "on" || body.ScreenStatus == "off" || body.ScreenStatus == "sleep" || body.ScreenStatus == "screensaver" {
+		type spResult struct {
+			LogID        uuid.UUID `gorm:"column:log_id"`
+			IsAuthorized bool      `gorm:"column:is_authorized"`
+			SessionID    *uuid.UUID `gorm:"column:session_id"`
+			DurationMin  *int      `gorm:"column:duration_minutes"`
+			Message      string    `gorm:"column:message"`
+		}
+		var result spResult
+		tx := h.db.WithContext(c.Context()).Raw(
+			`SELECT * FROM "byoneLogTvActivity"(?, ?)`, id, body.ScreenStatus,
+		).Scan(&result)
+
+		if tx.Error != nil {
+			return response.BadRequest(c, "Gagal mencatat log: "+tx.Error.Error())
+		}
+
+		return response.OK(c, result.Message, fiber.Map{
+			"logId":        result.LogID,
+			"isAuthorized": result.IsAuthorized,
+			"sessionId":    result.SessionID,
+			"durationMin":  result.DurationMin,
+		})
+	}
+
 	return response.OK(c, "ok", nil)
+}
+
+// GetTvLogs godoc
+// @Summary      Log aktivitas TV per konsol
+// @Description  Mengembalikan log nyala/mati/sleep/screensaver TV beserta flag unauthorized dan info sesi aktif. `?date=YYYY-MM-DD` untuk filter per hari. **`logs` adalah array JSON asli, bukan string.**
+// @Tags         Konsol
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id    path  string  true  "Console ID (UUID)"
+// @Param        date  query  string  false "Tanggal filter (YYYY-MM-DD), opsional"
+// @Success      200   {object}  response.Response{data=object{logs=array,unauthorizedCount=int,totalOnMinutes=int,activeSession=object}}
+// @Router       /api/v1/consoles/{id}/tv-logs [get]
+func (h *ConsoleHandler) GetTvLogs(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+
+	date := c.Query("date", "")
+
+	type spResult struct {
+		Logs               []byte `gorm:"column:logs;type:jsonb"`
+		UnauthorizedCount  int64  `gorm:"column:unauthorized_count"`
+		TotalOnMinutes     int64  `gorm:"column:total_on_minutes"`
+		ActiveSession      []byte `gorm:"column:active_session;type:jsonb"`
+		UnauthorizedLogs   []byte `gorm:"column:unauthorized_logs;type:jsonb"`
+	}
+	var result spResult
+	var tx *gorm.DB
+	if date != "" {
+		tx = h.db.WithContext(c.Context()).Raw(
+			`SELECT * FROM "byoneGetTvLogs"(?, ?::DATE)`, id, date,
+		).Scan(&result)
+	} else {
+		tx = h.db.WithContext(c.Context()).Raw(
+			`SELECT * FROM "byoneGetTvLogs"(?)`, id,
+		).Scan(&result)
+	}
+
+	if tx.Error != nil {
+		return response.BadRequest(c, "Gagal mengambil log: "+tx.Error.Error())
+	}
+
+	// Parse JSONB bytes jadi proper JSON (bukan string)
+	var logsJSON interface{}
+	if len(result.Logs) > 0 {
+		if err := json.Unmarshal(result.Logs, &logsJSON); err != nil {
+			logsJSON = []interface{}{}
+		}
+	} else {
+		logsJSON = []interface{}{}
+	}
+
+	var sessionJSON interface{}
+	if len(result.ActiveSession) > 0 && string(result.ActiveSession) != "null" {
+		json.Unmarshal(result.ActiveSession, &sessionJSON)
+	}
+
+	var unauthLogsJSON interface{}
+	if len(result.UnauthorizedLogs) > 0 {
+		if err := json.Unmarshal(result.UnauthorizedLogs, &unauthLogsJSON); err != nil {
+			unauthLogsJSON = []interface{}{}
+		}
+	} else {
+		unauthLogsJSON = []interface{}{}
+	}
+
+	return response.OK(c, "Log aktivitas TV", fiber.Map{
+		"logs":                 logsJSON,
+		"unauthorizedCount":    result.UnauthorizedCount,
+		"totalOnMinutes":       result.TotalOnMinutes,
+		"activeSession":        sessionJSON,
+		"unauthorizedLogs":     unauthLogsJSON,
+	})
 }
 

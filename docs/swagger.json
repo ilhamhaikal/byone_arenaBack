@@ -706,28 +706,62 @@
         },
         "/api/v1/consoles/{id}/heartbeat": {
             "post": {
-                "description": "TV Android mengirim heartbeat untuk update status online. Tidak memerlukan autentikasi.",
+                "description": "TV Android mengirim heartbeat + status layar. `screenStatus`: `\"on\"` / `\"off\"` / `\"sleep\"` / `\"screensaver\"`. Tidak memerlukan autentikasi. Jika `screenStatus` dikirim, log aktivitas TV akan dicatat otomatis.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Konsol"
                 ],
-                "summary": "TV heartbeat (PUBLIK)",
+                "summary": "TV heartbeat (PUBLIK) + log aktivitas",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Console ID",
+                        "description": "Console ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Status layar TV",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "screenStatus": {
+                                    "type": "string",
+                                    "enum": ["on", "off", "sleep", "screensaver"],
+                                    "description": "Status layar TV saat ini"
+                                }
+                            }
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                { "$ref": "#/definitions/response.Response" },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "logId": { "type": "string", "description": "ID log yang baru dibuat" },
+                                                "isAuthorized": { "type": "boolean", "description": "true jika ada sesi aktif" },
+                                                "sessionId": { "type": "string", "description": "ID sesi aktif (null jika unauthorized)" },
+                                                "durationMin": { "type": "integer", "description": "Durasi TV menyala (hanya untuk event off/sleep/screensaver)" }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -826,6 +860,88 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/consoles/{id}/tv-logs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan log nyala/mati/sleep/screensaver TV beserta flag unauthorized dan info sesi aktif. `?date=YYYY-MM-DD` untuk filter per hari. **`logs` adalah array JSON asli, bukan string.**",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Konsol"
+                ],
+                "summary": "Log aktivitas TV per konsol",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Console ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Tanggal filter (YYYY-MM-DD), opsional",
+                        "name": "date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                { "$ref": "#/definitions/response.Response" },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "logs": {
+                                                    "type": "array",
+                                                    "description": "Array log aktivitas TV (langsung array, bukan string JSON)",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "id": { "type": "string", "description": "ID log" },
+                                                            "event": { "type": "string", "enum": ["on", "off", "sleep", "screensaver"] },
+                                                            "isAuthorized": { "type": "boolean", "description": "TV menyala dengan sesi aktif?" },
+                                                            "durationMinutes": { "type": "integer", "description": "Durasi dalam menit (null untuk event on)" },
+                                                            "sessionId": { "type": "string", "description": "ID sesi terkait (null jika tidak ada)" },
+                                                            "createdAt": { "type": "string", "description": "Timestamp UTC (ISO 8601)" },
+                                                            "consoleName": { "type": "string", "description": "Nama konsol" }
+                                                        }
+                                                    }
+                                                },
+                                                "unauthorizedCount": { "type": "integer", "description": "Total event TV nyala tanpa sesi" },
+                                                "totalOnMinutes": { "type": "integer", "description": "Total menit TV menyala" },
+                                                "activeSession": {
+                                                    "type": "object",
+                                                    "description": "Info sesi aktif saat ini (null jika tidak ada sesi)",
+                                                    "properties": {
+                                                        "sessionId": { "type": "string" },
+                                                        "startTime": { "type": "string", "description": "Waktu mulai sesi" },
+                                                        "bookedMinutes": { "type": "integer", "description": "Durasi yang dibooking" },
+                                                        "runningMinutes": { "type": "number", "description": "Durasi berjalan (menit)" },
+                                                        "status": { "type": "string" },
+                                                        "customerName": { "type": "string", "description": "Nama pelanggan (opsional)" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -5693,13 +5809,11 @@
             "type": "string",
             "enum": [
                 "on",
-                "off",
-                "screensaver"
+                "off"
             ],
             "x-enum-varnames": [
                 "ScreenStatusOn",
-                "ScreenStatusOff",
-                "ScreenStatusScreensaver"
+                "ScreenStatusOff"
             ]
         },
         "entity.Session": {

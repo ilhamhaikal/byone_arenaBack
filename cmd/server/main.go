@@ -42,7 +42,37 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
+
+// cleanupStaleNotifications membersihkan notifikasi yang sudah tidak relevan saat server start
+func cleanupStaleNotifications(db *gorm.DB, log *zap.Logger) {
+	// 1. "Sesi Diperpanjang" — notifikasi transient, cleanup semua yang masih aktif
+	result := db.Exec(`
+		UPDATE tv_notifications SET is_active = false, updated_at = NOW()
+		WHERE title = 'Sesi Diperpanjang' AND is_active = true
+	`)
+	if result.Error != nil {
+		log.Warn("Gagal cleanup notifikasi Sesi Diperpanjang", zap.Error(result.Error))
+	} else if result.RowsAffected > 0 {
+		log.Info("Cleanup notifikasi stale", zap.Int64("sesi_diperpanjang", result.RowsAffected))
+	}
+
+	// 2. "Pembayaran Tertunda" untuk sesi yang sudah tidak aktif
+	result2 := db.Exec(`
+		UPDATE tv_notifications n SET is_active = false, updated_at = NOW()
+		FROM sessions s
+		WHERE n.title = 'Pembayaran Tertunda'
+		  AND n.is_active = true
+		  AND n.target_console_ids::jsonb @> to_jsonb(s.console_id::TEXT)
+		  AND s.status != 'active'
+	`)
+	if result2.Error != nil {
+		log.Warn("Gagal cleanup notifikasi Pembayaran Tertunda", zap.Error(result2.Error))
+	} else if result2.RowsAffected > 0 {
+		log.Info("Cleanup notifikasi pembayaran tertunda stale", zap.Int64("count", result2.RowsAffected))
+	}
+}
 
 func main() {
 	// Load konfigurasi
@@ -74,6 +104,9 @@ func main() {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 	log.Info("Koneksi database berhasil")
+
+	// Cleanup stale notifikasi saat startup
+	cleanupStaleNotifications(db, log)
 
 	// Inisialisasi validator
 	validate := appValidator.New()

@@ -28,8 +28,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # =============================================
 FROM alpine:3.19 AS runner
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata curl
+# Install runtime dependencies (termasuk psql untuk migrasi)
+RUN apk add --no-cache ca-certificates tzdata curl postgresql-client
 
 # Set timezone ke WIB (Asia/Jakarta)
 ENV TZ=Asia/Jakarta
@@ -43,11 +43,12 @@ WORKDIR /app
 # Copy binary dari builder
 COPY --from=builder /app/byone-arena .
 
-# Copy migrations
+# Copy migrations + entrypoint
 COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/docker-entrypoint.sh .
 
 # Ubah kepemilikan file
-RUN chown -R appuser:appgroup /app
+RUN chown -R appuser:appgroup /app && chmod +x docker-entrypoint.sh
 
 # Switch ke user non-root
 USER appuser
@@ -55,7 +56,7 @@ USER appuser
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-ENTRYPOINT ["./byone-arena"]
+ENTRYPOINT ["./docker-entrypoint.sh"]

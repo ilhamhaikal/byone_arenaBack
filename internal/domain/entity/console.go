@@ -30,9 +30,8 @@ const (
 type ScreenStatus string
 
 const (
-	ScreenStatusOn         ScreenStatus = "on"
-	ScreenStatusOff        ScreenStatus = "off"
-	ScreenStatusScreensaver ScreenStatus = "screensaver"
+	ScreenStatusOn  ScreenStatus = "on"
+	ScreenStatusOff ScreenStatus = "off"
 )
 
 // Console merepresentasikan unit konsol / TV Android yang tersedia untuk disewa

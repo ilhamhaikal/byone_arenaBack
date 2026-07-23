@@ -275,7 +275,7 @@ func (h *NotificationHandler) SleepConsole(c *fiber.Ctx) error {
 		"ipAddress": console.IPAddress,
 	}))
 
-	h.db.Model(&entity.Console{}).Where("id = ?", id).Update("screen_status", entity.ScreenStatusScreensaver)
+	h.db.Model(&entity.Console{}).Where("id = ?", id).Update("screen_status", entity.ScreenStatusOff)
 
 	return response.OK(c, "Perintah sleep dikirim ke TV", nil)
 }

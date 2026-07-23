@@ -14,7 +14,8 @@ services:
       PGTZ: Asia/Jakarta
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations/000001_init_schema.up.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./migrations/000001_init_schema.up.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./migrations/000002_procedures.up.sql:/docker-entrypoint-initdb.d/02_procedures.sql:ro
     ports:
       - "${DB_PORT:-5432}:5432"
     networks:
@@ -53,8 +54,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 30s
 
 # =============================================
 # Networks
