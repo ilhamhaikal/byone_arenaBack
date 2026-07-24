@@ -2,10 +2,12 @@ package websocket
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
 	"byone-arena/internal/domain/entity"
+	"byone-arena/pkg/spname"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/google/uuid"
@@ -257,7 +259,7 @@ func (h *Hub) StartAutoStop() {
 				WHERE status = 'active' AND end_scheduled_at IS NOT NULL AND end_scheduled_at < NOW()
 			`).Scan(&expiredSessions)
 			for _, s := range expiredSessions {
-				h.db.Exec(`SELECT "byoneEndSession"(?)`, s.ID)
+				h.db.Exec(fmt.Sprintf(`SELECT %s(?)`, spname.Ident("EndSession")), s.ID)
 				h.Broadcast(NewEvent(EventSessionEnded, map[string]interface{}{
 					"sessionId": s.ID, "consoleId": s.ConsoleID, "reason": "auto_stop",
 				}))

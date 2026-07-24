@@ -7,6 +7,7 @@ import (
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
+	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -99,7 +100,7 @@ func (r *foodOrderRepository) Create(ctx context.Context, order *entity.FoodOrde
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM \"byoneCreateFoodOrder\"(?, ?, ?, ?::jsonb)",
+		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?::jsonb)", spname.Ident("CreateFoodOrder")),
 		order.SessionID,
 		order.CustomerID,
 		order.Notes,
@@ -119,7 +120,7 @@ func (r *foodOrderRepository) Create(ctx context.Context, order *entity.FoodOrde
 
 // UpdateStatus menggunakan stored procedure untuk validasi transisi status
 func (r *foodOrderRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status entity.OrderStatus) error {
-	tx := r.db.WithContext(ctx).Exec("SELECT \"byoneUpdateFoodOrderStatus\"(?, ?)", id, status)
+	tx := r.db.WithContext(ctx).Exec(fmt.Sprintf("SELECT %s(?, ?)", spname.Ident("UpdateFoodOrderStatus")), id, status)
 	return parseStoredProcError(tx.Error)
 }
 

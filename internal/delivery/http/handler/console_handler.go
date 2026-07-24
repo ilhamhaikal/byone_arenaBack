@@ -4,8 +4,10 @@ import (
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
+	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -233,7 +235,7 @@ func (h *ConsoleHandler) PreviewPrice(c *fiber.Ctx) error {
 
 	var result spResult
 	tx := h.db.WithContext(c.Context()).Raw(
-		`SELECT * FROM "byonePreviewPrice"(?, ?, ?, NULLIF(?, '')::UUID)`,
+		fmt.Sprintf(`SELECT * FROM %s(?, ?, ?, NULLIF(?, '')::UUID)`, spname.Ident("PreviewPrice")),
 		id, duration, voucherCode, customerID,
 	).Scan(&result)
 
@@ -290,7 +292,7 @@ func (h *ConsoleHandler) Heartbeat(c *fiber.Ctx) error {
 		}
 		var result spResult
 		tx := h.db.WithContext(c.Context()).Raw(
-			`SELECT * FROM "byoneLogTvActivity"(?, ?)`, id, body.ScreenStatus,
+			fmt.Sprintf(`SELECT * FROM %s(?, ?)`, spname.Ident("LogTvActivity")), id, body.ScreenStatus,
 		).Scan(&result)
 
 		if tx.Error != nil {
@@ -316,7 +318,7 @@ func (h *ConsoleHandler) Heartbeat(c *fiber.Ctx) error {
 // @Security     BearerAuth
 // @Param        id    path  string  true  "Console ID (UUID)"
 // @Param        date  query  string  false "Tanggal filter (YYYY-MM-DD), opsional"
-// @Success      200   {object}  response.Response{data=object{logs=array,unauthorizedCount=int,totalOnMinutes=int,activeSession=object}}
+// @Success      200   {object}  response.Response{data=object{logs=array,unauthorizedCount=int,totalOnMinutes=int,authorizedMinutes=int,unauthorizedMinutes=int,activeSession=object,unauthorizedLogs=array}}
 // @Router       /api/v1/consoles/{id}/tv-logs [get]
 func (h *ConsoleHandler) GetTvLogs(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
@@ -327,21 +329,23 @@ func (h *ConsoleHandler) GetTvLogs(c *fiber.Ctx) error {
 	date := c.Query("date", "")
 
 	type spResult struct {
-		Logs               []byte `gorm:"column:logs;type:jsonb"`
-		UnauthorizedCount  int64  `gorm:"column:unauthorized_count"`
-		TotalOnMinutes     int64  `gorm:"column:total_on_minutes"`
-		ActiveSession      []byte `gorm:"column:active_session;type:jsonb"`
-		UnauthorizedLogs   []byte `gorm:"column:unauthorized_logs;type:jsonb"`
+		Logs                []byte `gorm:"column:logs;type:jsonb"`
+		UnauthorizedCount   int64  `gorm:"column:unauthorized_count"`
+		TotalOnMinutes      int64  `gorm:"column:total_on_minutes"`
+		AuthorizedMinutes   int64  `gorm:"column:authorized_minutes"`
+		UnauthorizedMinutes int64  `gorm:"column:unauthorized_minutes"`
+		ActiveSession       []byte `gorm:"column:active_session;type:jsonb"`
+		UnauthorizedLogs    []byte `gorm:"column:unauthorized_logs;type:jsonb"`
 	}
 	var result spResult
 	var tx *gorm.DB
 	if date != "" {
 		tx = h.db.WithContext(c.Context()).Raw(
-			`SELECT * FROM "byoneGetTvLogs"(?, ?::DATE)`, id, date,
+			fmt.Sprintf(`SELECT * FROM %s(?, ?::DATE)`, spname.Ident("GetTvLogs")), id, date,
 		).Scan(&result)
 	} else {
 		tx = h.db.WithContext(c.Context()).Raw(
-			`SELECT * FROM "byoneGetTvLogs"(?)`, id,
+			fmt.Sprintf(`SELECT * FROM %s(?)`, spname.Ident("GetTvLogs")), id,
 		).Scan(&result)
 	}
 
@@ -377,6 +381,8 @@ func (h *ConsoleHandler) GetTvLogs(c *fiber.Ctx) error {
 		"logs":                 logsJSON,
 		"unauthorizedCount":    result.UnauthorizedCount,
 		"totalOnMinutes":       result.TotalOnMinutes,
+		"authorizedMinutes":    result.AuthorizedMinutes,
+		"unauthorizedMinutes":  result.UnauthorizedMinutes,
 		"activeSession":        sessionJSON,
 		"unauthorizedLogs":     unauthLogsJSON,
 	})

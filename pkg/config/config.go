@@ -1,11 +1,17 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 
 	"github.com/joho/godotenv"
 )
+
+// spPrefixPattern membatasi SP_PREFIX hanya huruf/angka dan diawali huruf,
+// supaya aman disisipkan langsung ke nama fungsi/identifier SQL.
+var spPrefixPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
 
 // Config menyimpan semua konfigurasi aplikasi yang dimuat dari environment variables
 type Config struct {
@@ -22,6 +28,10 @@ type Config struct {
 	DBPassword string
 	DBName     string
 	DBSSLMode  string
+
+	// White-label: prefix nama stored procedure/function di database (default "byone").
+	// Bisa diganti per-client via env SP_PREFIX, misal "acme" -> acmeStartSession dst.
+	SPPrefix string
 
 	// JWT
 	JWTSecret      string
@@ -46,8 +56,14 @@ func Load() (*Config, error) {
 		DBName:     getEnv("DB_NAME", "byone_arena"),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 
+		SPPrefix: getEnv("SP_PREFIX", "byone"),
+
 		JWTSecret:      getEnv("JWT_SECRET", "change-this-secret-in-production"),
 		JWTExpireHours: getEnvInt("JWT_EXPIRE_HOURS", 24),
+	}
+
+	if !spPrefixPattern.MatchString(cfg.SPPrefix) {
+		return nil, fmt.Errorf("SP_PREFIX tidak valid: %q (hanya boleh huruf/angka, harus diawali huruf)", cfg.SPPrefix)
 	}
 
 	return cfg, nil

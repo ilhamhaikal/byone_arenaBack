@@ -3,7 +3,9 @@ package handler
 import (
 	"byone-arena/internal/domain/entity"
 	"byone-arena/pkg/response"
+	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -74,7 +76,7 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 	}
 	var result spResult
 	tx := h.db.WithContext(c.Context()).Raw(
-		`SELECT * FROM "byoneCreateDailyRental"(?, ?, ?::DATE, ?::DATE, ?, ?, ?)`,
+		fmt.Sprintf(`SELECT * FROM %s(?, ?, ?::DATE, ?::DATE, ?, ?, ?)`, spname.Ident("CreateDailyRental")),
 		req.ConsoleID, req.CustomerID, req.StartDate, req.EndDate,
 		req.DailyPrice, req.VoucherCode, req.Notes,
 	).Scan(&result)
@@ -117,7 +119,7 @@ func (h *RentalHandler) ReturnDailyRental(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, "Format ID tidak valid")
 	}
-	tx := h.db.WithContext(c.Context()).Exec(`SELECT "byoneReturnDailyRental"(?)`, id)
+	tx := h.db.WithContext(c.Context()).Exec(fmt.Sprintf(`SELECT %s(?)`, spname.Ident("ReturnDailyRental")), id)
 	if tx.Error != nil {
 		return response.BadRequest(c, tx.Error.Error())
 	}
@@ -161,7 +163,7 @@ func (h *RentalHandler) CreateBooking(c *fiber.Ctx) error {
 	}
 	var result spResult
 	tx := h.db.WithContext(c.Context()).Raw(
-		`SELECT * FROM "byoneCreateBooking"(?, ?, ?::DATE, ?, ?, ?, ?)`,
+		fmt.Sprintf(`SELECT * FROM %s(?, ?, ?::DATE, ?, ?, ?, ?)`, spname.Ident("CreateBooking")),
 		req.ConsoleID, req.CustomerID, req.BookingDate,
 		req.StartHour, req.StartMinute, req.DurationMinutes, req.Notes,
 	).Scan(&result)

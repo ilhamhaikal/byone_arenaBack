@@ -8,6 +8,7 @@ import (
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
+	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -112,7 +113,7 @@ func (r *sessionRepository) Create(ctx context.Context, session *entity.Session)
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM \"byoneStartSession\"(?, ?, ?, ?)",
+		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?)", spname.Ident("StartSession")),
 		session.ConsoleID,
 		session.CustomerID,
 		session.Notes,
@@ -153,7 +154,7 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM \"byoneStartSessionWithPayment\"(?, ?, ?, ?, ?, ?)",
+		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?, ?, ?)", spname.Ident("StartSessionWithPayment")),
 		session.ConsoleID,
 		session.CustomerID,
 		session.Notes,
@@ -192,7 +193,7 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 // Update menggunakan byoneEndSession
 func (r *sessionRepository) Update(ctx context.Context, session *entity.Session) error {
 	// Update hanya dipanggil saat end session
-	tx := r.db.WithContext(ctx).Exec("SELECT \"byoneEndSession\"(?)", session.ID)
+	tx := r.db.WithContext(ctx).Exec(fmt.Sprintf("SELECT %s(?)", spname.Ident("EndSession")), session.ID)
 	if tx.Error != nil {
 		return parseStoredProcError(tx.Error)
 	}
@@ -204,7 +205,7 @@ func (r *sessionRepository) Update(ctx context.Context, session *entity.Session)
 func (r *sessionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status entity.SessionStatus) error {
 	if status == entity.SessionStatusCancelled {
 		// Gunakan stored procedure untuk membatalkan (atomic dengan update konsol)
-		tx := r.db.WithContext(ctx).Exec("SELECT \"byoneCancelSession\"(?)", id)
+		tx := r.db.WithContext(ctx).Exec(fmt.Sprintf("SELECT %s(?)", spname.Ident("CancelSession")), id)
 		return parseStoredProcError(tx.Error)
 	}
 	// Fallback GORM untuk status lain

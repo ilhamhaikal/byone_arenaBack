@@ -151,19 +151,7 @@
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/entity.User"
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/response.Response"
                         }
                     },
                     "400": {
@@ -706,7 +694,7 @@
         },
         "/api/v1/consoles/{id}/heartbeat": {
             "post": {
-                "description": "TV Android mengirim heartbeat + status layar. `screenStatus`: `\"on\"` / `\"off\"` / `\"sleep\"` / `\"screensaver\"`. Tidak memerlukan autentikasi. Jika `screenStatus` dikirim, log aktivitas TV akan dicatat otomatis.",
+                "description": "TV Android mengirim heartbeat + status layar. `screenStatus`: `\"on\"` / `\"off\"` / `\"sleep\"` / `\"screensaver\"`. Jika screenStatus dikirim, log aktivitas TV dicatat otomatis. Tidak memerlukan autentikasi.",
                 "consumes": [
                     "application/json"
                 ],
@@ -726,18 +714,11 @@
                         "required": true
                     },
                     {
-                        "description": "Status layar TV",
+                        "description": "{\\",
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "type": "object",
-                            "properties": {
-                                "screenStatus": {
-                                    "type": "string",
-                                    "enum": ["on", "off", "sleep", "screensaver"],
-                                    "description": "Status layar TV saat ini"
-                                }
-                            }
+                            "type": "object"
                         }
                     }
                 ],
@@ -746,17 +727,27 @@
                         "description": "OK",
                         "schema": {
                             "allOf": [
-                                { "$ref": "#/definitions/response.Response" },
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "logId": { "type": "string", "description": "ID log yang baru dibuat" },
-                                                "isAuthorized": { "type": "boolean", "description": "true jika ada sesi aktif" },
-                                                "sessionId": { "type": "string", "description": "ID sesi aktif (null jika unauthorized)" },
-                                                "durationMin": { "type": "integer", "description": "Durasi TV menyala (hanya untuk event off/sleep/screensaver)" }
+                                                "durationMin": {
+                                                    "type": "integer"
+                                                },
+                                                "isAuthorized": {
+                                                    "type": "boolean"
+                                                },
+                                                "logId": {
+                                                    "type": "string"
+                                                },
+                                                "sessionId": {
+                                                    "type": "string"
+                                                }
                                             }
                                         }
                                     }
@@ -900,42 +891,35 @@
                         "description": "OK",
                         "schema": {
                             "allOf": [
-                                { "$ref": "#/definitions/response.Response" },
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "logs": {
-                                                    "type": "array",
-                                                    "description": "Array log aktivitas TV (langsung array, bukan string JSON)",
-                                                    "items": {
-                                                        "type": "object",
-                                                        "properties": {
-                                                            "id": { "type": "string", "description": "ID log" },
-                                                            "event": { "type": "string", "enum": ["on", "off", "sleep", "screensaver"] },
-                                                            "isAuthorized": { "type": "boolean", "description": "TV menyala dengan sesi aktif?" },
-                                                            "durationMinutes": { "type": "integer", "description": "Durasi dalam menit (null untuk event on)" },
-                                                            "sessionId": { "type": "string", "description": "ID sesi terkait (null jika tidak ada)" },
-                                                            "createdAt": { "type": "string", "description": "Timestamp UTC (ISO 8601)" },
-                                                            "consoleName": { "type": "string", "description": "Nama konsol" }
-                                                        }
-                                                    }
-                                                },
-                                                "unauthorizedCount": { "type": "integer", "description": "Total event TV nyala tanpa sesi" },
-                                                "totalOnMinutes": { "type": "integer", "description": "Total menit TV menyala" },
                                                 "activeSession": {
-                                                    "type": "object",
-                                                    "description": "Info sesi aktif saat ini (null jika tidak ada sesi)",
-                                                    "properties": {
-                                                        "sessionId": { "type": "string" },
-                                                        "startTime": { "type": "string", "description": "Waktu mulai sesi" },
-                                                        "bookedMinutes": { "type": "integer", "description": "Durasi yang dibooking" },
-                                                        "runningMinutes": { "type": "number", "description": "Durasi berjalan (menit)" },
-                                                        "status": { "type": "string" },
-                                                        "customerName": { "type": "string", "description": "Nama pelanggan (opsional)" }
-                                                    }
+                                                    "type": "object"
+                                                },
+                                                "authorizedMinutes": {
+                                                    "type": "integer"
+                                                },
+                                                "logs": {
+                                                    "type": "array"
+                                                },
+                                                "totalOnMinutes": {
+                                                    "type": "integer"
+                                                },
+                                                "unauthorizedCount": {
+                                                    "type": "integer"
+                                                },
+                                                "unauthorizedLogs": {
+                                                    "type": "array"
+                                                },
+                                                "unauthorizedMinutes": {
+                                                    "type": "integer"
                                                 }
                                             }
                                         }
@@ -3233,7 +3217,10 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Admin mengkonfirmasi pembayaran tambahan (extend session) yang masih pending menjadi paid.",
+                "description": "Admin mengkonfirmasi pembayaran tambahan (extend session) yang masih pending menjadi paid. Sertakan `cashReceived` agar kembalian dihitung dengan benar.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -3248,6 +3235,14 @@
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Uang tunai yang diterima (opsional)",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ConfirmPaymentRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -3898,6 +3893,98 @@
                     },
                     "404": {
                         "description": "Belum ada pembayaran untuk sesi ini",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{session_id}/payments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Satu sesi bisa punya lebih dari satu payment (payment awal + setiap perpanjangan/extend). Endpoint ini mengembalikan seluruh payment beserta ringkasan total dibayar/pending, agar frontend tidak salah hitung total tagihan.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pembayaran"
+                ],
+                "summary": "Ambil SEMUA pembayaran untuk satu sesi + ringkasan total",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID (UUID)",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{session_id}/payments/confirm-pending": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menggabungkan seluruh pembayaran pending (misal dari beberapa kali extend) menjadi satu transaksi tunai, lalu menghitung kembalian dari total gabungan.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pembayaran"
+                ],
+                "summary": "Lunasi semua pembayaran pending sebuah sesi sekaligus (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID (UUID)",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Uang tunai yang diterima",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ConfirmSessionPendingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -5171,6 +5258,12 @@
                 "date": {
                     "type": "string"
                 },
+                "foodOrderCount": {
+                    "type": "integer"
+                },
+                "foodSalesRevenue": {
+                    "type": "number"
+                },
                 "generatedAt": {
                     "type": "string"
                 },
@@ -5179,6 +5272,9 @@
                 },
                 "membershipRevenue": {
                     "type": "number"
+                },
+                "pendingFoodOrders": {
+                    "type": "integer"
                 },
                 "totalAutoDiscount": {
                     "type": "number"
@@ -5597,6 +5693,12 @@
                 "date": {
                     "type": "string"
                 },
+                "foodOrders": {
+                    "type": "integer"
+                },
+                "foodRevenue": {
+                    "type": "number"
+                },
                 "playMinutes": {
                     "type": "integer"
                 },
@@ -5631,6 +5733,43 @@
                 }
             }
         },
+        "entity.ReportFoodItem": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "itemName": {
+                    "type": "string"
+                },
+                "quantitySold": {
+                    "type": "integer"
+                },
+                "revenue": {
+                    "type": "number"
+                }
+            }
+        },
+        "entity.ReportFoodSales": {
+            "type": "object",
+            "properties": {
+                "averageOrderValue": {
+                    "type": "number"
+                },
+                "topItems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.ReportFoodItem"
+                    }
+                },
+                "totalOrders": {
+                    "type": "integer"
+                },
+                "totalRevenue": {
+                    "type": "number"
+                }
+            }
+        },
         "entity.ReportPeriod": {
             "type": "object",
             "properties": {
@@ -5655,6 +5794,12 @@
                     "type": "integer"
                 },
                 "dailyRentalRevenue": {
+                    "type": "number"
+                },
+                "foodSalesCount": {
+                    "type": "integer"
+                },
+                "foodSalesRevenue": {
                     "type": "number"
                 },
                 "membershipCount": {
@@ -5720,6 +5865,9 @@
                     "items": {
                         "$ref": "#/definitions/entity.ReportDailyItem"
                     }
+                },
+                "foodSales": {
+                    "$ref": "#/definitions/entity.ReportFoodSales"
                 },
                 "generatedAt": {
                     "type": "string"
@@ -6121,6 +6269,25 @@
                 },
                 "type": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.ConfirmPaymentRequest": {
+            "type": "object",
+            "properties": {
+                "cashReceived": {
+                    "type": "number"
+                }
+            }
+        },
+        "handler.ConfirmSessionPendingRequest": {
+            "type": "object",
+            "required": [
+                "cashReceived"
+            ],
+            "properties": {
+                "cashReceived": {
+                    "type": "number"
                 }
             }
         },

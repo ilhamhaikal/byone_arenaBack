@@ -104,8 +104,14 @@ func main() {
 
 		fmt.Printf("▶️  Menjalankan %s ... ", filename)
 
+		// Substitusi placeholder __SP__ dengan prefix stored procedure sesuai
+		// konfigurasi client (SP_PREFIX di .env, default "byone"). Ini yang
+		// membuat nama function/procedure bisa di-white-label per client tanpa
+		// mengubah file migrasi.
+		sqlText := strings.ReplaceAll(string(sql), "__SP__", cfg.SPPrefix)
+
 		// Eksekusi multi-statement SQL via *sql.DB langsung (bukan via GORM prepared stmt)
-		if _, err := sqlDB.Exec(string(sql)); err != nil {
+		if _, err := sqlDB.Exec(sqlText); err != nil {
 			fmt.Printf("❌ GAGAL\n   %v\n", err)
 			fmt.Fprintf(os.Stderr, "⚠️  Migrasi BERHENTI di %s. Perbaiki error lalu jalankan ulang.\n", filename)
 			os.Exit(1)

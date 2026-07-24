@@ -205,12 +205,18 @@ definitions:
         type: number
       date:
         type: string
+      foodOrderCount:
+        type: integer
+      foodSalesRevenue:
+        type: number
       generatedAt:
         type: string
       membershipCount:
         type: integer
       membershipRevenue:
         type: number
+      pendingFoodOrders:
+        type: integer
       totalAutoDiscount:
         type: number
       totalBaseAmount:
@@ -500,6 +506,10 @@ definitions:
     properties:
       date:
         type: string
+      foodOrders:
+        type: integer
+      foodRevenue:
+        type: number
       playMinutes:
         type: integer
       revenue:
@@ -522,6 +532,30 @@ definitions:
       ruleType:
         type: string
     type: object
+  entity.ReportFoodItem:
+    properties:
+      category:
+        type: string
+      itemName:
+        type: string
+      quantitySold:
+        type: integer
+      revenue:
+        type: number
+    type: object
+  entity.ReportFoodSales:
+    properties:
+      averageOrderValue:
+        type: number
+      topItems:
+        items:
+          $ref: '#/definitions/entity.ReportFoodItem'
+        type: array
+      totalOrders:
+        type: integer
+      totalRevenue:
+        type: number
+    type: object
   entity.ReportPeriod:
     properties:
       endDate:
@@ -538,6 +572,10 @@ definitions:
       dailyRentalCount:
         type: integer
       dailyRentalRevenue:
+        type: number
+      foodSalesCount:
+        type: integer
+      foodSalesRevenue:
         type: number
       membershipCount:
         type: integer
@@ -581,6 +619,8 @@ definitions:
         items:
           $ref: '#/definitions/entity.ReportDailyItem'
         type: array
+      foodSales:
+        $ref: '#/definitions/entity.ReportFoodSales'
       generatedAt:
         type: string
       period:
@@ -857,6 +897,18 @@ definitions:
         type: string
       type:
         type: string
+    type: object
+  handler.ConfirmPaymentRequest:
+    properties:
+      cashReceived:
+        type: number
+    type: object
+  handler.ConfirmSessionPendingRequest:
+    properties:
+      cashReceived:
+        type: number
+    required:
+    - cashReceived
     type: object
   handler.ExtendSessionRequest:
     properties:
@@ -1575,12 +1627,7 @@ paths:
         "201":
           description: Created
           schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  $ref: '#/definitions/entity.User'
-              type: object
+            $ref: '#/definitions/response.Response'
         "400":
           description: Bad Request
           schema:
@@ -1856,24 +1903,19 @@ paths:
       consumes:
       - application/json
       description: 'TV Android mengirim heartbeat + status layar. `screenStatus`:
-        `"on"` / `"off"` / `"sleep"` / `"screensaver"`. Tidak memerlukan autentikasi.
-        Jika `screenStatus` dikirim, log aktivitas TV dicatat otomatis.'
+        `"on"` / `"off"` / `"sleep"` / `"screensaver"`. Jika screenStatus dikirim,
+        log aktivitas TV dicatat otomatis. Tidak memerlukan autentikasi.'
       parameters:
       - description: Console ID (UUID)
         in: path
         name: id
         required: true
         type: string
-      - description: Status layar TV
+      - description: '{\'
         in: body
         name: body
         schema:
           type: object
-          properties:
-            screenStatus:
-              type: string
-              enum: [on, off, sleep, screensaver]
-              description: Status layar TV saat ini
       produces:
       - application/json
       responses:
@@ -1882,23 +1924,19 @@ paths:
           schema:
             allOf:
             - $ref: '#/definitions/response.Response'
-            - type: object
-              properties:
+            - properties:
                 data:
-                  type: object
                   properties:
-                    logId:
-                      type: string
-                      description: ID log yang baru dibuat
-                    isAuthorized:
-                      type: boolean
-                      description: true jika ada sesi aktif
-                    sessionId:
-                      type: string
-                      description: ID sesi aktif (null jika unauthorized)
                     durationMin:
                       type: integer
-                      description: Durasi TV menyala (hanya event off/sleep/screensaver)
+                    isAuthorized:
+                      type: boolean
+                    logId:
+                      type: string
+                    sessionId:
+                      type: string
+                  type: object
+              type: object
       summary: TV heartbeat (PUBLIK) + log aktivitas
       tags:
       - Konsol
@@ -1967,9 +2005,9 @@ paths:
       - Kontrol TV
   /api/v1/consoles/{id}/tv-logs:
     get:
-      description: 'Mengembalikan log nyala/mati/sleep/screensaver TV beserta flag
-        unauthorized. `?date=YYYY-MM-DD` untuk filter per hari. **`logs` adalah array
-        JSON asli, bukan string.**'
+      description: Mengembalikan log nyala/mati/sleep/screensaver TV beserta flag
+        unauthorized dan info sesi aktif. `?date=YYYY-MM-DD` untuk filter per hari.
+        **`logs` adalah array JSON asli, bukan string.**
       parameters:
       - description: Console ID (UUID)
         in: path
@@ -1988,44 +2026,25 @@ paths:
           schema:
             allOf:
             - $ref: '#/definitions/response.Response'
-            - type: object
-              properties:
+            - properties:
                 data:
-                  type: object
                   properties:
+                    activeSession:
+                      type: object
+                    authorizedMinutes:
+                      type: integer
                     logs:
                       type: array
-                      description: Array log aktivitas TV (langsung array, bukan string JSON)
-                      items:
-                        type: object
-                        properties:
-                          id:
-                            type: string
-                            description: ID log
-                          event:
-                            type: string
-                            enum: [on, off, sleep, screensaver]
-                          isAuthorized:
-                            type: boolean
-                            description: TV menyala dengan sesi aktif?
-                          durationMinutes:
-                            type: integer
-                            description: Durasi dalam menit (null untuk event on)
-                          sessionId:
-                            type: string
-                            description: ID sesi terkait (null jika tidak ada)
-                          createdAt:
-                            type: string
-                            description: Timestamp UTC (ISO 8601)
-                          consoleName:
-                            type: string
-                            description: Nama konsol
-                    unauthorizedCount:
-                      type: integer
-                      description: Total event TV nyala tanpa sesi
                     totalOnMinutes:
                       type: integer
-                      description: Total menit TV menyala
+                    unauthorizedCount:
+                      type: integer
+                    unauthorizedLogs:
+                      type: array
+                    unauthorizedMinutes:
+                      type: integer
+                  type: object
+              type: object
       security:
       - BearerAuth: []
       summary: Log aktivitas TV per konsol
@@ -3449,14 +3468,22 @@ paths:
       - Pembayaran
   /api/v1/payments/{id}/confirm:
     post:
+      consumes:
+      - application/json
       description: Admin mengkonfirmasi pembayaran tambahan (extend session) yang
-        masih pending menjadi paid.
+        masih pending menjadi paid. Sertakan `cashReceived` agar kembalian dihitung
+        dengan benar.
       parameters:
       - description: Payment ID (UUID)
         in: path
         name: id
         required: true
         type: string
+      - description: Uang tunai yang diterima (opsional)
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/handler.ConfirmPaymentRequest'
       produces:
       - application/json
       responses:
@@ -3805,6 +3832,68 @@ paths:
       security:
       - BearerAuth: []
       summary: Ambil pembayaran berdasarkan Session ID
+      tags:
+      - Pembayaran
+  /api/v1/sessions/{session_id}/payments:
+    get:
+      description: Satu sesi bisa punya lebih dari satu payment (payment awal + setiap
+        perpanjangan/extend). Endpoint ini mengembalikan seluruh payment beserta ringkasan
+        total dibayar/pending, agar frontend tidak salah hitung total tagihan.
+      parameters:
+      - description: Session ID (UUID)
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil SEMUA pembayaran untuk satu sesi + ringkasan total
+      tags:
+      - Pembayaran
+  /api/v1/sessions/{session_id}/payments/confirm-pending:
+    post:
+      consumes:
+      - application/json
+      description: Menggabungkan seluruh pembayaran pending (misal dari beberapa kali
+        extend) menjadi satu transaksi tunai, lalu menghitung kembalian dari total
+        gabungan.
+      parameters:
+      - description: Session ID (UUID)
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Uang tunai yang diterima
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ConfirmSessionPendingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Lunasi semua pembayaran pending sebuah sesi sekaligus (admin)
       tags:
       - Pembayaran
   /api/v1/sessions/active:

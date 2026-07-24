@@ -159,6 +159,8 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	sessions.Patch("/:id/cancel", h.Session.Cancel)
 	sessions.Post("/:id/extend", h.Session.Extend) // tambah waktu sewa
 	sessions.Get("/:session_id/payment", h.Payment.GetBySession)
+	sessions.Get("/:session_id/payments", h.Payment.GetAllBySession)                        // SEMUA payment sesi (base + tiap extend) + ringkasan total
+	sessions.Post("/:session_id/payments/confirm-pending", h.Payment.ConfirmSessionPending) // lunasi semua payment pending sesi ini sekaligus + hitung kembalian gabungan
 
 	// Customer routes
 	customers := protected.Group("/customers")

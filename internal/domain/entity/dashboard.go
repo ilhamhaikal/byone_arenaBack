@@ -17,6 +17,9 @@ type DashboardSummary struct {
 	DailyRentalCount   int64                `json:"dailyRentalCount"`
 	MembershipRevenue  float64              `json:"membershipRevenue"`
 	MembershipCount    int64                `json:"membershipCount"`
+	FoodSalesRevenue   float64              `json:"foodSalesRevenue"`
+	FoodOrderCount     int64                `json:"foodOrderCount"`
+	PendingFoodOrders  int                  `json:"pendingFoodOrders"`
 	ActiveSessions     int                  `json:"activeSessions"`
 	AvailableConsoles  int                  `json:"availableConsoles"`
 	TotalConsoles      int                  `json:"totalConsoles"`
@@ -31,4 +34,3 @@ type VoucherUsageDetail struct {
 	UsageCount    int64   `json:"usageCount"`
 	TotalDiscount float64 `json:"totalDiscount"`
 }
-

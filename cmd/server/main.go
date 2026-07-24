@@ -36,6 +36,7 @@ import (
 	"byone-arena/pkg/config"
 	"byone-arena/pkg/database"
 	"byone-arena/pkg/logger"
+	"byone-arena/pkg/spname"
 	appValidator "byone-arena/pkg/validator"
 
 	_ "byone-arena/docs" // swagger docs
@@ -95,6 +96,9 @@ func main() {
 		zap.String("env", cfg.AppEnv),
 		zap.String("port", cfg.Port),
 	)
+
+	// Set prefix nama stored procedure (white-label per client, default "byone")
+	spname.Init(cfg.SPPrefix)
 
 	// Koneksi database
 	db, err := database.NewGormDB(cfg)

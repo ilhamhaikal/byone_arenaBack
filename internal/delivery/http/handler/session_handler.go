@@ -4,6 +4,7 @@ import (
 	"byone-arena/internal/delivery/websocket"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
+	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
 	"fmt"
 	"time"
@@ -260,7 +261,7 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 
 	var result spResult
 	tx := h.db.WithContext(c.Context()).Raw(
-		`SELECT * FROM "byoneExtendSession"(?, ?, ?, ?, ?, ?)`,
+		fmt.Sprintf(`SELECT * FROM %s(?, ?, ?, ?, ?, ?)`, spname.Ident("ExtendSession")),
 		id, req.AdditionalMinutes, req.CashReceived, req.PayNow, req.VoucherCode, req.Notes,
 	).Scan(&result)
 

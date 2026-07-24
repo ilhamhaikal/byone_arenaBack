@@ -1,50 +1,39 @@
-# Dokumentasi Endpoint: Log Aktivitas TV
+# 📺 Log Aktivitas TV — Dokumentasi Lengkap
 
-> **Versi**: 2026-07-23 | **34 migrations applied** | Backend: Go + PostgreSQL
+> **Versi**: 2026-07-24 | **44 migrations** | Backend: Go + PostgreSQL
 
 ---
 
-## ⚠️ Ringkasan Perubahan Terbaru (Wajib dibaca Frontend)
+## 📊 Konsep Dasar
 
-| # | Perubahan | Impact Frontend |
+Sistem mencatat **semua aktivitas TV** dalam 2 cara:
+
+| Sumber | Trigger | Event |
 |---|---|---|
-| 1 | `logs` sekarang **array JSON asli**, bukan string | Tidak perlu `JSON.parse()` lagi |
-| 2 | Response ada **`activeSession`** — info sesi aktif + running duration | Tampilkan header "Sesi aktif: X menit" |
-| 3 | Response ada **`unauthorizedLogs`** — list khusus unauthorized | Tampilkan section "⚠️ Unauthorized" terpisah |
-| 4 | Setiap log entry punya **`isAuthorized`** (bool) | Render badge hijau/merah |
+| **Sesi Rental** | Admin mulai/akhiri sesi | `ON`/`OFF` otomatis + durasi |
+| **Heartbeat Client** | TV kirim status layar | `ON`/`OFF`/`sleep`/`screensaver` |
+
+**Log SELALU tercatat**, baik TV dinyalakan manual (switch) maupun otomatis karena sesi.
 
 ---
 
-## 1. Heartbeat — Kirim Status TV (PUBLIK, no auth)
-
-## 1. Heartbeat — Kirim Status TV
-
-TV/Android app mengirim heartbeat setiap ~10 detik untuk update status.
-
-### Request
+## 📡 1. Heartbeat — Update Status TV (PUBLIK)
 
 ```
 POST /api/v1/consoles/{consoleId}/heartbeat
 Content-Type: application/json
+{"screenStatus": "on"}
 ```
 
-**Body:**
-```json
-{
-  "screenStatus": "on"
-}
-```
-
-| `screenStatus` | Keterangan |
+| `screenStatus` | Log tercatat |
 |---|---|
-| `"on"` | TV menyala → dicatat sebagai log |
-| `"off"` | TV mati → dicatat + hitung durasi |
-| `"sleep"` | TV sleep → dicatat + hitung durasi |
-| `"screensaver"` | Screensaver → dicatat + hitung durasi |
-| *(tidak dikirim)* | Hanya update `last_seen_at`, tidak insert log |
+| `"on"` | ✅ TV menyala |
+| `"off"` | ✅ TV mati + durasi dari ON terakhir |
+| `"sleep"` | ✅ TV sleep + durasi |
+| `"screensaver"` | ✅ Screensaver + durasi |
+| *(tidak dikirim)* | ❌ Hanya update `last_seen_at` |
 
-### Response (200 OK)
-
+### Response (200)
 ```json
 {
   "success": true,
@@ -58,242 +47,197 @@ Content-Type: application/json
 }
 ```
 
-| Field | Type | Keterangan |
-|---|---|---|
-| `logId` | UUID | ID log yang baru dibuat |
-| `isAuthorized` | bool | `true` = ada sesi aktif, `false` = unauthorized |
-| `sessionId` | UUID/null | ID sesi aktif (null jika unauthorized) |
-| `durationMin` | int/null | Durasi TV menyala (hanya untuk event off/sleep/screensaver) |
-
-### Contoh Tanpa Sesi (Unauthorized)
-```json
-{
-  "success": true,
-  "message": "⚠️ TV menyala — TANPA SESI (unauthorized)",
-  "data": {
-    "logId": "01974d8b-...",
-    "isAuthorized": false,
-    "sessionId": null,
-    "durationMin": null
-  }
-}
-```
+> ⚠️ **PENTING UNTUK CLIENT**: Kirim `screenStatus` **hanya saat berubah**.  
+> Kalau TV sudah ON, jangan kirim ON lagi. Kirim OFF hanya saat benar-benar mati.
 
 ---
 
-## 2. GetTvLogs — Ambil Log Aktivitas TV
-
-### Request
+## 📋 2. GetTvLogs — Ambil Log & Ringkasan
 
 ```
 GET /api/v1/consoles/{consoleId}/tv-logs?date=YYYY-MM-DD
 Authorization: Bearer {token}
 ```
 
-| Param | Wajib | Keterangan |
-|---|---|---|
-| `consoleId` | ✅ | UUID konsol |
-| `date` | ❌ | Filter tanggal (default: semua) |
-
-### Response (200 OK)
+### Response (200)
 
 ```json
 {
   "success": true,
-  "message": "Log aktivitas TV",
   "data": {
-    "logs": [
-      {
-        "id": "e2d88cf6-...",
-        "event": "on",
-        "isAuthorized": true,
-        "durationMinutes": null,
-        "sessionId": "8774bfad-...",
-        "createdAt": "2026-07-23T13:43:07Z",
-        "consoleName": "PS4 SLIM 1TB",
-        "sort_order": "2026-07-23T13:43:07.49137+07:00"
-      }
-    ],
-    "unauthorizedCount": 6,
-    "totalOnMinutes": 0,
+    "logs": [...],
+    "unauthorizedCount": 2,
+    "totalOnMinutes": 45,
+    "authorizedMinutes": 30,
+    "unauthorizedMinutes": 15,
     "activeSession": {
-      "sessionId": "8774bfad-...",
-      "startTime": "2026-07-23T12:30:00Z",
+      "sessionId": "uuid",
+      "startTime": "2026-07-24T10:30:00Z",
       "bookedMinutes": 60,
-      "runningMinutes": 72.5,
+      "runningMinutes": 12.5,
       "status": "active",
       "customerName": "Budi"
-    }
+    },
+    "unauthorizedLogs": [...]
   }
 }
 ```
 
-| Field | Type | Keterangan |
-|---|---|---|
-| `logs` | **Array** | ⚠️ Array JSON asli (bukan string!), langsung bisa di-loop |
-| `logs[].id` | UUID | ID log |
-| `logs[].event` | string | `"on"`, `"off"`, `"sleep"`, `"screensaver"` |
-| `logs[].isAuthorized` | bool | TV nyala dengan sesi? |
-| `logs[].durationMinutes` | int/null | Durasi (hanya event off/sleep/screensaver) |
-| `logs[].sessionId` | UUID/null | ID sesi terkait |
-| `logs[].createdAt` | string | Timestamp UTC format ISO 8601 |
-| `logs[].consoleName` | string | Nama konsol |
-| `unauthorizedCount` | int | Total TV nyala tanpa sesi |
-| `totalOnMinutes` | int | Total menit TV menyala |
-| `activeSession` | object/null | **Info sesi aktif saat ini** (null jika tidak ada) |
-| `activeSession.sessionId` | UUID | ID sesi |
-| `activeSession.startTime` | string | Waktu mulai sesi |
-| `activeSession.bookedMinutes` | int | Durasi booking awal |
-| `activeSession.runningMinutes` | float | **Durasi berjalan real-time (menit)** |
-| `activeSession.customerName` | string | Nama pelanggan |
+### Penjelasan Field Ringkasan
+
+| Field | Arti |
+|---|---|
+| `totalOnMinutes` | Total menit TV menyala (authorized + unauthorized) |
+| `authorizedMinutes` | Menit live **dengan sesi** (termasuk sesi yang sedang berjalan) |
+| `unauthorizedMinutes` | Menit live **tanpa sesi** (TV dinyalakan tanpa rental) |
+| `unauthorizedCount` | Jumlah event ON tanpa sesi |
+| `activeSession` | Info sesi aktif saat ini (`null` jika tidak ada) |
+| `unauthorizedLogs` | List khusus entry unauthorized (max 20) |
+
+### ⚠️ `logs` adalah Array, BUKAN String!
+
+```javascript
+// ✅ BENAR
+data.logs.map(log => ...)
+
+// ❌ SALAH  
+JSON.parse(data.logs)  // akan error!
+```
 
 ---
 
-## 3. Implementasi Frontend
+## 🔧 3. Aturan Authorization
 
-### ⚠️ PENTING: `logs` adalah Array, bukan String!
+| Situasi | `isAuthorized` |
+|---|---|
+| TV ON + ada sesi aktif | `true` ✅ |
+| TV ON + tidak ada sesi | `false` ⚠️ unauthorized |
+| TV OFF / sleep / screensaver | **inherit dari ON terakhir** |
 
-**Response backend sudah diperbaiki** (setelah migration 000031 + handler fix):
-- `data.logs` = **`[...]`** (array) ✅
-- BUKAN `"[...]"` (string) ❌
+> **OFF tidak mungkin unauthorized.** Kalau TV nyala tanpa sesi lalu dimatikan → OFF tetap `false` (mengikuti ON-nya), tapi durasi masuk ke `unauthorizedMinutes`.
 
-### Contoh Fetch (JavaScript/React)
+---
+
+## 💻 4. Contoh Fetch Frontend
 
 ```javascript
 async function fetchTvLogs(consoleId, date) {
-  const token = getAuthToken(); // dari login
-  const url = date 
+  const token = getAuthToken();
+  const url = date
     ? `/api/v1/consoles/${consoleId}/tv-logs?date=${date}`
     : `/api/v1/consoles/${consoleId}/tv-logs`;
 
   const res = await fetch(url, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
-  const json = await res.json();
+  const { success, data } = await res.json();
 
-  if (!json.success) {
-    console.error('Gagal:', json.message);
-    return { logs: [], unauthorizedCount: 0, totalOnMinutes: 0 };
-  }
-
-  // ⚠️ Pastikan logs adalah array
-  const logs = Array.isArray(json.data.logs) 
-    ? json.data.logs 
-    : JSON.parse(json.data.logs); // fallback jika masih string
+  if (!success) return { logs: [], unauthorizedLogs: [], unauthorizedCount: 0,
+    totalOnMinutes: 0, authorizedMinutes: 0, unauthorizedMinutes: 0, activeSession: null };
 
   return {
-    logs,
-    unauthorizedCount: json.data.unauthorizedCount,
-    totalOnMinutes: json.data.totalOnMinutes,
+    logs: data.logs || [],
+    unauthorizedLogs: data.unauthorizedLogs || [],
+    unauthorizedCount: data.unauthorizedCount || 0,
+    totalOnMinutes: data.totalOnMinutes || 0,
+    authorizedMinutes: data.authorizedMinutes || 0,
+    unauthorizedMinutes: data.unauthorizedMinutes || 0,
+    activeSession: data.activeSession || null,
   };
 }
 ```
 
-### Render di UI
+### Render UI
 
 ```jsx
-function TvLogView({ consoleId }) {
-  const [logs, setLogs] = useState([]);
-  const [date, setDate] = useState('2026-07-23');
-
-  useEffect(() => {
-    fetchTvLogs(consoleId, date).then(data => {
-      if (data.logs.length === 0) {
-        // Tampilkan "Tidak ada log untuk tanggal ini"
-      }
-      setLogs(data.logs);
-    });
-  }, [consoleId, date]);
-
+function TvLogView({ data }) {
   return (
     <div>
-      {logs.length === 0 ? (
-        <p>Tidak ada log untuk tanggal ini</p>
-      ) : (
-        logs.map(log => (
-          <div key={log.id} className={log.isAuthorized ? 'authorized' : 'unauthorized'}>
-            <span>{log.event === 'on' ? '🟢 NYALA' : '🔴 MATI'}</span>
-            <span>{log.consoleName}</span>
-            <span>{new Date(log.createdAt).toLocaleTimeString()}</span>
-            {!log.isAuthorized && <span className="badge">⚠️ Unauthorized</span>}
-            {log.durationMinutes && <span>{log.durationMinutes} menit</span>}
-          </div>
-        ))
+      {/* Ringkasan */}
+      <div className="summary">
+        <span>🟢 Live: {data.authorizedMinutes} mnt</span>
+        <span>⚠️ Unauth: {data.unauthorizedMinutes} mnt</span>
+        <span>📊 Total: {data.totalOnMinutes} mnt</span>
+      </div>
+
+      {/* Sesi Aktif */}
+      {data.activeSession && (
+        <div className="active-session">
+          🟢 SESI AKTIF — {Math.floor(data.activeSession.runningMinutes)} mnt berjalan
+        </div>
       )}
+
+      {/* Unauthorized */}
+      {data.unauthorizedLogs.length > 0 && (
+        <div className="unauthorized-list">
+          <h3>⚠️ Unauthorized ({data.unauthorizedCount})</h3>
+          {data.unauthorizedLogs.map(log => (
+            <div key={log.id} className="unauthorized">
+              {log.event.toUpperCase()} — {new Date(log.createdAt).toLocaleTimeString()}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Semua Log */}
+      {data.logs.map(log => (
+        <div key={log.id} className={log.isAuthorized ? 'authorized' : 'unauthorized'}>
+          {log.event === 'on' ? '🟢 ON' : '🔴 OFF'}
+          {' '}{log.consoleName}
+          {' '}{new Date(log.createdAt).toLocaleTimeString()}
+          {log.durationMinutes && ` — ${log.durationMinutes} mnt`}
+          {!log.isAuthorized && ' ⚠️'}
+        </div>
+      ))}
     </div>
   );
 }
 ```
 
-### Kirim Heartbeat (dari Android TV / Client)
-
-```javascript
-// Di ClientProvider._poll() — setiap ~10 detik
-async function sendHeartbeat(consoleId, screenStatus) {
-  await fetch(`/api/v1/consoles/${consoleId}/heartbeat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ screenStatus })  // "on" | "off" | "sleep" | "screensaver"
-  });
-}
-```
-
 ---
 
-## 4. Troubleshooting
+## 🔧 5. Troubleshooting
 
 | Gejala | Penyebab | Solusi |
 |---|---|---|
-| Log kosong ("Tidak ada log") | Frontend tidak parse `data.logs` sebagai array | Gunakan `Array.isArray()` check |
-| Log kosong padahal heartbeat jalan | TV kirim heartbeat tanpa `screenStatus` | Pastikan body ada `{"screenStatus":"on"}` |
-| `isAuthorized` selalu false | Tidak ada sesi aktif untuk konsol itu | Buat sesi via endpoint Start Session |
-| `totalOnMinutes` = 0 | Belum ada event `off`/`sleep`/`screensaver` | Kirim heartbeat dengan `screenStatus:"off"` saat TV dimatikan |
-| `unauthorizedCount` > 0 | TV dinyalakan tanpa sesi rental | Normal — catat sebagai peringatan |
-| 401 Unauthorized | Token JWT tidak dikirim | Tambahkan header `Authorization: Bearer {token}` |
-| 400 Bad Request | Console ID format salah | Gunakan UUID valid dari `/api/v1/consoles/overview` |
+| Log kosong semua | Belum ada aktivitas TV | Mulai sesi atau kirim heartbeat ON |
+| `authorizedMinutes` = 0 | Server belum restart | `go run cmd/server/main.go` |
+| `unauthorizedMinutes` besar | TV dinyalakan tanpa sesi | Cek `unauthorizedLogs` |
+| Log isinya OFF semua | Client kirim `off` terus | Client harus kirim `on` saat TV menyala |
+| OFF masuk unauthorized | Bug lama — sudah difix | Update migration terbaru |
+| 401 Unauthorized | Token JWT expired | Login ulang |
 
 ---
 
-## 5. Database
+## 🗄️ 6. Database
 
-### Tabel: `tv_activity_logs`
+### Trigger Auto-Log
 
-| Kolom | Type | Keterangan |
+| Trigger | Event | Keterangan |
 |---|---|---|
-| `id` | UUID | PK |
-| `console_id` | UUID | FK → consoles |
-| `event` | VARCHAR(20) | `on`, `off`, `sleep`, `screensaver` |
-| `session_id` | UUID/null | FK → sessions |
-| `is_authorized` | BOOLEAN | TV menyala saat ada sesi aktif? |
-| `duration_minutes` | INT/null | Durasi (hanya untuk event off) |
-| `created_at` | TIMESTAMPTZ | Waktu kejadian |
-
-### Stored Procedures
-
-| SP | Keterangan |
-|---|---|
-| `byoneLogTvActivity(console_id, event)` | Insert log + cek otorisasi |
-| `byoneGetTvLogs(console_id, date?)` | Query log + summary |
+| **Mulai sesi** | `ON` | Auto-insert saat sesi dimulai |
+| **Akhiri sesi** | `OFF` + durasi | Auto-insert saat sesi selesai |
+| **Heartbeat client** | `ON`/`OFF` | Manual dari TV |
 
 ---
 
-## 6. Test dengan curl
+## 📞 Test dengan curl
 
 ```bash
-# 1. Login (dapat token)
-curl -s -X POST http://localhost:8080/api/v1/auth/login \
+# Login
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"admin123"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['data']['token'])")
 
-# 2. Cari console ID
-curl -s http://localhost:8080/api/v1/consoles/overview
+# Heartbeat ON
+curl -X POST http://localhost:8080/api/v1/consoles/{id}/heartbeat \
+  -H "Content-Type: application/json" -d '{"screenStatus":"on"}'
 
-# 3. Kirim heartbeat (TV nyala)
-curl -X POST http://localhost:8080/api/v1/consoles/{consoleId}/heartbeat \
-  -H "Content-Type: application/json" \
-  -d '{"screenStatus":"on"}'
+# Heartbeat OFF
+curl -X POST http://localhost:8080/api/v1/consoles/{id}/heartbeat \
+  -H "Content-Type: application/json" -d '{"screenStatus":"off"}'
 
-# 4. Ambil log (pakai token dari step 1)
-curl -s "http://localhost:8080/api/v1/consoles/{consoleId}/tv-logs?date=2026-07-23" \
-  -H "Authorization: Bearer {token}" | python3 -m json.tool
+# Lihat log
+curl -s "http://localhost:8080/api/v1/consoles/{id}/tv-logs?date=2026-07-24" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool | head -40
 ```

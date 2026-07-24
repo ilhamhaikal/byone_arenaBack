@@ -5,6 +5,7 @@ import (
 
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
+	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
 
 	"github.com/gofiber/fiber/v2"
@@ -109,7 +110,7 @@ func (h *CustomerHandler) Create(c *fiber.Ctx) error {
 		}
 		// Gunakan fmt.Sprintf untuk inject numeric value langsung (hindari GORM encode issue)
 		h.db.WithContext(c.Context()).Raw(
-			fmt.Sprintf(`SELECT * FROM "byoneSellMembership"('%s'::UUID, %s::NUMERIC)`,
+			fmt.Sprintf(`SELECT * FROM %s('%s'::UUID, %s::NUMERIC)`, spname.Ident("SellMembership"),
 				customer.ID, row.Value),
 		).Scan(&sp)
 		membershipInfo = fiber.Map{
@@ -231,7 +232,7 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 
 	var result spResult
 	tx := h.db.WithContext(c.Context()).Raw(
-		fmt.Sprintf(`SELECT * FROM "byoneSellMembership"('%s'::UUID, %s::NUMERIC)`,
+		fmt.Sprintf(`SELECT * FROM %s('%s'::UUID, %s::NUMERIC)`, spname.Ident("SellMembership"),
 			id, cashStr),
 	).Scan(&result)
 	if tx.Error != nil {

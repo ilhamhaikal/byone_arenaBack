@@ -157,19 +157,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/entity.User"
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/response.Response"
                         }
                     },
                     "400": {
@@ -732,25 +720,45 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Status layar TV: on, off, sleep, screensaver",
+                        "description": "{\\",
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "type": "object",
-                            "properties": {
-                                "screenStatus": {
-                                    "type": "string",
-                                    "enum": ["on", "off", "sleep", "screensaver"]
-                                }
-                            }
+                            "type": "object"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK — mengembalikan logId, isAuthorized, sessionId, durationMin",
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "durationMin": {
+                                                    "type": "integer"
+                                                },
+                                                "isAuthorized": {
+                                                    "type": "boolean"
+                                                },
+                                                "logId": {
+                                                    "type": "string"
+                                                },
+                                                "sessionId": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -861,7 +869,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mengembalikan log nyala/mati/sleep/screensaver TV beserta flag unauthorized. ` + "`" + `?date=YYYY-MM-DD` + "`" + ` untuk filter per hari. **` + "`" + `logs` + "`" + ` adalah array JSON asli, bukan string.**",
+                "description": "Mengembalikan log nyala/mati/sleep/screensaver TV beserta flag unauthorized dan info sesi aktif. ` + "`" + `?date=YYYY-MM-DD` + "`" + ` untuk filter per hari. **` + "`" + `logs` + "`" + ` adalah array JSON asli, bukan string.**",
                 "produces": [
                     "application/json"
                 ],
@@ -886,9 +894,44 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK — mengembalikan logs (array), unauthorizedCount, totalOnMinutes",
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "activeSession": {
+                                                    "type": "object"
+                                                },
+                                                "authorizedMinutes": {
+                                                    "type": "integer"
+                                                },
+                                                "logs": {
+                                                    "type": "array"
+                                                },
+                                                "totalOnMinutes": {
+                                                    "type": "integer"
+                                                },
+                                                "unauthorizedCount": {
+                                                    "type": "integer"
+                                                },
+                                                "unauthorizedLogs": {
+                                                    "type": "array"
+                                                },
+                                                "unauthorizedMinutes": {
+                                                    "type": "integer"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -3180,7 +3223,10 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Admin mengkonfirmasi pembayaran tambahan (extend session) yang masih pending menjadi paid.",
+                "description": "Admin mengkonfirmasi pembayaran tambahan (extend session) yang masih pending menjadi paid. Sertakan ` + "`" + `cashReceived` + "`" + ` agar kembalian dihitung dengan benar.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -3195,6 +3241,14 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Uang tunai yang diterima (opsional)",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ConfirmPaymentRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -3845,6 +3899,98 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Belum ada pembayaran untuk sesi ini",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{session_id}/payments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Satu sesi bisa punya lebih dari satu payment (payment awal + setiap perpanjangan/extend). Endpoint ini mengembalikan seluruh payment beserta ringkasan total dibayar/pending, agar frontend tidak salah hitung total tagihan.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pembayaran"
+                ],
+                "summary": "Ambil SEMUA pembayaran untuk satu sesi + ringkasan total",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID (UUID)",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{session_id}/payments/confirm-pending": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Menggabungkan seluruh pembayaran pending (misal dari beberapa kali extend) menjadi satu transaksi tunai, lalu menghitung kembalian dari total gabungan.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pembayaran"
+                ],
+                "summary": "Lunasi semua pembayaran pending sebuah sesi sekaligus (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID (UUID)",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Uang tunai yang diterima",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ConfirmSessionPendingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -5118,6 +5264,12 @@ const docTemplate = `{
                 "date": {
                     "type": "string"
                 },
+                "foodOrderCount": {
+                    "type": "integer"
+                },
+                "foodSalesRevenue": {
+                    "type": "number"
+                },
                 "generatedAt": {
                     "type": "string"
                 },
@@ -5126,6 +5278,9 @@ const docTemplate = `{
                 },
                 "membershipRevenue": {
                     "type": "number"
+                },
+                "pendingFoodOrders": {
+                    "type": "integer"
                 },
                 "totalAutoDiscount": {
                     "type": "number"
@@ -5544,6 +5699,12 @@ const docTemplate = `{
                 "date": {
                     "type": "string"
                 },
+                "foodOrders": {
+                    "type": "integer"
+                },
+                "foodRevenue": {
+                    "type": "number"
+                },
                 "playMinutes": {
                     "type": "integer"
                 },
@@ -5578,6 +5739,43 @@ const docTemplate = `{
                 }
             }
         },
+        "entity.ReportFoodItem": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "itemName": {
+                    "type": "string"
+                },
+                "quantitySold": {
+                    "type": "integer"
+                },
+                "revenue": {
+                    "type": "number"
+                }
+            }
+        },
+        "entity.ReportFoodSales": {
+            "type": "object",
+            "properties": {
+                "averageOrderValue": {
+                    "type": "number"
+                },
+                "topItems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.ReportFoodItem"
+                    }
+                },
+                "totalOrders": {
+                    "type": "integer"
+                },
+                "totalRevenue": {
+                    "type": "number"
+                }
+            }
+        },
         "entity.ReportPeriod": {
             "type": "object",
             "properties": {
@@ -5602,6 +5800,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "dailyRentalRevenue": {
+                    "type": "number"
+                },
+                "foodSalesCount": {
+                    "type": "integer"
+                },
+                "foodSalesRevenue": {
                     "type": "number"
                 },
                 "membershipCount": {
@@ -5667,6 +5871,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/entity.ReportDailyItem"
                     }
+                },
+                "foodSales": {
+                    "$ref": "#/definitions/entity.ReportFoodSales"
                 },
                 "generatedAt": {
                     "type": "string"
@@ -6068,6 +6275,25 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.ConfirmPaymentRequest": {
+            "type": "object",
+            "properties": {
+                "cashReceived": {
+                    "type": "number"
+                }
+            }
+        },
+        "handler.ConfirmSessionPendingRequest": {
+            "type": "object",
+            "required": [
+                "cashReceived"
+            ],
+            "properties": {
+                "cashReceived": {
+                    "type": "number"
                 }
             }
         },

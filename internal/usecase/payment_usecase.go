@@ -14,6 +14,8 @@ import (
 type PaymentUseCase interface {
 	GetPaymentByID(ctx context.Context, id uuid.UUID) (*entity.Payment, error)
 	GetPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*entity.Payment, error)
+	// GetPaymentsBySessionID mengembalikan SEMUA payment milik satu sesi (base + tiap perpanjangan)
+	GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUID) ([]*entity.Payment, error)
 	CreateCashPayment(ctx context.Context, req *CreateCashPaymentRequest) (*entity.Payment, error)
 	RefundPayment(ctx context.Context, id uuid.UUID) (*entity.Payment, error)
 }
@@ -52,6 +54,10 @@ func (uc *paymentUseCase) GetPaymentByID(ctx context.Context, id uuid.UUID) (*en
 
 func (uc *paymentUseCase) GetPaymentBySessionID(ctx context.Context, sessionID uuid.UUID) (*entity.Payment, error) {
 	return uc.paymentRepo.FindBySessionID(ctx, sessionID)
+}
+
+func (uc *paymentUseCase) GetPaymentsBySessionID(ctx context.Context, sessionID uuid.UUID) ([]*entity.Payment, error) {
+	return uc.paymentRepo.FindAllBySessionID(ctx, sessionID)
 }
 
 // CreateCashPayment membuat pembayaran tunai melalui stored procedure

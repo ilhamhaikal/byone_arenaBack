@@ -3,10 +3,12 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
+	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -51,6 +53,15 @@ func (r *paymentRepository) FindBySessionID(ctx context.Context, sessionID uuid.
 	return &payment, nil
 }
 
+func (r *paymentRepository) FindAllBySessionID(ctx context.Context, sessionID uuid.UUID) ([]*entity.Payment, error) {
+	var payments []*entity.Payment
+	result := r.db.WithContext(ctx).Where("session_id = ?", sessionID).Order("created_at ASC").Find(&payments)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return payments, nil
+}
+
 // Create menggunakan byoneCreatePayment untuk validasi dan atomisitas
 func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment) error {
 	type spResult struct {
@@ -66,7 +77,7 @@ func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment)
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM \"byoneCreatePayment\"(?, ?, ?, ?)",
+		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?)", spname.Ident("CreatePayment")),
 		payment.SessionID,
 		payment.CashReceived,
 		payment.Notes,
@@ -96,7 +107,7 @@ func (r *paymentRepository) Update(ctx context.Context, payment *entity.Payment)
 func (r *paymentRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status entity.PaymentStatus) error {
 	if status == entity.PaymentStatusRefunded {
 		// Gunakan stored procedure untuk refund
-		tx := r.db.WithContext(ctx).Exec("SELECT \"byoneRefundPayment\"(?)", id)
+		tx := r.db.WithContext(ctx).Exec(fmt.Sprintf("SELECT %s(?)", spname.Ident("RefundPayment")), id)
 		return parseStoredProcError(tx.Error)
 	}
 	return r.db.WithContext(ctx).
@@ -113,27 +124,30 @@ func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string
 	}
 
 	type spResult struct {
-		TotalRevenue      float64         `gorm:"column:total_revenue"`
-		TotalBaseAmount   float64         `gorm:"column:total_base_amount"`
-		TotalTransactions int64           `gorm:"column:total_transactions"`
-		TotalDiscount     float64         `gorm:"column:total_discount"`
-		TotalAutoDiscount float64         `gorm:"column:total_auto_discount"`
-		VoucherUsageCount int64           `gorm:"column:voucher_usage_count"`
-		TotalCashReceived float64         `gorm:"column:total_cash_received"`
-		TotalChange       float64         `gorm:"column:total_change"`
-		DailyRentalRevenue float64        `gorm:"column:daily_rental_revenue"`
-		DailyRentalCount  int64           `gorm:"column:daily_rental_count"`
-		MembershipRevenue float64         `gorm:"column:membership_revenue"`
-		MembershipCount   int64           `gorm:"column:membership_count"`
-		ActiveSessions    int             `gorm:"column:active_sessions"`
-		AvailableConsoles int             `gorm:"column:available_consoles"`
-		TotalConsoles     int             `gorm:"column:total_consoles"`
-		VoucherDetailsRaw []byte          `gorm:"column:voucher_details;type:jsonb"`
+		TotalRevenue       float64 `gorm:"column:total_revenue"`
+		TotalBaseAmount    float64 `gorm:"column:total_base_amount"`
+		TotalTransactions  int64   `gorm:"column:total_transactions"`
+		TotalDiscount      float64 `gorm:"column:total_discount"`
+		TotalAutoDiscount  float64 `gorm:"column:total_auto_discount"`
+		VoucherUsageCount  int64   `gorm:"column:voucher_usage_count"`
+		TotalCashReceived  float64 `gorm:"column:total_cash_received"`
+		TotalChange        float64 `gorm:"column:total_change"`
+		DailyRentalRevenue float64 `gorm:"column:daily_rental_revenue"`
+		DailyRentalCount   int64   `gorm:"column:daily_rental_count"`
+		MembershipRevenue  float64 `gorm:"column:membership_revenue"`
+		MembershipCount    int64   `gorm:"column:membership_count"`
+		FoodSalesRevenue   float64 `gorm:"column:food_sales_revenue"`
+		FoodOrderCount     int64   `gorm:"column:food_order_count"`
+		PendingFoodOrders  int     `gorm:"column:pending_food_orders"`
+		ActiveSessions     int     `gorm:"column:active_sessions"`
+		AvailableConsoles  int     `gorm:"column:available_consoles"`
+		TotalConsoles      int     `gorm:"column:total_consoles"`
+		VoucherDetailsRaw  []byte  `gorm:"column:voucher_details;type:jsonb"`
 	}
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM \"byoneDashboardSummary\"(?::DATE)",
+		fmt.Sprintf("SELECT * FROM %s(?::DATE)", spname.Ident("DashboardSummary")),
 		date,
 	).Scan(&result)
 
@@ -165,6 +179,9 @@ func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string
 		DailyRentalCount:   result.DailyRentalCount,
 		MembershipRevenue:  result.MembershipRevenue,
 		MembershipCount:    result.MembershipCount,
+		FoodSalesRevenue:   result.FoodSalesRevenue,
+		FoodOrderCount:     result.FoodOrderCount,
+		PendingFoodOrders:  result.PendingFoodOrders,
 		ActiveSessions:     result.ActiveSessions,
 		AvailableConsoles:  result.AvailableConsoles,
 		TotalConsoles:      result.TotalConsoles,
@@ -190,7 +207,7 @@ func (r *paymentRepository) GetReportSummary(ctx context.Context, startDate, end
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		`SELECT * FROM "byoneReportSummary"(?::DATE, ?::DATE)`,
+		fmt.Sprintf(`SELECT * FROM %s(?::DATE, ?::DATE)`, spname.Ident("ReportSummary")),
 		startDate, endDate,
 	).Scan(&result)
 
@@ -205,4 +222,3 @@ func (r *paymentRepository) GetReportSummary(ctx context.Context, startDate, end
 
 	return &summary, nil
 }
-

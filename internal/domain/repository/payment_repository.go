@@ -13,6 +13,9 @@ type PaymentRepository interface {
 	FindAll(ctx context.Context) ([]*entity.Payment, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*entity.Payment, error)
 	FindBySessionID(ctx context.Context, sessionID uuid.UUID) (*entity.Payment, error)
+	// FindAllBySessionID mengambil SEMUA payment untuk satu sesi (base + setiap perpanjangan),
+	// diurutkan created_at ASC. Sebuah sesi bisa punya lebih dari satu payment jika pernah di-extend.
+	FindAllBySessionID(ctx context.Context, sessionID uuid.UUID) ([]*entity.Payment, error)
 	Create(ctx context.Context, payment *entity.Payment) error
 	Update(ctx context.Context, payment *entity.Payment) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status entity.PaymentStatus) error

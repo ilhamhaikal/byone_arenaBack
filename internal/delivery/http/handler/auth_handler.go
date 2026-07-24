@@ -53,7 +53,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 // @Accept       json
 // @Produce      json
 // @Param        body  body      usecase.RegisterRequest  true  "Data registrasi"
-// @Success      201   {object}  response.Response{data=entity.User}
+// @Success      201   {object}  response.Response
 // @Failure      400   {object}  response.ErrorResponse
 // @Failure      409   {object}  response.ErrorResponse  "Username sudah digunakan"
 // @Router       /api/v1/auth/register [post]
