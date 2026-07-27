@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS customers (
     membership_start DATE,
     membership_expiry DATE,
     membership_price NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    -- Bank Waktu & Poin Loyalitas (khusus member)
+    time_balance_minutes INT NOT NULL DEFAULT 0,
+    loyalty_points       INT NOT NULL DEFAULT 0,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -110,7 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_shifts_active ON shifts(is_active);
 CREATE TABLE IF NOT EXISTS sessions (
     id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     console_id               UUID NOT NULL REFERENCES consoles(id),
-    customer_id              UUID REFERENCES customers(id),
+    customer_id              UUID REFERENCES customers(id) ON DELETE SET NULL,
     start_time               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     end_time                 TIMESTAMPTZ,
     booked_duration_minutes  INT NOT NULL DEFAULT 0,
@@ -120,6 +123,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     status                   VARCHAR(20) NOT NULL DEFAULT 'active'
                                 CHECK (status IN ('active', 'completed', 'cancelled')),
     notes                    TEXT,
+    -- Transparansi Bank Waktu & Poin Loyalitas
+    paid_duration_minutes    INT NOT NULL DEFAULT 0,
+    time_bank_minutes_used   INT NOT NULL DEFAULT 0,
+    bonus_minutes_from_points INT NOT NULL DEFAULT 0,
+    points_redeemed           INT NOT NULL DEFAULT 0,
+    points_earned             INT NOT NULL DEFAULT 0,
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -164,7 +173,7 @@ CREATE TABLE IF NOT EXISTS vouchers (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     code            VARCHAR(50) NOT NULL UNIQUE,
     name            VARCHAR(150) NOT NULL,
-    discount_type   VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed_amount', 'free_days')),
+    discount_type   VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed_amount', 'free_days', 'unlimited_play')),
     discount_value  NUMERIC(10, 2) NOT NULL CHECK (discount_value >= 0),
     min_purchase    NUMERIC(10, 2) NOT NULL DEFAULT 0,
     max_discount    NUMERIC(10, 2) NOT NULL DEFAULT 0,
@@ -358,7 +367,37 @@ CREATE INDEX IF NOT EXISTS idx_bookings_console_date ON bookings(console_id, boo
 CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 
 -- ============================================
--- 18. APP SETTINGS
+-- 18. CUSTOMER TIME BANK LOGS (mutasi bank waktu)
+-- ============================================
+CREATE TABLE IF NOT EXISTS customer_time_bank_logs (
+    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id   UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    session_id    UUID REFERENCES sessions(id) ON DELETE SET NULL,
+    change_type   VARCHAR(10) NOT NULL CHECK (change_type IN ('earn', 'use')),
+    minutes       INT NOT NULL,
+    balance_after INT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_time_bank_logs_customer ON customer_time_bank_logs(customer_id, created_at DESC);
+
+-- ============================================
+-- 19. CUSTOMER POINT LOGS (mutasi poin loyalitas)
+-- ============================================
+CREATE TABLE IF NOT EXISTS customer_point_logs (
+    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id   UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    session_id    UUID REFERENCES sessions(id) ON DELETE SET NULL,
+    change_type   VARCHAR(10) NOT NULL CHECK (change_type IN ('earn', 'redeem')),
+    points        INT NOT NULL,
+    balance_after INT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_point_logs_customer ON customer_point_logs(customer_id, created_at DESC);
+
+-- ============================================
+-- 20. APP SETTINGS
 -- ============================================
 CREATE TABLE IF NOT EXISTS app_settings (
     key         VARCHAR(100) PRIMARY KEY,
@@ -368,3 +407,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 INSERT INTO app_settings (key, value) VALUES ('membership_price', '50000') ON CONFLICT (key) DO NOTHING;
 INSERT INTO app_settings (key, value) VALUES ('daily_price', '75000') ON CONFLICT (key) DO NOTHING;
+INSERT INTO app_settings (key, value) VALUES ('loyalty_point_threshold', '15') ON CONFLICT (key) DO NOTHING;
+INSERT INTO app_settings (key, value) VALUES ('loyalty_point_redeem_minutes', '60') ON CONFLICT (key) DO NOTHING;
+INSERT INTO app_settings (key, value) VALUES ('unlimited_max_minutes', '1440') ON CONFLICT (key) DO NOTHING;

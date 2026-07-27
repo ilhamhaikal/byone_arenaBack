@@ -38,13 +38,17 @@ func NewSessionUseCase(sessionRepo repository.SessionRepository, consoleRepo rep
 type StartSessionRequest struct {
 	ConsoleID uuid.UUID  `json:"consoleId"  validate:"required"   example:"550e8400-e29b-41d4-a716-446655440000"`
 	CustomerID *uuid.UUID `json:"customerId"                        example:"550e8400-e29b-41d4-a716-446655440001"` // opsional, walk-in tidak perlu
-	// Durasi yang dipesan dalam menit. Minimal 1 menit. Contoh: 1, 30, 60, 90
-	BookedDurationMinutes int `json:"bookedDurationMinutes" validate:"required,min=1" example:"30"`
-	// Uang tunai yang diberikan pelanggan di depan (harus >= harga setelah diskon)
-	CashReceived float64 `json:"cashReceived" validate:"required,gt=0" example:"25000"`
+	// Durasi yang dipesan dalam menit. Boleh 0 kalau pakai bank waktu / tukar poin.
+	BookedDurationMinutes int `json:"bookedDurationMinutes" validate:"omitempty,min=0" example:"30"`
+	// Uang tunai yang diberikan pelanggan di depan. Boleh 0 kalau sesi gratis (bank waktu / poin).
+	CashReceived float64 `json:"cashReceived" validate:"omitempty,min=0" example:"25000"`
 	// Kode voucher diskon (opsional)
 	VoucherCode string `json:"voucherCode" example:"DISKON10"`
 	Notes string `json:"notes" example:"Rental 2 jam"`
+	// Menit dari saldo bank waktu member yang ingin dipakai sebagai bonus (opsional, hanya untuk member, gratis tidak dihitung ke pembayaran)
+	UseTimeBankMinutes int `json:"useTimeBankMinutes" validate:"omitempty,min=0" example:"0"`
+	// Jumlah unit penukaran poin loyalitas (opsional, hanya untuk member). 1 unit = 1x threshold poin ditukar jadi menit bonus, sesuai app_settings
+	RedeemPointUnits int `json:"redeemPointUnits" validate:"omitempty,min=0" example:"0"`
 }
 
 // StartSessionResponse respons setelah memulai sesi — berisi data sesi dan pembayaran lunas
@@ -108,7 +112,7 @@ func (uc *sessionUseCase) StartSession(ctx context.Context, req *StartSessionReq
 	}
 
 	// Buat sesi + pembayaran di depan dalam satu transaksi atomik
-	payment, err := uc.sessionRepo.CreateWithPayment(ctx, session, req.CashReceived, req.VoucherCode)
+	payment, err := uc.sessionRepo.CreateWithPayment(ctx, session, req.CashReceived, req.VoucherCode, req.UseTimeBankMinutes, req.RedeemPointUnits)
 	if err != nil {
 		return nil, err
 	}

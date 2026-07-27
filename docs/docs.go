@@ -1271,6 +1271,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/customers/{id}/loyalty": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mengembalikan saldo bank waktu (menit) \u0026 poin loyalitas member saat ini, pengaturan penukaran poin yang aktif, dan riwayat mutasi (log) terbaru. Hanya relevan untuk customer yang isMember=true.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pelanggan"
+                ],
+                "summary": "Ambil info bank waktu \u0026 poin loyalitas member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Customer ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/customers/{id}/membership": {
             "post": {
                 "security": [
@@ -5145,6 +5191,10 @@ const docTemplate = `{
                 "isMember": {
                     "type": "boolean"
                 },
+                "loyaltyPoints": {
+                    "description": "poin dari transaksi bayar-di-depan, bisa ditukar menit gratis",
+                    "type": "integer"
+                },
                 "membershipExpiry": {
                     "description": "YYYY-MM-DD",
                     "type": "string"
@@ -5165,6 +5215,10 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                },
+                "timeBalanceMinutes": {
+                    "description": "Bank Waktu \u0026 Poin Loyalitas (khusus member)",
+                    "type": "integer"
                 },
                 "updatedAt": {
                     "type": "string"
@@ -5973,6 +6027,10 @@ const docTemplate = `{
         "entity.Session": {
             "type": "object",
             "properties": {
+                "bonusMinutesFromPoints": {
+                    "description": "menit bonus dari penukaran poin",
+                    "type": "integer"
+                },
                 "bookedDurationMinutes": {
                     "description": "BookedDurationMinutes adalah durasi yang dipesan di awal (contoh: 120 menit = 2 jam)",
                     "type": "integer"
@@ -6014,11 +6072,27 @@ const docTemplate = `{
                 "notes": {
                     "type": "string"
                 },
+                "paidDurationMinutes": {
+                    "description": "Transparansi Bank Waktu \u0026 Poin Loyalitas (khusus member)\nPaidDurationMinutes adalah durasi yang benar-benar DIBAYAR (dasar hitung harga \u0026 poin).\nBookedDurationMinutes (di atas) adalah TOTAL menit bermain termasuk bonus dari bank waktu/poin.",
+                    "type": "integer"
+                },
+                "pointsEarned": {
+                    "description": "poin yang didapat dari sesi ini",
+                    "type": "integer"
+                },
+                "pointsRedeemed": {
+                    "description": "poin yang ditukar pada sesi ini",
+                    "type": "integer"
+                },
                 "startTime": {
                     "type": "string"
                 },
                 "status": {
                     "$ref": "#/definitions/entity.SessionStatus"
+                },
+                "timeBankMinutesUsed": {
+                    "description": "menit bonus dari saldo bank waktu member",
+                    "type": "integer"
                 },
                 "totalPrice": {
                     "type": "number"
@@ -6910,6 +6984,18 @@ const docTemplate = `{
                 "notes": {
                     "type": "string",
                     "example": "Rental 2 jam"
+                },
+                "redeemPointUnits": {
+                    "description": "Jumlah unit penukaran poin loyalitas (opsional, hanya untuk member). 1 unit = 1x threshold poin ditukar jadi menit bonus, sesuai app_settings",
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 0
+                },
+                "useTimeBankMinutes": {
+                    "description": "Menit dari saldo bank waktu member yang ingin dipakai sebagai bonus (opsional, hanya untuk member, gratis tidak dihitung ke pembayaran)",
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 0
                 },
                 "voucherCode": {
                     "description": "Kode voucher diskon (opsional)",

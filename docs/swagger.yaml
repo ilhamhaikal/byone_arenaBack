@@ -124,6 +124,9 @@ definitions:
         type: string
       isMember:
         type: boolean
+      loyaltyPoints:
+        description: poin dari transaksi bayar-di-depan, bisa ditukar menit gratis
+        type: integer
       membershipExpiry:
         description: YYYY-MM-DD
         type: string
@@ -139,6 +142,9 @@ definitions:
         type: string
       phone:
         type: string
+      timeBalanceMinutes:
+        description: Bank Waktu & Poin Loyalitas (khusus member)
+        type: integer
       updatedAt:
         type: string
     type: object
@@ -690,6 +696,9 @@ definitions:
     - ScreenStatusOff
   entity.Session:
     properties:
+      bonusMinutesFromPoints:
+        description: menit bonus dari penukaran poin
+        type: integer
       bookedDurationMinutes:
         description: 'BookedDurationMinutes adalah durasi yang dipesan di awal (contoh:
           120 menit = 2 jam)'
@@ -719,10 +728,25 @@ definitions:
         type: string
       notes:
         type: string
+      paidDurationMinutes:
+        description: |-
+          Transparansi Bank Waktu & Poin Loyalitas (khusus member)
+          PaidDurationMinutes adalah durasi yang benar-benar DIBAYAR (dasar hitung harga & poin).
+          BookedDurationMinutes (di atas) adalah TOTAL menit bermain termasuk bonus dari bank waktu/poin.
+        type: integer
+      pointsEarned:
+        description: poin yang didapat dari sesi ini
+        type: integer
+      pointsRedeemed:
+        description: poin yang ditukar pada sesi ini
+        type: integer
       startTime:
         type: string
       status:
         $ref: '#/definitions/entity.SessionStatus'
+      timeBankMinutesUsed:
+        description: menit bonus dari saldo bank waktu member
+        type: integer
       totalPrice:
         type: number
       updatedAt:
@@ -1352,6 +1376,18 @@ definitions:
       notes:
         example: Rental 2 jam
         type: string
+      redeemPointUnits:
+        description: Jumlah unit penukaran poin loyalitas (opsional, hanya untuk member).
+          1 unit = 1x threshold poin ditukar jadi menit bonus, sesuai app_settings
+        example: 0
+        minimum: 0
+        type: integer
+      useTimeBankMinutes:
+        description: Menit dari saldo bank waktu member yang ingin dipakai sebagai
+          bonus (opsional, hanya untuk member, gratis tidak dihitung ke pembayaran)
+        example: 0
+        minimum: 0
+        type: integer
       voucherCode:
         description: Kode voucher diskon (opsional)
         example: DISKON10
@@ -2308,6 +2344,37 @@ paths:
       security:
       - BearerAuth: []
       summary: Update data pelanggan
+      tags:
+      - Pelanggan
+  /api/v1/customers/{id}/loyalty:
+    get:
+      description: Mengembalikan saldo bank waktu (menit) & poin loyalitas member
+        saat ini, pengaturan penukaran poin yang aktif, dan riwayat mutasi (log) terbaru.
+        Hanya relevan untuk customer yang isMember=true.
+      parameters:
+      - description: Customer ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ambil info bank waktu & poin loyalitas member
       tags:
       - Pelanggan
   /api/v1/customers/{id}/membership:

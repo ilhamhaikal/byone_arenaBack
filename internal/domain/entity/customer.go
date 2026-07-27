@@ -18,6 +18,9 @@ type Customer struct {
 	MembershipStart *string `json:"membershipStart,omitempty" gorm:"type:date"`      // YYYY-MM-DD
 	MembershipExpiry *string `json:"membershipExpiry,omitempty" gorm:"type:date"`    // YYYY-MM-DD
 	MembershipPrice float64 `json:"membershipPrice"           gorm:"not null;default:0;type:numeric(10,2)"`
+	// Bank Waktu & Poin Loyalitas (khusus member)
+	TimeBalanceMinutes int `json:"timeBalanceMinutes" gorm:"not null;default:0"` // sisa menit dari sesi yang diakhiri lebih cepat, bisa dipakai lagi
+	LoyaltyPoints      int `json:"loyaltyPoints"      gorm:"not null;default:0"` // poin dari transaksi bayar-di-depan, bisa ditukar menit gratis
 	CreatedAt time.Time `json:"createdAt"    gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt"    gorm:"autoUpdateTime"`
 }

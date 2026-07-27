@@ -30,6 +30,14 @@ type Session struct {
 	TotalPrice             float64       `json:"totalPrice"             gorm:"not null;default:0;type:numeric(10,2)"`
 	Status                 SessionStatus `json:"status"                 gorm:"not null;default:'active';size:20;index"`
 	Notes                  string        `json:"notes,omitempty"        gorm:"type:text"`
+	// Transparansi Bank Waktu & Poin Loyalitas (khusus member)
+	// PaidDurationMinutes adalah durasi yang benar-benar DIBAYAR (dasar hitung harga & poin).
+	// BookedDurationMinutes (di atas) adalah TOTAL menit bermain termasuk bonus dari bank waktu/poin.
+	PaidDurationMinutes     int `json:"paidDurationMinutes"     gorm:"not null;default:0"`
+	TimeBankMinutesUsed     int `json:"timeBankMinutesUsed"     gorm:"not null;default:0"` // menit bonus dari saldo bank waktu member
+	BonusMinutesFromPoints  int `json:"bonusMinutesFromPoints"  gorm:"not null;default:0"` // menit bonus dari penukaran poin
+	PointsRedeemed          int `json:"pointsRedeemed"          gorm:"not null;default:0"` // poin yang ditukar pada sesi ini
+	PointsEarned            int `json:"pointsEarned"            gorm:"not null;default:0"` // poin yang didapat dari sesi ini
 	CreatedAt              time.Time     `json:"createdAt"              gorm:"autoCreateTime"`
 	UpdatedAt              time.Time     `json:"updatedAt"              gorm:"autoUpdateTime"`
 

@@ -38,8 +38,8 @@ type CreateVoucherRequest struct {
 	Code string `json:"code" validate:"required,min=3,max=50" example:"HPH3"`
 	// Nama deskriptif voucher
 	Name string `json:"name" validate:"required,min=3,max=150" example:"Happy Hours 3 Jam"`
-	// Tipe diskon: "percentage" (persen), "fixed_amount" (nominal Rp), "free_days" (gratis N hari, khusus rental harian)
-	DiscountType entity.DiscountType `json:"discountType" validate:"required,oneof=percentage fixed_amount free_days" enums:"percentage,fixed_amount,free_days" example:"fixed_amount"`
+	// Tipe diskon: "percentage" (persen), "fixed_amount" (nominal Rp), "free_days" (gratis N hari), "unlimited_play" (main sepuasnya harga flat)
+	DiscountType entity.DiscountType `json:"discountType" validate:"required,oneof=percentage fixed_amount free_days unlimited_play" enums:"percentage,fixed_amount,free_days,unlimited_play" example:"fixed_amount"`
 	// Nilai diskon: jika percentage maka 0-100, jika fixed_amount maka nominal Rp, jika free_days maka jumlah hari gratis (1,2,3...)
 	DiscountValue float64 `json:"discountValue" validate:"required,gt=0" example:"24000"`
 	// Minimal total belanja sebelum voucher berlaku (0 = tidak ada minimum)
@@ -56,8 +56,8 @@ type CreateVoucherRequest struct {
 type UpdateVoucherRequest struct {
 	Code          string              `json:"code"          validate:"omitempty,min=3,max=50"          example:"HPH3"`
 	Name          string              `json:"name"          validate:"omitempty,min=3,max=150"         example:"Happy Hours 3 Jam"`
-	// Tipe diskon: "percentage", "fixed_amount", "free_days"
-	DiscountType  entity.DiscountType `json:"discountType"  validate:"omitempty,oneof=percentage fixed_amount free_days" enums:"percentage,fixed_amount,free_days" example:"fixed_amount"`
+	// Tipe diskon: "percentage", "fixed_amount", "free_days", "unlimited_play"
+	DiscountType  entity.DiscountType `json:"discountType"  validate:"omitempty,oneof=percentage fixed_amount free_days unlimited_play" enums:"percentage,fixed_amount,free_days,unlimited_play" example:"fixed_amount"`
 	DiscountValue float64             `json:"discountValue" validate:"omitempty,gt=0"                   example:"24000"`
 	MinPurchase   *float64            `json:"minPurchase"   validate:"omitempty,gte=0"`
 	MaxDiscount   *float64            `json:"maxDiscount"   validate:"omitempty,gte=0"`

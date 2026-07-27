@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 
+	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
@@ -243,6 +244,76 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 		"membershipPrice": result.MembershipPrice,
 		"paymentId":       result.PaymentID,
 		"changeAmount":    result.ChangeAmount,
+	})
+}
+
+// GetLoyalty godoc
+// @Summary      Ambil info bank waktu & poin loyalitas member
+// @Description  Mengembalikan saldo bank waktu (menit) & poin loyalitas member saat ini, pengaturan penukaran poin yang aktif, dan riwayat mutasi (log) terbaru. Hanya relevan untuk customer yang isMember=true.
+// @Tags         Pelanggan
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "Customer ID (UUID)"
+// @Success      200  {object}  response.Response
+// @Failure      400  {object}  response.ErrorResponse
+// @Failure      404  {object}  response.ErrorResponse
+// @Router       /api/v1/customers/{id}/loyalty [get]
+func (h *CustomerHandler) GetLoyalty(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+
+	customer, err := h.customerUC.GetCustomerByID(c.Context(), id)
+	if err != nil {
+		return response.NotFound(c, err.Error())
+	}
+
+	var settingsRows []struct {
+		Key   string `gorm:"column:key"`
+		Value string `gorm:"column:value"`
+	}
+	h.db.WithContext(c.Context()).Raw(
+		"SELECT key, value FROM app_settings WHERE key IN ('loyalty_point_threshold', 'loyalty_point_redeem_minutes')",
+	).Scan(&settingsRows)
+	pointThreshold := 15
+	pointRedeemMinutes := 60
+	for _, r := range settingsRows {
+		switch r.Key {
+		case "loyalty_point_threshold":
+			fmt.Sscanf(r.Value, "%d", &pointThreshold)
+		case "loyalty_point_redeem_minutes":
+			fmt.Sscanf(r.Value, "%d", &pointRedeemMinutes)
+		}
+	}
+
+	var timeBankLogs []entity.CustomerTimeBankLog
+	h.db.WithContext(c.Context()).
+		Where("customer_id = ?", id).
+		Order("created_at DESC").
+		Limit(20).
+		Find(&timeBankLogs)
+
+	var pointLogs []entity.CustomerPointLog
+	h.db.WithContext(c.Context()).
+		Where("customer_id = ?", id).
+		Order("created_at DESC").
+		Limit(20).
+		Find(&pointLogs)
+
+	maxRedeemUnits := 0
+	if pointThreshold > 0 {
+		maxRedeemUnits = customer.LoyaltyPoints / pointThreshold
+	}
+
+	return response.OK(c, "Data bank waktu & poin loyalitas berhasil diambil", fiber.Map{
+		"timeBalanceMinutes": customer.TimeBalanceMinutes,
+		"loyaltyPoints":      customer.LoyaltyPoints,
+		"pointThreshold":     pointThreshold,
+		"pointRedeemMinutes": pointRedeemMinutes,
+		"maxRedeemUnits":     maxRedeemUnits,
+		"timeBankLogs":       timeBankLogs,
+		"pointLogs":          pointLogs,
 	})
 }
 

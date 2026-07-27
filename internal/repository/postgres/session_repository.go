@@ -132,7 +132,8 @@ func (r *sessionRepository) Create(ctx context.Context, session *entity.Session)
 
 // CreateWithPayment menggunakan byoneStartSessionWithPayment:
 // membuat sesi + pembayaran di depan dalam satu transaksi atomik.
-func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string) (*entity.Payment, error) {
+// useTimeBankMinutes & redeemPointUnits opsional (0 = tidak dipakai) — hanya berlaku untuk member.
+func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string, useTimeBankMinutes int, redeemPointUnits int) (*entity.Payment, error) {
 	type spResult struct {
 		// sesi
 		SessionID           uuid.UUID  `gorm:"column:session_id"`
@@ -150,17 +151,27 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 		ChangeAmount        float64    `gorm:"column:change_amount"`
 		VoucherID           *uuid.UUID `gorm:"column:voucher_id"`
 		PaidAt              *time.Time `gorm:"column:paid_at"`
+		// bank waktu & poin loyalitas
+		PaidDurationMinutes     int `gorm:"column:paid_duration_minutes"`
+		TimeBankMinutesUsed     int `gorm:"column:time_bank_minutes_used"`
+		BonusMinutesFromPoints  int `gorm:"column:bonus_minutes_from_points"`
+		PointsRedeemed          int `gorm:"column:points_redeemed"`
+		PointsEarned            int `gorm:"column:points_earned"`
+		CustomerTimeBalanceAfter int `gorm:"column:customer_time_balance_after"`
+		CustomerPointsAfter      int `gorm:"column:customer_points_after"`
 	}
 
 	var result spResult
 	tx := r.db.WithContext(ctx).Raw(
-		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?, ?, ?)", spname.Ident("StartSessionWithPayment")),
+		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?, ?, ?, ?, ?)", spname.Ident("StartSessionWithPayment")),
 		session.ConsoleID,
 		session.CustomerID,
 		session.Notes,
 		session.BookedDurationMinutes,
 		cashReceived,
 		voucherCode,
+		useTimeBankMinutes,
+		redeemPointUnits,
 	).Scan(&result)
 
 	if tx.Error != nil {
@@ -172,6 +183,11 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 	session.BookedDurationMinutes = result.SessionBookedMin
 	session.Status = entity.SessionStatus(result.SessionStatus)
 	session.TotalPrice = result.BaseAmount
+	session.PaidDurationMinutes = result.PaidDurationMinutes
+	session.TimeBankMinutesUsed = result.TimeBankMinutesUsed
+	session.BonusMinutesFromPoints = result.BonusMinutesFromPoints
+	session.PointsRedeemed = result.PointsRedeemed
+	session.PointsEarned = result.PointsEarned
 
 	// Bangun payment entity dari hasil SP
 	payment := &entity.Payment{
@@ -233,6 +249,7 @@ func parseStoredProcError(err error) error {
 		"SESSION_NOT_COMPLETED", "PAYMENT_EXISTS", "INSUFFICIENT_CASH",
 		"PAYMENT_NOT_FOUND", "PAYMENT_NOT_PAID",
 		"INVALID_DURATION",
+		"NOT_A_MEMBER", "INSUFFICIENT_TIME_BANK", "INSUFFICIENT_POINTS",
 		"VOUCHER_NOT_FOUND", "VOUCHER_INACTIVE", "VOUCHER_EXPIRED",
 		"VOUCHER_LIMIT_REACHED", "VOUCHER_MIN_PURCHASE",
 	} {

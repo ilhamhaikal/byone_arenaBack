@@ -170,6 +170,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	customers.Put("/:id", h.Customer.Update)
 	customers.Delete("/:id", h.Customer.Delete)
 	customers.Post("/:id/membership", h.Customer.SellMembership) // jual membership
+	customers.Get("/:id/loyalty", h.Customer.GetLoyalty)         // bank waktu & poin loyalitas
 
 	// Payment routes
 	payments := protected.Group("/payments")
