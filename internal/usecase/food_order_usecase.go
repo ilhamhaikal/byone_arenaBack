@@ -41,10 +41,11 @@ type FoodOrderItemRequest struct {
 
 // CreateFoodOrderRequest payload untuk membuat pesanan baru
 type CreateFoodOrderRequest struct {
-	SessionID  *uuid.UUID             `json:"sessionId"`  // opsional: sesi PS yang sedang berjalan
-	CustomerID *uuid.UUID             `json:"customerId"` // opsional: pelanggan terdaftar
-	Notes      string                 `json:"notes"`
-	Items      []FoodOrderItemRequest `json:"items" validate:"required,min=1,dive"`
+	SessionID     *uuid.UUID             `json:"sessionId"`     // opsional: sesi PS yang sedang berjalan
+	CustomerID    *uuid.UUID             `json:"customerId"`    // opsional: pelanggan terdaftar
+	Notes         string                 `json:"notes"`
+	AutoDiscount  float64                `json:"autoDiscount"`  // diskon otomatis dari aturan diskon aktif
+	Items         []FoodOrderItemRequest `json:"items" validate:"required,min=1,dive"`
 }
 
 // UpdateOrderStatusRequest payload untuk update status pesanan
@@ -98,9 +99,10 @@ func (uc *foodOrderUseCase) CreateOrder(ctx context.Context, req *CreateFoodOrde
 	}
 
 	order := &entity.FoodOrder{
-		SessionID:  req.SessionID,
-		CustomerID: req.CustomerID,
-		Notes:      req.Notes,
+		SessionID:      req.SessionID,
+		CustomerID:     req.CustomerID,
+		Notes:          req.Notes,
+		DiscountAmount: req.AutoDiscount,
 	}
 
 	if err := uc.orderRepo.Create(ctx, order, repoItems); err != nil {

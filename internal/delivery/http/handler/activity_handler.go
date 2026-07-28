@@ -24,6 +24,7 @@ type ActivityItem struct {
 	Title     string `json:"title"`
 	Detail    string `json:"detail"`
 	Timestamp string `json:"timestamp"`
+	Amount    string `json:"amount,omitempty"` // nominal (opsional, untuk pembayaran/voucher/food)
 }
 
 // GetRecentActivities godoc
@@ -90,27 +91,38 @@ func (h *ActivityHandler) GetRecentActivities(c *fiber.Ctx) error {
 		})
 	}
 
-	// 3. Sesi
+	// 3. Sesi (dengan durasi)
 	type sessR struct {
-		ConsoleName string `gorm:"column:console_name"`
-		Status      string `gorm:"column:status"`
-		CreatedAt   string `gorm:"column:created_at"`
+		ConsoleName      string `gorm:"column:console_name"`
+		Status           string `gorm:"column:status"`
+		DurationMinutes  int    `gorm:"column:duration_minutes"`
+		TotalPrice       float64 `gorm:"column:total_price"`
+		CreatedAt        string `gorm:"column:created_at"`
 	}
 	var sessions []sessR
-	h.db.Raw(`SELECT c.name as console_name, s.status,
+	h.db.Raw(`SELECT c.name as console_name, s.status, COALESCE(s.duration_minutes,0) as duration_minutes,
+		COALESCE(s.total_price,0) as total_price,
 		to_char(s.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at
 		FROM sessions s JOIN consoles c ON c.id = s.console_id
 		ORDER BY s.created_at DESC LIMIT ?`, limit).Scan(&sessions)
 	for _, s := range sessions {
 		action := "started"
+		durationStr := ""
 		if s.Status == "completed" {
 			action = "ended"
+			h := s.DurationMinutes / 60
+			m := s.DurationMinutes % 60
+			if h > 0 {
+				durationStr = fmt.Sprintf(" · %dj %dm · Rp %.0f", h, m, s.TotalPrice)
+			} else {
+				durationStr = fmt.Sprintf(" · %dm · Rp %.0f", s.DurationMinutes, s.TotalPrice)
+			}
 		} else if s.Status == "cancelled" {
 			action = "cancelled"
 		}
 		activities = append(activities, ActivityItem{
 			Type: "session", Action: action, Title: s.ConsoleName,
-			Detail:    "Sesi " + action,
+			Detail:    "Sesi " + action + durationStr,
 			Timestamp: s.CreatedAt,
 		})
 	}
@@ -175,7 +187,62 @@ func (h *ActivityHandler) GetRecentActivities(c *fiber.Ctx) error {
 		activities = append(activities, ActivityItem{
 			Type: "payment", Action: "confirmed", Title: p.ConsoleName,
 			Detail:    fmt.Sprintf("Pembayaran Rp %.0f", p.Amount),
+			Amount:    fmt.Sprintf("Rp %.0f", p.Amount),
 			Timestamp: p.PaidAt,
+		})
+	}
+
+	// 7. Voucher — penggunaan voucher
+	type vouchR struct {
+		VoucherName string  `gorm:"column:voucher_name"`
+		ConsoleName string  `gorm:"column:console_name"`
+		Discount    float64 `gorm:"column:discount"`
+		PaidAt      string  `gorm:"column:paid_at"`
+	}
+	var vouchers []vouchR
+	h.db.Raw(`SELECT v.name as voucher_name, COALESCE(c.name, 'Membership') as console_name,
+		p.discount_amount as discount,
+		to_char(p.paid_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as paid_at
+		FROM payments p JOIN vouchers v ON v.id = p.voucher_id
+		LEFT JOIN sessions s ON s.id = p.session_id
+		LEFT JOIN consoles c ON c.id = s.console_id
+		WHERE p.payment_status = 'paid' AND p.voucher_id IS NOT NULL
+		ORDER BY p.paid_at DESC LIMIT ?`, limit).Scan(&vouchers)
+	for _, v := range vouchers {
+		activities = append(activities, ActivityItem{
+			Type: "voucher", Action: "used", Title: v.VoucherName,
+			Detail:    fmt.Sprintf("Diskon Rp %.0f · %s", v.Discount, v.ConsoleName),
+			Amount:    fmt.Sprintf("-Rp %.0f", v.Discount),
+			Timestamp: v.PaidAt,
+		})
+	}
+
+	// 8. Food Orders — pesanan makanan/minuman
+	type foodR struct {
+		OrderNumber string  `gorm:"column:order_number"`
+		TotalAmount float64 `gorm:"column:total_amount"`
+		Status      string  `gorm:"column:status"`
+		UpdatedAt   string  `gorm:"column:updated_at"`
+	}
+	var foods []foodR
+	h.db.Raw(`SELECT order_number, total_amount, status,
+		to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as updated_at
+		FROM food_orders
+		ORDER BY updated_at DESC LIMIT ?`, limit).Scan(&foods)
+	for _, f := range foods {
+		statusLabel := f.Status
+		if f.Status == "served" {
+			statusLabel = "disajikan"
+		} else if f.Status == "preparing" {
+			statusLabel = "dimasak"
+		} else if f.Status == "pending" {
+			statusLabel = "menunggu"
+		}
+		activities = append(activities, ActivityItem{
+			Type: "food_order", Action: f.Status, Title: f.OrderNumber,
+			Detail:    fmt.Sprintf("Pesanan %s · Rp %.0f", statusLabel, f.TotalAmount),
+			Amount:    fmt.Sprintf("Rp %.0f", f.TotalAmount),
+			Timestamp: f.UpdatedAt,
 		})
 	}
 

@@ -23,8 +23,9 @@ type FoodOrder struct {
 	SessionID   *uuid.UUID  `json:"sessionId,omitempty"  gorm:"type:uuid;index"`   // opsional: terhubung ke sesi PS
 	CustomerID  *uuid.UUID  `json:"customerId,omitempty" gorm:"type:uuid;index"`   // opsional: walk-in
 	Status      OrderStatus `json:"status"      gorm:"not null;default:'pending';size:20;index"`
-	TotalAmount float64     `json:"totalAmount" gorm:"not null;default:0;type:numeric(10,2)"`
-	Notes       string      `json:"notes,omitempty" gorm:"type:text"`
+	TotalAmount    float64     `json:"totalAmount"    gorm:"not null;default:0;type:numeric(10,2)"`
+	DiscountAmount float64     `json:"discountAmount" gorm:"not null;default:0;type:numeric(10,2)"`
+	Notes          string      `json:"notes,omitempty" gorm:"type:text"`
 	CreatedAt   time.Time   `json:"createdAt"   gorm:"autoCreateTime"`
 	UpdatedAt   time.Time   `json:"updatedAt"   gorm:"autoUpdateTime"`
 

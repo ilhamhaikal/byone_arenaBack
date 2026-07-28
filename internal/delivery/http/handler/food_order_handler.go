@@ -2,22 +2,26 @@ package handler
 
 import (
 	"byone-arena/internal/usecase"
+	wsHandler "byone-arena/internal/delivery/websocket"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/validator"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // FoodOrderHandler menangani HTTP request untuk pesanan makanan
 type FoodOrderHandler struct {
 	orderUC   usecase.FoodOrderUseCase
 	validator *validator.Validator
+	db        *gorm.DB
+	hub       *wsHandler.Hub
 }
 
 // NewFoodOrderHandler membuat instance baru FoodOrderHandler
-func NewFoodOrderHandler(orderUC usecase.FoodOrderUseCase, v *validator.Validator) *FoodOrderHandler {
-	return &FoodOrderHandler{orderUC: orderUC, validator: v}
+func NewFoodOrderHandler(orderUC usecase.FoodOrderUseCase, v *validator.Validator, db *gorm.DB, hub *wsHandler.Hub) *FoodOrderHandler {
+	return &FoodOrderHandler{orderUC: orderUC, validator: v, db: db, hub: hub}
 }
 
 // GetAll godoc
@@ -165,7 +169,99 @@ func (h *FoodOrderHandler) UpdateStatus(c *fiber.Ctx) error {
 		}
 		return response.BadRequest(c, err.Error())
 	}
+
+	// Broadcast + insert notifikasi ke client (TV display) jika pesanan sedang disiapkan
+	if req.Status == "preparing" && h.hub != nil {
+		msg := "Pesanan " + order.OrderNumber + " sedang disiapkan! 🍳"
+
+		// WebSocket broadcast
+		h.hub.Broadcast(wsHandler.NewEvent("food_order_preparing", fiber.Map{
+			"message":     msg,
+			"orderId":     order.ID,
+			"orderNumber": order.OrderNumber,
+		}))
+
+		// Insert ke tv_notifications untuk client HTTP polling
+		h.db.Exec(`
+			INSERT INTO tv_notifications (id, title, message, target_all, target_console_ids, active_sessions_only, loop_enabled, is_active, priority, created_at, updated_at)
+			VALUES (uuid_generate_v4(), 'Pesanan Disiapkan', ?, true, '[]', true, false, true, 'normal', NOW(), NOW())
+		`, msg)
+	}
+
 	return response.OK(c, "Status pesanan berhasil diperbarui", order)
+}
+
+// FoodPricePreviewItem satu item dalam preview harga makanan
+type FoodPricePreviewItem struct {
+	MenuID   string  `json:"menuId"`
+	Quantity int     `json:"quantity"`
+	Price    float64 `json:"price"`
+	Subtotal float64 `json:"subtotal"`
+}
+
+// FoodPricePreviewRequest payload untuk kalkulasi harga + diskon
+type FoodPricePreviewRequest struct {
+	Items      []FoodPricePreviewItem `json:"items"      validate:"required,min=1"`
+	CustomerID *string                `json:"customerId"`
+}
+
+// FoodPricePreviewResponse hasil kalkulasi harga makanan + auto diskon
+type FoodPricePreviewResponse struct {
+	TotalAmount    float64 `json:"totalAmount"`
+	AutoDiscount   float64 `json:"autoDiscount"`
+	FinalAmount    float64 `json:"finalAmount"`
+}
+
+// GetPricePreview godoc
+// @Summary      Kalkulasi harga makanan + auto diskon
+// @Description  Hitung total harga menu items lalu aplikasikan aturan diskon otomatis yang aktif. Tidak membuat order.
+// @Tags         FoodOrder
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body  body  handler.FoodPricePreviewRequest  true  "List menu items"
+// @Success      200   {object}  response.Response{data=handler.FoodPricePreviewResponse}
+// @Router       /api/v1/food-orders/price-preview [post]
+func (h *FoodOrderHandler) GetPricePreview(c *fiber.Ctx) error {
+	req := new(FoodPricePreviewRequest)
+	if err := c.BodyParser(req); err != nil {
+		return response.BadRequest(c, "Format request tidak valid")
+	}
+
+	// Hitung total dari menu items
+	var totalAmount float64
+	for _, item := range req.Items {
+		var price float64
+		h.db.Raw("SELECT price FROM menu_items WHERE id = ?", item.MenuID).Scan(&price)
+		subtotal := price * float64(item.Quantity)
+		totalAmount += subtotal
+	}
+
+	if totalAmount <= 0 {
+		return response.BadRequest(c, "Total belanja tidak valid")
+	}
+
+	// Cek apakah customer adalah member
+	var isMember bool
+	if req.CustomerID != nil && *req.CustomerID != "" {
+		h.db.Raw("SELECT COALESCE(is_member, false) FROM customers WHERE id = ?", *req.CustomerID).Scan(&isMember)
+	}
+
+	// Aplikasikan auto-diskon via EvaluateDiscountRules
+	var autoDiscount float64
+	h.db.Raw("SELECT COALESCE(\"byoneEvaluateDiscountRules\"(?::NUMERIC, NOW(), ?::BOOLEAN), 0)",
+		totalAmount, isMember).Scan(&autoDiscount)
+
+	finalAmount := totalAmount - autoDiscount
+	if finalAmount < 0 {
+		finalAmount = 0
+	}
+
+	return response.OK(c, "Preview harga makanan", FoodPricePreviewResponse{
+		TotalAmount:  totalAmount,
+		AutoDiscount: autoDiscount,
+		FinalAmount:  finalAmount,
+	})
 }
 
 // Cancel godoc

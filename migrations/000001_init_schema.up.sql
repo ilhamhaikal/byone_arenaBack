@@ -253,8 +253,9 @@ CREATE TABLE IF NOT EXISTS food_orders (
     customer_id  UUID REFERENCES customers(id) ON DELETE SET NULL,
     status       VARCHAR(20) NOT NULL DEFAULT 'pending'
                      CHECK (status IN ('pending', 'preparing', 'served', 'cancelled')),
-    total_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
-    notes        TEXT,
+    total_amount    NUMERIC(10,2) NOT NULL DEFAULT 0,
+    discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+    notes           TEXT,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

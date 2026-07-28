@@ -115,6 +115,14 @@ func (r *foodOrderRepository) Create(ctx context.Context, order *entity.FoodOrde
 	order.OrderNumber = result.OrderNumber
 	order.TotalAmount = result.TotalAmount
 	order.Status = entity.OrderStatusPending
+
+	// Simpan discount_amount (diskon otomatis) jika ada
+	if order.DiscountAmount > 0 {
+		r.db.WithContext(ctx).Exec(
+			"UPDATE food_orders SET discount_amount = ? WHERE id = ?",
+			order.DiscountAmount, order.ID,
+		)
+	}
 	return nil
 }
 

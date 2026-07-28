@@ -96,6 +96,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 
 	// Dashboard summary — memerlukan autentikasi
 	protected.Get("/dashboard/summary", h.Dashboard.GetSummary)
+	protected.Get("/dashboard/revenue-chart", h.Dashboard.GetRevenueChart)
 
 	// Report routes — memerlukan autentikasi
 	reports := protected.Group("/reports")
@@ -228,6 +229,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	foodOrders.Get("/status", h.FoodOrder.GetByStatus)
 	foodOrders.Get("/:id", h.FoodOrder.GetByID)
 	foodOrders.Post("/", h.FoodOrder.Create)
+	foodOrders.Post("/price-preview", h.FoodOrder.GetPricePreview)
 	foodOrders.Patch("/:id/status", middleware.AdminOnly(), h.FoodOrder.UpdateStatus)
 	foodOrders.Patch("/:id/cancel", h.FoodOrder.Cancel)
 	foodOrders.Delete("/:id", middleware.AdminOnly(), h.FoodOrder.Delete)
