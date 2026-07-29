@@ -34,8 +34,10 @@ type ReportRevenue struct {
 	DailyRentalCount   int     `json:"dailyRentalCount"`
 	MembershipRevenue  float64 `json:"membershipRevenue"`
 	MembershipCount    int     `json:"membershipCount"`
-	FoodSalesRevenue   float64 `json:"foodSalesRevenue"`
-	FoodSalesCount     int     `json:"foodSalesCount"`
+	FoodSalesRevenue    float64 `json:"foodSalesRevenue"`
+	FoodSalesBaseAmount float64 `json:"foodSalesBaseAmount"`
+	FoodSalesDiscount   float64 `json:"foodSalesDiscount"`
+	FoodSalesCount      int     `json:"foodSalesCount"`
 }
 
 type ReportTransactions struct {
@@ -87,6 +89,8 @@ type ReportDiscountRule struct {
 // ReportFoodSales adalah ringkasan penjualan makanan/minuman dalam periode laporan
 type ReportFoodSales struct {
 	TotalRevenue      float64          `json:"totalRevenue"`
+	BaseAmount        float64          `json:"baseAmount"`
+	DiscountAmount    float64          `json:"discountAmount"`
 	TotalOrders       int              `json:"totalOrders"`
 	AverageOrderValue float64          `json:"averageOrderValue"`
 	TopItems          []ReportFoodItem `json:"topItems"`

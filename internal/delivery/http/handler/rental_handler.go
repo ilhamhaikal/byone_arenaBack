@@ -103,6 +103,9 @@ func (h *RentalHandler) GetAllDailyRentals(c *fiber.Ctx) error {
 	var list []entity.DailyRental
 	h.db.WithContext(c.Context()).Preload("Console").Preload("Customer").
 		Order("created_at DESC").Find(&list)
+	if list == nil {
+		list = []entity.DailyRental{}
+	}
 	return response.OK(c, "Data rental harian", list)
 }
 
@@ -194,6 +197,9 @@ func (h *RentalHandler) GetAllBookings(c *fiber.Ctx) error {
 		query = query.Where("booking_date = ?", date)
 	}
 	query.Find(&list)
+	if list == nil {
+		list = []entity.Booking{}
+	}
 	return response.OK(c, "Data booking", list)
 }
 

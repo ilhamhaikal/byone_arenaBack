@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name   VARCHAR(100) NOT NULL,
     role        VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'superadmin', 'kasir')),
     is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    permissions JSONB NOT NULL DEFAULT '[]',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS consoles (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name            VARCHAR(100) NOT NULL,
-    console_type    VARCHAR(15) NOT NULL CHECK (console_type IN ('PS3', 'PS4', 'PS5', 'AndroidTV')),
+    console_type    VARCHAR(15) NOT NULL CHECK (console_type IN ('PS3', 'PS4', 'PS5', 'SWITCH')),
     ip_address      VARCHAR(50),
     adb_port        INT NOT NULL DEFAULT 5555,
     mac_address     VARCHAR(20),
@@ -105,7 +106,6 @@ CREATE TABLE IF NOT EXISTS shifts (
 
 CREATE INDEX IF NOT EXISTS idx_shifts_user_id ON shifts(user_id);
 CREATE INDEX IF NOT EXISTS idx_shifts_status ON shifts(status);
-CREATE INDEX IF NOT EXISTS idx_shifts_active ON shifts(is_active);
 
 -- ============================================
 -- 6. SESSIONS
@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS vouchers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code);
-CREATE INDEX IF NOT EXISTS idx_vouchers_active ON vouchers(is_active, valid_from, valid_until);
+CREATE INDEX IF NOT EXISTS idx_vouchers_active ON vouchers(is_active);
 
 -- ============================================
 -- 9. DISCOUNT RULES (auto-discount: happy hour, member, etc.)
@@ -406,7 +406,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO app_settings (key, value) VALUES ('membership_price', '50000') ON CONFLICT (key) DO NOTHING;
+INSERT INTO app_settings (key, value) VALUES ('membership_price', '10000') ON CONFLICT (key) DO NOTHING;
 INSERT INTO app_settings (key, value) VALUES ('daily_price', '75000') ON CONFLICT (key) DO NOTHING;
 INSERT INTO app_settings (key, value) VALUES ('loyalty_point_threshold', '15') ON CONFLICT (key) DO NOTHING;
 INSERT INTO app_settings (key, value) VALUES ('loyalty_point_redeem_minutes', '60') ON CONFLICT (key) DO NOTHING;

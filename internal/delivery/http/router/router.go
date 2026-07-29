@@ -33,6 +33,7 @@ type Handlers struct {
 	Rental    *handler.RentalHandler
 	Settings  *handler.SettingsHandler
 	Activity  *handler.ActivityHandler
+	User      *handler.UserHandler
 	Hub       *wsHandler.Hub
 }
 
@@ -98,16 +99,16 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	protected.Get("/dashboard/summary", h.Dashboard.GetSummary)
 	protected.Get("/dashboard/revenue-chart", h.Dashboard.GetRevenueChart)
 
-	// Report routes — memerlukan autentikasi
-	reports := protected.Group("/reports")
+	// Report routes — admin & superadmin only
+	reports := protected.Group("/reports", middleware.AdminOnly())
 	reports.Get("/summary", h.Report.GetSummary)
 
 	// Activity routes — realtime activity feed
 	activities := protected.Group("/activities")
 	activities.Get("/recent", h.Activity.GetRecentActivities)
 
-	// Notification routes — CRUD admin only
-	notifications := protected.Group("/notifications", middleware.AdminOnly())
+	// Notification routes — semua role terautentikasi bisa kelola
+	notifications := protected.Group("/notifications")
 	notifications.Post("/", h.Notify.CreateNotification)
 	notifications.Put("/:id", h.Notify.UpdateNotification)
 	notifications.Delete("/:id", h.Notify.DeleteNotification)
@@ -135,16 +136,16 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	api.Get("/settings/membership", h.Settings.GetMembershipPrice)
 	protected.Put("/settings/membership", middleware.AdminOnly(), h.Settings.UpdateMembershipPrice)
 
-	// Console routes
+	// Console routes — create & edit semua role, delete admin only
 	consoles := protected.Group("/consoles")
 	consoles.Get("/", h.Console.GetAll)
 	consoles.Get("/available", h.Console.GetAvailable)
-	consoles.Get("/overview", h.Console.GetOverview) // dashboard: semua konsol + sesi aktif + remaining minutes
+	consoles.Get("/overview", h.Console.GetOverview)
 	consoles.Get("/:id", h.Console.GetByID)
 	consoles.Post("/", h.Console.Create)
 	consoles.Put("/:id", h.Console.Update)
-	consoles.Delete("/:id", h.Console.Delete)
-	consoles.Get("/:id/price", h.Console.PreviewPrice) // kalkulasi harga
+	consoles.Delete("/:id", middleware.AdminOnly(), h.Console.Delete)
+	consoles.Get("/:id/price", h.Console.PreviewPrice)
 	// TV Control — admin only
 	consoles.Post("/:id/wake", middleware.AdminOnly(), h.Notify.WakeConsole)
 	consoles.Post("/:id/sleep", middleware.AdminOnly(), h.Notify.SleepConsole)
@@ -163,15 +164,15 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	sessions.Get("/:session_id/payments", h.Payment.GetAllBySession)                        // SEMUA payment sesi (base + tiap extend) + ringkasan total
 	sessions.Post("/:session_id/payments/confirm-pending", h.Payment.ConfirmSessionPending) // lunasi semua payment pending sesi ini sekaligus + hitung kembalian gabungan
 
-	// Customer routes
+	// Customer routes — create & edit semua role, delete admin only
 	customers := protected.Group("/customers")
 	customers.Get("/", h.Customer.GetAll)
 	customers.Get("/:id", h.Customer.GetByID)
 	customers.Post("/", h.Customer.Create)
 	customers.Put("/:id", h.Customer.Update)
-	customers.Delete("/:id", h.Customer.Delete)
-	customers.Post("/:id/membership", h.Customer.SellMembership) // jual membership
-	customers.Get("/:id/loyalty", h.Customer.GetLoyalty)         // bank waktu & poin loyalitas
+	customers.Delete("/:id", middleware.AdminOnly(), h.Customer.Delete)
+	customers.Post("/:id/membership", h.Customer.SellMembership)
+	customers.Get("/:id/loyalty", h.Customer.GetLoyalty)
 
 	// Payment routes
 	payments := protected.Group("/payments")
@@ -192,45 +193,60 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	// Shifts by user
 	protected.Get("/users/:user_id/shifts", middleware.AdminOnly(), h.Shift.GetByUser)
 
-	// Voucher routes (admin & superadmin only)
-	vouchers := protected.Group("/vouchers", middleware.AdminOnly())
+	// User management routes
+	// Change password — semua user terautentikasi bisa (HARUS sebelum /:id)
+	protected.Patch("/users/change-password", h.User.ChangePassword)
+
+	users := protected.Group("/users", middleware.AdminOnly())
+	users.Get("/", h.User.GetAll)
+	users.Get("/:id", h.User.GetByID)
+	users.Post("/", h.User.Create)
+	users.Put("/:id", h.User.Update)
+	users.Delete("/:id", h.User.Delete)
+	// Change password — semua user terautentikasi bisa
+	protected.Patch("/users/change-password", h.User.ChangePassword)
+
+	// Voucher routes — lihat boleh semua role, edit hanya admin
+	vouchers := protected.Group("/vouchers")
 	vouchers.Get("/", h.Voucher.GetAll)
 	vouchers.Get("/code/:code", h.Voucher.GetByCode)
 	vouchers.Get("/:id", h.Voucher.GetByID)
-	vouchers.Post("/", h.Voucher.Create)
-	vouchers.Put("/:id", h.Voucher.Update)
-	vouchers.Patch("/:id/toggle", h.Voucher.Toggle)
-	vouchers.Delete("/:id", h.Voucher.Delete)
+	// Write operations: admin only
+	protected.Post("/vouchers", middleware.AdminOnly(), h.Voucher.Create)
+	protected.Put("/vouchers/:id", middleware.AdminOnly(), h.Voucher.Update)
+	protected.Patch("/vouchers/:id/toggle", middleware.AdminOnly(), h.Voucher.Toggle)
+	protected.Delete("/vouchers/:id", middleware.AdminOnly(), h.Voucher.Delete)
 
-	// Discount rule routes (admin & superadmin only)
-	discounts := protected.Group("/discounts", middleware.AdminOnly())
+	// Discount rule routes — lihat boleh semua role, edit hanya admin
+	discounts := protected.Group("/discounts")
 	discounts.Get("/", h.Discount.GetAll)
 	discounts.Get("/active", h.Discount.GetActive)
 	discounts.Get("/:id", h.Discount.GetByID)
-	discounts.Post("/", h.Discount.Create)
-	discounts.Put("/:id", h.Discount.Update)
-	discounts.Patch("/:id/toggle", h.Discount.Toggle)
-	discounts.Delete("/:id", h.Discount.Delete)
+	// Write operations: admin only
+	protected.Post("/discounts", middleware.AdminOnly(), h.Discount.Create)
+	protected.Put("/discounts/:id", middleware.AdminOnly(), h.Discount.Update)
+	protected.Patch("/discounts/:id/toggle", middleware.AdminOnly(), h.Discount.Toggle)
+	protected.Delete("/discounts/:id", middleware.AdminOnly(), h.Discount.Delete)
 
-	// Menu routes — list & detail bisa diakses semua role, CRUD hanya admin
+	// Menu routes — semua role bisa kelola (create, edit, delete)
 	menus := protected.Group("/menus")
 	menus.Get("/", h.Menu.GetAll)
 	menus.Get("/available", h.Menu.GetAvailable)
 	menus.Get("/category/:category", h.Menu.GetByCategory)
 	menus.Get("/:id", h.Menu.GetByID)
-	menus.Post("/", middleware.AdminOnly(), h.Menu.Create)
-	menus.Put("/:id", middleware.AdminOnly(), h.Menu.Update)
-	menus.Patch("/:id/toggle", middleware.AdminOnly(), h.Menu.Toggle)
-	menus.Delete("/:id", middleware.AdminOnly(), h.Menu.Delete)
+	menus.Post("/", h.Menu.Create)
+	menus.Put("/:id", h.Menu.Update)
+	menus.Patch("/:id/toggle", h.Menu.Toggle)
+	menus.Delete("/:id", h.Menu.Delete)
 
-	// Food order routes — semua role bisa buat & lihat, status update hanya admin
+	// Food order routes — semua role bisa buat, lihat, update status & cancel; delete admin only
 	foodOrders := protected.Group("/food-orders")
 	foodOrders.Get("/", h.FoodOrder.GetAll)
 	foodOrders.Get("/status", h.FoodOrder.GetByStatus)
 	foodOrders.Get("/:id", h.FoodOrder.GetByID)
 	foodOrders.Post("/", h.FoodOrder.Create)
 	foodOrders.Post("/price-preview", h.FoodOrder.GetPricePreview)
-	foodOrders.Patch("/:id/status", middleware.AdminOnly(), h.FoodOrder.UpdateStatus)
+	foodOrders.Patch("/:id/status", h.FoodOrder.UpdateStatus)
 	foodOrders.Patch("/:id/cancel", h.FoodOrder.Cancel)
 	foodOrders.Delete("/:id", middleware.AdminOnly(), h.FoodOrder.Delete)
 

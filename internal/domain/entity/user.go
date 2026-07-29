@@ -22,9 +22,10 @@ type User struct {
 	Password  string    `json:"-"          gorm:"not null;size:255"`
 	FullName  string    `json:"fullName"   gorm:"not null;size:100"`
 	Role      UserRole  `json:"role"       gorm:"not null;size:20"`
-	IsActive  bool      `json:"isActive"   gorm:"not null;default:true"`
-	CreatedAt time.Time `json:"createdAt"  gorm:"autoCreateTime"`
-	UpdatedAt time.Time `json:"updatedAt"  gorm:"autoUpdateTime"`
+	IsActive    bool      `json:"isActive"    gorm:"not null;default:true"`
+	Permissions string    `json:"permissions" gorm:"type:jsonb;not null;default:'[]'"`
+	CreatedAt   time.Time `json:"createdAt"   gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `json:"updatedAt"   gorm:"autoUpdateTime"`
 }
 
 func (User) TableName() string { return "users" }

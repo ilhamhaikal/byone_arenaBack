@@ -40,7 +40,7 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 		}
 
 		// Simpan claims ke context untuk digunakan handler berikutnya
-		c.Locals("user_id", claims.UserID)
+		c.Locals("userID", claims.UserID)
 		c.Locals("username", claims.Username)
 		c.Locals("role", claims.Role)
 

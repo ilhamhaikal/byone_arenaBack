@@ -157,6 +157,7 @@ func main() {
 	discountRuleUC := usecase.NewDiscountRuleUseCase(discountRuleRepo)
 	menuUC := usecase.NewMenuItemUseCase(menuRepo)
 	foodOrderUC := usecase.NewFoodOrderUseCase(foodOrderRepo)
+	userUC := usecase.NewUserUseCase(userRepo)
 
 	// Inisialisasi handler (delivery layer)
 	handlers := &router.Handlers{
@@ -176,6 +177,7 @@ func main() {
 		Rental:    handler.NewRentalHandler(db, validate),
 		Settings:  handler.NewSettingsHandler(db, validate),
 		Activity:  handler.NewActivityHandler(db),
+		User:      handler.NewUserHandler(userUC, validate, db),
 		Hub:       hub,
 	}
 

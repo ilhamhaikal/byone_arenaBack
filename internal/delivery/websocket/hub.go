@@ -226,38 +226,15 @@ func (h *Hub) StartAutoStop() {
 			if h.db == nil {
 				continue
 			}
-			// Safety net: reset konsol stuck in_use tanpa sesi aktif
-			h.db.Exec(`
-				UPDATE consoles SET status = 'available', updated_at = NOW()
-				WHERE status = 'in_use'
-				  AND NOT EXISTS (
-				    SELECT 1 FROM sessions s
-				    WHERE s.console_id = consoles.id AND s.status = 'active'
-				  )
-			`)
-			// Safety net: reset konsol stuck rented_out tanpa rental aktif
-			h.db.Exec(`
-				UPDATE consoles SET status = 'available', updated_at = NOW()
-				WHERE status = 'rented_out'
-				  AND NOT EXISTS (
-				    SELECT 1 FROM daily_rentals d
-				    WHERE d.console_id = consoles.id AND d.status = 'active'
-				  )
-			`)
-			// Overdue daily rentals
-			h.db.Exec(`
-				UPDATE daily_rentals SET status = 'overdue', updated_at = NOW()
-				WHERE status = 'active' AND end_date < CURRENT_DATE
-			`)
-			// Cari sesi expired
+			// Jalankan maintenance via SP (cleanup status + overdue)
+			h.db.Exec(fmt.Sprintf("SELECT %s()", spname.Ident("RunMaintenance")))
+
+			// Cari sesi expired → auto-stop
 			var expiredSessions []struct {
 				ID        uuid.UUID `gorm:"column:id"`
 				ConsoleID uuid.UUID `gorm:"column:console_id"`
 			}
-			h.db.Raw(`
-				SELECT id, console_id FROM sessions
-				WHERE status = 'active' AND end_scheduled_at IS NOT NULL AND end_scheduled_at < NOW()
-			`).Scan(&expiredSessions)
+			h.db.Raw(fmt.Sprintf("SELECT * FROM %s()", spname.Ident("GetExpiredSessions"))).Scan(&expiredSessions)
 			for _, s := range expiredSessions {
 				h.db.Exec(fmt.Sprintf(`SELECT %s(?)`, spname.Ident("EndSession")), s.ID)
 				h.Broadcast(NewEvent(EventSessionEnded, map[string]interface{}{

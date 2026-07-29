@@ -23,7 +23,7 @@ type Shift struct {
 	Name      string      `json:"name"        gorm:"not null;size:100"`      // contoh: "Shift Pagi", "Shift Malam"
 	StartHour int         `json:"startHour"   gorm:"not null"`               // 0-23 (jam mulai)
 	EndHour   int         `json:"endHour"     gorm:"not null"`               // 0-23 (jam selesai)
-	Is24Hour  bool        `json:"is24Hour"    gorm:"not null;default:false"` // true = bisa login kapan saja
+	Is24Hour  bool        `json:"is24Hour"    gorm:"column:is_24_hour;not null;default:false"` // true = bisa login kapan saja
 	Status    ShiftStatus `json:"status"      gorm:"not null;default:'active';size:20"`
 	CreatedAt time.Time   `json:"createdAt"   gorm:"autoCreateTime"`
 	UpdatedAt time.Time   `json:"updatedAt"   gorm:"autoUpdateTime"`

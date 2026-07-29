@@ -3,6 +3,7 @@ package handler
 import (
 	"byone-arena/internal/domain/repository"
 	"byone-arena/pkg/response"
+	"byone-arena/pkg/spname"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -67,40 +68,10 @@ func (h *DashboardHandler) GetRevenueChart(c *fiber.Ctx) error {
 	}
 
 	var items []RevenueChartItem
-	h.db.Raw(`
-		SELECT
-			dd::DATE::TEXT AS date,
-			COALESCE(sr.rev,0) + COALESCE(dr.rev,0) + COALESCE(mr.rev,0) + COALESCE(fr.rev,0) AS revenue,
-			COALESCE(sr.sessions,0) + COALESCE(dr.rentals,0) + COALESCE(mr.memberships,0) + COALESCE(fr.orders,0) AS sessions
-		FROM generate_series(
-			CURRENT_DATE - (? - 1),
-			CURRENT_DATE,
-			'1 day'::INTERVAL
-		) dd
-		LEFT JOIN LATERAL (
-			SELECT COALESCE(SUM(p.total_payment),0) AS rev, COUNT(*)::INT AS sessions
-			FROM payments p
-			WHERE p.payment_status='paid' AND p.session_id IS NOT NULL
-			AND p.paid_at::DATE = dd::DATE
-		) sr ON TRUE
-		LEFT JOIN LATERAL (
-			SELECT COALESCE(SUM(d.final_amount),0) AS rev, COUNT(*)::INT AS rentals
-			FROM daily_rentals d
-			WHERE d.created_at::DATE = dd::DATE
-		) dr ON TRUE
-		LEFT JOIN LATERAL (
-			SELECT COALESCE(SUM(p2.total_payment),0) AS rev, COUNT(*)::INT AS memberships
-			FROM payments p2
-			WHERE p2.payment_status='paid' AND p2.session_id IS NULL
-			AND p2.paid_at::DATE = dd::DATE
-		) mr ON TRUE
-		LEFT JOIN LATERAL (
-			SELECT COALESCE(SUM(fo.total_amount),0) AS rev, COUNT(*)::INT AS orders
-			FROM food_orders fo
-			WHERE fo.status='served' AND fo.updated_at::DATE = dd::DATE
-		) fr ON TRUE
-		ORDER BY dd::DATE
-	`, days).Scan(&items)
+	spName := spname.Ident("RevenueChart")
+	if err := h.db.Raw("SELECT * FROM "+spName+"(?)", days).Scan(&items).Error; err != nil {
+		return response.InternalServerError(c, "Gagal mengambil data grafik")
+	}
 
 	if len(items) == 0 {
 		items = []RevenueChartItem{}

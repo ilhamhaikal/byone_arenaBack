@@ -10,8 +10,10 @@ import (
 
 // UserRepository mendefinisikan kontrak akses data untuk entitas User
 type UserRepository interface {
+	FindAll(ctx context.Context) ([]*entity.User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*entity.User, error)
 	FindByUsername(ctx context.Context, username string) (*entity.User, error)
 	Create(ctx context.Context, user *entity.User) error
 	Update(ctx context.Context, user *entity.User) error
+	Delete(ctx context.Context, id uuid.UUID) error
 }
