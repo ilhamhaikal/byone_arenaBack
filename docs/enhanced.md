@@ -1,363 +1,450 @@
-# Byone Arena TV Launcher & Smart Screen Saver
+# Byone Arena Client - Android TV Overlay Architecture
 
-## 1. Tujuan
+# Tujuan
 
-Byone Arena dirancang sebagai aplikasi Android TV yang berfungsi sebagai **Launcher**, **Screen Saver**, dan **Client Rental**, tanpa menghilangkan fungsi utama televisi.
+Saya sedang mengembangkan sistem manajemen rental PlayStation bernama **Byone Arena**.
 
-Aplikasi tidak mengubah TV menjadi perangkat kiosk yang terkunci. Sebaliknya, aplikasi menjadi pintu masuk (entry point) saat TV dinyalakan dan akan kembali tampil secara otomatis ketika sesi penyewaan berakhir atau ketika sistem menginstruksikannya.
+Saya ingin Anda menganalisa arsitektur aplikasi Client Android TV.
 
----
+JANGAN langsung menulis kode.
 
-# 2. Latar Belakang
-
-Pada umumnya Android TV digunakan untuk:
-
-* Menonton YouTube
-* Menonton Netflix
-* Menggunakan aplikasi streaming lainnya
-* Memutar HDMI
-* Menonton TV Digital
-
-Sistem Byone Arena tidak bertujuan membatasi aktivitas tersebut.
-
-Sebaliknya, sistem bertugas mengelola akses penyewa terhadap perangkat TV sehingga penggunaan tetap terkontrol sesuai durasi penyewaan.
+Saya ingin analisa arsitektur terlebih dahulu.
 
 ---
 
-# 3. Tujuan Sistem
+# Gambaran Sistem
 
-Sistem harus mampu:
+Project terdiri dari tiga komponen utama.
 
-* Menampilkan aplikasi Byone Arena setiap TV dinyalakan.
-* Menampilkan informasi status rental.
-* Menampilkan Screen Saver ketika TV sedang tidak digunakan.
-* Mengizinkan penyewa menggunakan seluruh fitur Android TV.
-* Mengembalikan tampilan ke Byone Arena secara otomatis ketika sesi selesai atau aplikasi admin mengirim sinyal off atau screen sever.
+1. Flutter Desktop (Admin)
+2. Golang Backend
+3. Flutter Android TV (Client)
+
+Semua komponen berada pada jaringan LAN yang sama.
 
 ---
 
-# 4. Konsep Sistem
+# Arsitektur
 
 ```
-Power ON TV
-      │
-      ▼
-Android Boot
-      │
-      ▼
-Byone Arena Launcher
-      │
-      ▼
-Screen Saver
-      │
-      ▼
-User menekan LIVE
-      │
-      ▼
-Launcher Android TV
-      │
-      ├── Netflix
-      ├── YouTube
-      ├── HDMI
-      ├── TV Digital
-      └── Aplikasi lain
-      │
-      ▼
-Rental Berakhir
-      │
-      ▼
-Byone Arena tampil kembali
+                Flutter Desktop
+                    (Admin)
+                       │
+                 REST API
+                       │
+               Golang Backend
+                       │
+        ┌──────────────┴──────────────┐
+        │                             │
+     REST API                     WebSocket
+        │                             │
+        └──────────────┬──────────────┘
+                       │
+                Android TV Client
 ```
+
+Backend adalah sumber kebenaran (Source of Truth).
+
+Semua perubahan status console berasal dari Backend.
 
 ---
 
-# 5. Mekanisme Boot
+# Komunikasi
 
-## Kondisi
+Client menggunakan dua mekanisme komunikasi.
 
-TV dalam keadaan mati (tidak mendapat listrik).
+## REST API
 
-Operator menghidupkan TV menggunakan remote.
+REST digunakan untuk sinkronisasi data.
 
-## Sistem
+Misalnya:
 
-Android melakukan proses boot.
+- status console
+- data sesi
+- konfigurasi
+- harga
+- promo
+- informasi screen saver
 
-Setelah boot selesai:
+REST berjalan secara periodik.
 
-1. Sistem memanggil Launcher Byone Arena.
-2. Aplikasi tampil otomatis.
-3. Tidak diperlukan interaksi pengguna.
+Misalnya:
 
-Output yang diharapkan:
+setiap 10 detik.
 
-```
-TV Menyala
+REST bukan media utama untuk event realtime.
+
+---
+
+## WebSocket
+
+Client harus selalu terhubung ke WebSocket.
+
+WebSocket digunakan untuk event realtime.
+
+Misalnya:
+
+- session dibuat
+- session dimulai
+- session diperpanjang
+- session selesai
+- maintenance aktif
+- maintenance selesai
+- promo baru
+- countdown
+- warning
+- refresh UI
+
+Saat menerima event WebSocket,
+
+UI harus berubah saat itu juga.
+
+Tanpa menunggu polling REST berikutnya.
+
+Jika WebSocket terputus,
+
+Client harus reconnect otomatis.
+
+Polling REST tetap berjalan sebagai fallback.
+
+---
+
+# Fungsi Client
+
+Ini bagian yang PALING PENTING.
+
+Client BUKAN launcher.
+
+Client BUKAN aplikasi game.
+
+Client BUKAN media player.
+
+Client BUKAN aplikasi utama TV.
+
+Client hanya bertugas menampilkan informasi kepada pemain.
+
+Client tidak boleh mengambil alih fungsi Android TV.
+
+---
+
+# State Client
+
+Client mempunyai state berikut.
+
+- loading
+- idle
+- active
+- overtime
+- maintenance
+
+---
+
+# State Loading
+
+Saat aplikasi pertama dijalankan.
+
+Yang ditampilkan:
+
+- Logo
+- Loading
+- Menghubungkan Backend
+- Membuka WebSocket
+
+---
+
+# State Idle
+
+Saat console belum digunakan.
+
+Yang ditampilkan:
+
+- Screen Saver
+- Jam
+- Logo
+- Promo
+- Informasi Arena
+- Particle
+
+Screen Saver fullscreen.
+
+---
+
+# State Active
+
+Ini adalah requirement paling penting.
+
+Saat state ACTIVE,
+
+berarti pemain sedang menggunakan console.
+
+Misalnya:
+
+- Bermain Game
+- Menonton YouTube
+- Netflix
+- Emulator
+- HDMI
+- Launcher lain
+
+Yang saya inginkan adalah:
+
+TV tetap menampilkan aplikasi yang sedang digunakan.
+
+Client tidak boleh membuat layar menjadi hitam.
+
+Client tidak boleh membuat Scaffold fullscreen.
+
+Client tidak boleh menggambar Container fullscreen.
+
+Client tidak boleh menggambar widget kosong yang menutupi layar.
+
+Client hanya boleh menampilkan informasi berikut.
+
+- indikator LIVE
+- warning
+- countdown
+- notifikasi
+- sisa waktu
+
+Apabila tidak ada informasi,
+
+overlay hampir tidak terlihat.
+
+Dengan kata lain,
+
+Client adalah lapisan informasi,
+
+BUKAN aplikasi utama.
+
+---
+
+# State Warning
+
+Saat sisa waktu <=5 menit.
+
+Munculkan popup kecil.
+
+Misalnya:
+
+------------------------------
+
+Sisa waktu tinggal 5 menit
+
+------------------------------
+
+Popup muncul beberapa detik.
+
+Lalu hilang otomatis.
+
+---
+
+# Countdown
+
+Saat sisa <=10 detik.
+
+Tampilkan countdown.
+
+10
+
+9
+
+8
+
+...
+
+1
+
+---
+
+# State Overtime
+
+Saat waktu habis.
+
+Barulah Client mengambil alih layar.
+
+Tampilkan fullscreen.
+
+Contoh.
+
+=========================
+
+WAKTU HABIS
+
+Hubungi Admin
+
+=========================
+
+Setelah selesai,
+
+kembali ke Screen Saver.
+
+---
+
+# Maintenance
+
+Saat maintenance.
+
+Client mengambil alih layar.
+
+Menampilkan informasi maintenance.
+
+---
+
+# Lifecycle Client
+
+Android TV Boot
 
 ↓
 
-Screen Saver dari sistem byone arena
-```
+Client otomatis berjalan
+
+↓
+
+Koneksi REST
+
+↓
+
+Koneksi WebSocket
+
+↓
+
+Idle
+
+↓
+
+Menunggu Event
+
+↓
+
+ACTIVE
+
+↓
+
+Overlay
+
+↓
+
+Overtime
+
+↓
+
+Idle
+
+↓
+
+Menunggu Event lagi
+
+Client harus selalu hidup selama Android TV menyala.
 
 ---
 
-# 6. Screen Saver
+# Permasalahan Saat Ini
 
-Screen Saver merupakan tampilan default aplikasi.
+Implementasi sekarang menggunakan Flutter sebagai aplikasi fullscreen.
 
-Contoh informasi yang ditampilkan:
+Saat ACTIVE,
 
-* Logo Byone Arena
-* Jam
-* Status perangkat
-* Animasi
+Flutter tetap memenuhi seluruh layar.
+
+Akibatnya:
+
+Game tidak terlihat.
+
+YouTube tidak terlihat.
+
+Launcher tidak terlihat.
+
+TV menjadi hitam.
+
+Padahal yang saya inginkan adalah TV tetap terlihat.
+
+---
+
+# Yang Ingin Saya Ketahui
+
+Saya ingin Anda menganalisa requirement ini.
+
+Jangan langsung coding.
+
+Jawab pertanyaan berikut.
+
+## 1
+
+Apakah Flutter murni mampu menjadi overlay di atas aplikasi Android TV lain?
+
+## 2
+
+Jika tidak,
+
+apa batasan Flutter?
+
+## 3
+
+Apakah saya harus menggunakan Android Native?
+
+## 4
+
+Jika ya,
+
+teknologi Android apa yang paling tepat?
 
 Contoh:
 
-```
-==============================
+- WindowManager
+- TYPE_APPLICATION_OVERLAY
+- Accessibility Overlay
+- Foreground Service
+- Overlay Service
+- MediaSession
+- Picture in Picture
+- atau solusi lain yang lebih tepat.
 
-        BYONE ARENA
+## 5
 
-      Selamat Datang
+Bagaimana arsitektur terbaik agar Flutter tetap digunakan sebagai UI,
 
-      TV Siap Digunakan
+tetapi Android Native menangani overlay?
 
-      [ LIVE ]
+## 6
 
-==============================
-```
+Bagaimana komunikasi terbaik antara:
 
----
+Flutter
 
-# 7. Tombol LIVE
+Android Native
 
-Ketika tombol LIVE ditekan:
-
-Byone Arena tidak menutup aplikasi.
-
-Aplikasi hanya menyerahkan kontrol kepada Android Launcher.
-
-Alur:
-
-```
-Klik LIVE
-
-↓
-
-Launcher Android
-
-↓
-
-User bebas menggunakan TV
-```
-
----
-
-# 8. Aktivitas Penyewa
-
-Selama status LIVE aktif, penyewa bebas menggunakan:
-
-* Netflix
-* YouTube
-* Disney+
-* Spotify
-* Browser
-* HDMI
-* TV Digital
-* Aplikasi Android lainnya
-
-Remote tetap bekerja normal.
-
-Tidak ada pembatasan tombol Home, Back, Direction maupun Volume.
-
----
-
-# 9. Status Rental
-
-Server memiliki beberapa status.
-
-## Idle
-
-```
-TV belum disewa.
-
-↓
-
-Byone Arena tampil.
-```
-
----
-
-## Active
-
-```
-TV sedang disewa.
-
-↓
-
-User bebas menggunakan TV.
-```
-
----
-
-## Expired
-
-```
-Waktu habis.
-
-↓
-
-Byone Arena tampil kembali.
-```
-
----
-
-## Maintenance
-
-```
-TV tidak dapat digunakan.
-
-↓
-
-Menampilkan halaman Maintenance.
-```
-
----
-
-# 10. Mekanisme Pengembalian
-
-Byone Arena harus mampu kembali tampil secara otomatis apabila:
-
-* waktu rental habis;
-* admin menghentikan sesi;
-* server mengirim perintah penghentian;
-* perangkat kembali ke mode idle.
-
-Contoh:
-
-```
-Netflix
-
-↓
-
-Waktu habis
-
-↓
-
-Server
-
-↓
+REST API
 
 WebSocket
 
-↓
+agar sistem tetap bersih dan mudah di-maintain?
 
-Byone Arena tampil
-```
+## 7
 
----
+Apakah requirement saya realistis untuk Android TV?
 
-# 11. Komunikasi Backend
+Jika ada requirement yang tidak mungkin dilakukan,
 
-Aplikasi Android TV selalu terhubung menggunakan WebSocket.
-
-Contoh event:
-
-```
-SESSION_STARTED
-
-SESSION_ENDED
-
-SESSION_CANCELLED
-
-SESSION_EXTENDED
-
-PAYMENT_CREATED
-
-PAYMENT_CONFIRMED
-
-PAYMENT_REFUNDED
-
-CONSOLE_UPDATED
-
-PING
-
-TV_WAKE
-
-TV_SLEEP
-
-TV_SCREENSAVER
-
-TV_NOTIFICATION
-```
+jelaskan alasannya secara teknis.
 
 ---
 
-# 12. Peran Aplikasi
+# Yang Saya Inginkan Dari Anda
 
-Aplikasi Android TV hanya memiliki satu mode.
+Jangan langsung membuat kode.
 
-```
-CLIENT
-```
+Lakukan langkah berikut.
 
-Tidak ada pilihan:
+1. Analisa requirement.
 
-* Admin
-* Operator
-* Client
+2. Analisa arsitektur saat ini.
 
-Karena seluruh perangkat Android TV secara otomatis dianggap sebagai Client.
+3. Jelaskan mengapa implementasi sekarang salah.
 
-Sedangkan:
+4. Jelaskan keterbatasan Flutter.
 
-* Desktop
-* Web
-* Android Phone
-* Tablet
+5. Jelaskan solusi Android Native yang paling tepat.
 
-menggunakan mekanisme login biasa.
+6. Gambarkan arsitektur baru.
 
----
-
-# 13. Identifikasi Perangkat
-
-Pada saat pertama kali dijalankan, aplikasi melakukan identifikasi perangkat.
-
-Jika perangkat merupakan Android TV:
-
-```
-Mode = CLIENT
-```
-
-Jika bukan Android TV:
-
-```
-Tampilkan Login
-```
-
-Dengan demikian pengguna TV tidak pernah melihat halaman pemilihan mode.
-
----
-
-# 14. Keuntungan Arsitektur
-
-* TV langsung membuka Byone Arena saat dinyalakan.
-* Tidak perlu membuka aplikasi secara manual.
-* Penyewa tetap bebas menggunakan Android TV.
-* Remote tetap berfungsi normal.
-* Netflix, YouTube, HDMI dan TV Digital tetap dapat digunakan.
-* Tidak menggunakan Kiosk Mode sehingga pengalaman pengguna tetap alami.
-* Kontrol penuh berada di backend.
-* Pengelolaan status perangkat menjadi lebih mudah.
-* Mendukung pembaruan konten secara real-time melalui WebSocket untuk client.
-
----
-
-# 15. Kesimpulan
-
-Byone Arena bukan sekadar aplikasi Android TV, melainkan sebuah sistem manajemen perangkat yang bertindak sebagai Launcher, Screen Saver, dan Client Rental.
-
-Pendekatan ini memungkinkan TV tetap berfungsi seperti televisi pada umumnya, sementara seluruh proses penyewaan, pengawasan, dan pengendalian dilakukan secara otomatis melalui backend. Dengan desain ini, pengalaman pengguna tetap nyaman, fungsi televisi tidak terganggu, dan operator memiliki kendali penuh terhadap status setiap perangkat. dan seharusnya koneksi websoket dan http itu
-dipisah agar lebih clean architectur baik itu di sisi backend dan frontend,
+7. Baru setelah arsitektur disepakati, lakukan refactor kode.

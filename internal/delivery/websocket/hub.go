@@ -117,13 +117,18 @@ func (h *Hub) HandleConnection(conn *websocket.Conn) {
 	c := &client{conn: conn, send: make(chan []byte, 256), logger: h.logger}
 	h.register <- c
 
+	// conn.Close() bisa dipicu dari 2 arah (writer goroutine saat write gagal,
+	// atau read loop di bawah saat selesai) — sync.Once mencegah double-close.
+	var closeOnce sync.Once
+	closeConn := func() { closeOnce.Do(func() { conn.Close() }) }
+
+	writerDone := make(chan struct{})
 	go func() {
-		defer func() {
-			h.unregister <- c
-			conn.Close()
-		}()
+		defer close(writerDone)
 		for message := range c.send {
 			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				// Write gagal (koneksi putus) → paksa read loop di bawah ikut berhenti.
+				closeConn()
 				return
 			}
 		}
@@ -139,11 +144,31 @@ func (h *Hub) HandleConnection(conn *websocket.Conn) {
 			if err := json.Unmarshal(msg, &incoming); err == nil && incoming.Type == EventPing {
 				pong := NewEvent(EventPing, map[string]string{"status": "pong"})
 				if data, err := json.Marshal(pong); err == nil {
-					c.send <- data
+					select {
+					case c.send <- data:
+					default:
+						// buffer penuh — client kemungkinan sudah lambat/putus, jangan blok read loop
+					}
 				}
 			}
 		}
 	}
+
+	// Read loop selesai (client disconnect/error). Unregister supaya hub
+	// berhenti mem-broadcast ke client ini (ini yang menutup channel c.send),
+	// lalu TUNGGU writer goroutine benar-benar selesai sebelum function ini
+	// return.
+	//
+	// PENTING untuk fasthttp/websocket: begitu handler function ini return,
+	// fasthttp bisa langsung reuse/reset koneksi di bawahnya. Sebelumnya,
+	// writer goroutine dibiarkan "orphan" — baru sadar koneksi putus saat
+	// write berikutnya gagal, yang bisa terjadi lama setelah HandleConnection
+	// sudah return. Itu penyebab panic "concurrent write ke koneksi yang
+	// sudah di-reuse/invalid". Sekarang kita pastikan writer goroutine
+	// selesai dulu sebelum function ini return.
+	h.unregister <- c
+	closeConn()
+	<-writerDone
 }
 
 func (h *Hub) StartNotificationLoop() {
