@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,10 +57,13 @@ func (s *Session) CalculateDuration() int {
 	return int(s.EndTime.Sub(s.StartTime).Minutes())
 }
 
-// CalculateTotalPrice menghitung total harga berdasarkan durasi dan harga per jam
+// CalculateTotalPrice menghitung total harga berdasarkan durasi dan harga per jam.
+// Dibulatkan ke rupiah utuh (tanpa desimal) — konsisten dengan stored procedure
+// pricing (CalculatePrice/EndSession) agar tidak ada selisih fraksional yang
+// menyebabkan validasi "uang kurang" padahal nominal sama dengan yang ditampilkan.
 func (s *Session) CalculateTotalPrice(pricePerHour float64) float64 {
 	durationHours := float64(s.CalculateDuration()) / 60.0
-	return durationHours * pricePerHour
+	return math.Round(durationHours * pricePerHour)
 }
 
 // RemainingMinutes menghitung sisa menit sesi berdasarkan durasi yang dipesan.
