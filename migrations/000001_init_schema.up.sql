@@ -288,10 +288,13 @@ CREATE TABLE IF NOT EXISTS tv_notifications (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title               VARCHAR(100) NOT NULL,
     message             TEXT NOT NULL,
+    image_url           VARCHAR(500),
     target_all          BOOLEAN NOT NULL DEFAULT FALSE,
     target_console_ids  JSONB NOT NULL DEFAULT '[]',
+    target_console_type VARCHAR(15),
     active_sessions_only BOOLEAN NOT NULL DEFAULT FALSE,
     loop_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
+    loop_interval       INTEGER NOT NULL DEFAULT 30,
     is_active           BOOLEAN NOT NULL DEFAULT TRUE,
     priority            VARCHAR(10) NOT NULL DEFAULT 'normal'
                             CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
