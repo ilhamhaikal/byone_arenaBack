@@ -237,12 +237,11 @@ func (h *Hub) StartAutoStop() {
 			h.db.Raw(fmt.Sprintf("SELECT * FROM %s()", spname.Ident("GetExpiredSessions"))).Scan(&expiredSessions)
 			for _, s := range expiredSessions {
 				h.db.Exec(fmt.Sprintf(`SELECT %s(?)`, spname.Ident("EndSession")), s.ID)
-				h.Broadcast(NewEvent(EventSessionEnded, map[string]interface{}{
+				h.BroadcastSessionEnded(map[string]interface{}{
 					"sessionId": s.ID, "consoleId": s.ConsoleID, "reason": "auto_stop",
-				}))
-				h.Broadcast(NewEvent(EventTVSleep, map[string]interface{}{
-					"consoleId": s.ConsoleID,
-				}))
+				}, s.ConsoleID)
+				// Waktu habis → TV client tampilkan screensaver Byone Arena kembali
+				h.BroadcastTVScreensaver(s.ConsoleID)
 			}
 		}
 	}()

@@ -81,7 +81,7 @@ func (h *NotificationHandler) CreateNotification(c *fiber.Ctx) error {
 	}
 	// Kirim langsung ke client jika tidak loop, atau jika loop aktif
 	if !req.LoopEnabled {
-		h.hub.Broadcast(websocket.NewEvent(websocket.EventTVNotification, n))
+		h.hub.BroadcastTVNotification(n)
 	}
 	// Jika loopEnabled, notification loop akan otomatis mengirimkannya
 	if req.LoopEnabled && !h.hub.IsNotificationRunning() {
@@ -240,10 +240,7 @@ func (h *NotificationHandler) WakeConsole(c *fiber.Ctx) error {
 		return response.NotFound(c, "Konsol tidak ditemukan")
 	}
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventTVWake, fiber.Map{
-		"consoleId": id,
-		"ipAddress": console.IPAddress,
-	}))
+	h.hub.BroadcastTVWake(id, console.IPAddress)
 
 	// Update status layar
 	h.db.Model(&entity.Console{}).Where("id = ?", id).Update("screen_status", entity.ScreenStatusOn)
@@ -270,12 +267,33 @@ func (h *NotificationHandler) SleepConsole(c *fiber.Ctx) error {
 		return response.NotFound(c, "Konsol tidak ditemukan")
 	}
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventTVSleep, fiber.Map{
-		"consoleId": id,
-		"ipAddress": console.IPAddress,
-	}))
+	h.hub.BroadcastTVSleep(id, console.IPAddress)
 
 	h.db.Model(&entity.Console{}).Where("id = ?", id).Update("screen_status", entity.ScreenStatusOff)
 
 	return response.OK(c, "Perintah sleep dikirim ke TV", nil)
+}
+
+// ScreensaverConsole godoc
+// @Summary      Tampilkan Screensaver Byone Arena di TV
+// @Description  Memerintahkan TV client untuk kembali menampilkan layar Byone Arena (screensaver/launcher), tanpa mengubah status layar fisik. Dipakai admin untuk memaksa TV kembali ke aplikasi, atau otomatis saat sesi berakhir/waktu habis.
+// @Tags         Kontrol TV
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "Console ID"
+// @Success      200  {object}  response.Response
+// @Router       /api/v1/consoles/{id}/screensaver [post]
+func (h *NotificationHandler) ScreensaverConsole(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+
+	if _, err := h.consoleUC.GetConsoleByID(c.Context(), id); err != nil {
+		return response.NotFound(c, "Konsol tidak ditemukan")
+	}
+
+	h.hub.BroadcastTVScreensaver(id)
+
+	return response.OK(c, "Perintah screensaver dikirim ke TV", nil)
 }

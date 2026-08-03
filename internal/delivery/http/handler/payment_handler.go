@@ -148,7 +148,7 @@ func (h *PaymentHandler) Create(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventPaymentCreated, payment))
+	h.hub.BroadcastPaymentCreated(payment)
 
 	return response.Created(c, "Pembayaran tunai berhasil diproses", payment)
 }
@@ -176,7 +176,7 @@ func (h *PaymentHandler) Refund(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventPaymentRefunded, payment))
+	h.hub.BroadcastPaymentRefunded(payment)
 
 	return response.OK(c, "Pembayaran berhasil direfund", payment)
 }
@@ -227,6 +227,13 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 	if tx.Error != nil {
 		return response.BadRequest(c, tx.Error.Error())
 	}
+
+	// Broadcast realtime — pembayaran pending sudah dikonfirmasi lunas
+	h.hub.BroadcastPaymentConfirmed(fiber.Map{
+		"paymentId":    result.PaymentID,
+		"status":       result.PaymentStatus,
+		"totalPayment": result.TotalPayment,
+	})
 
 	return response.OK(c, "Pembayaran berhasil dikonfirmasi", fiber.Map{
 		"paymentId":    result.PaymentID,

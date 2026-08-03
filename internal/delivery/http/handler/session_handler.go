@@ -124,11 +124,8 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionStarted, result))
-	// Auto-wake TV
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventTVWake, fiber.Map{
-		"consoleId": req.ConsoleID,
-	}))
+	// Broadcast realtime — sesi dimulai + auto-wake TV (lihat broadcaster.go)
+	h.hub.BroadcastSessionStarted(result, req.ConsoleID)
 
 	return response.Created(c, "Sesi rental berhasil dimulai dan pembayaran lunas", result)
 }
@@ -179,11 +176,8 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 		AND target_console_ids::jsonb @> to_jsonb(?::TEXT)
 	`, consoleIDStr)
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionEnded, session))
-	// Auto-sleep TV
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventTVSleep, fiber.Map{
-		"consoleId": session.ConsoleID,
-	}))
+	// Broadcast realtime — sesi berakhir + auto-sleep TV (lihat broadcaster.go)
+	h.hub.BroadcastSessionEnded(session, session.ConsoleID)
 
 	return response.OK(c, "Sesi rental berhasil diakhiri", session)
 }
@@ -209,7 +203,7 @@ func (h *SessionHandler) Cancel(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionCancelled, fiber.Map{"session_id": id}))
+	h.hub.BroadcastSessionCancelled(id)
 
 	return response.OK(c, "Sesi rental berhasil dibatalkan", nil)
 }
@@ -286,15 +280,15 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 		msg = fmt.Sprintf("Waktu Anda ditambah %d menit", mins)
 	}
 
-	h.hub.Broadcast(websocket.NewEvent(websocket.EventSessionExtended, map[string]interface{}{
-		"type":              "session_extended",
-		"sessionId":         result.SessionID,
-		"consoleId":         consoleID,
-		"message":           msg,
-		"additionalMinutes": req.AdditionalMinutes,
+	h.hub.BroadcastSessionExtended(map[string]interface{}{
+		"type":               "session_extended",
+		"sessionId":          result.SessionID,
+		"consoleId":          consoleID,
+		"message":            msg,
+		"additionalMinutes":  req.AdditionalMinutes,
 		"totalBookedMinutes": result.SessionBookedMinutes,
-		"endScheduledAt":    result.SessionEndScheduled,
-	}))
+		"endScheduledAt":     result.SessionEndScheduled,
+	})
 
 	// Insert notifikasi untuk client polling
 	consoleIDStr := consoleID.String()
