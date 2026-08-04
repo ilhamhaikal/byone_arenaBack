@@ -149,9 +149,3 @@ BEGIN
     RETURN QUERY SELECT v_result;
 END;
 $$;
-
--- +migrate Down
-DROP FUNCTION IF EXISTS "byoneDashboardSummary"(DATE);
-DROP FUNCTION IF EXISTS "byoneRevenueChart"(INT);
-DROP FUNCTION IF EXISTS "byoneReportSummary"(DATE,DATE);
--- Note: down tidak mengembalikan versi lama. Setup ulang butuh re-run 000002.
