@@ -164,8 +164,8 @@ func (r *ingredientRepository) fillStock(ctx context.Context, items []*entity.In
 		ids[i] = it.ID
 	}
 	type stockRow struct {
-		IngredientID uuid.UUID  `gorm:"column:ingredient_id"`
-		Usable       float64    `gorm:"column:usable"`
+		IngredientID  uuid.UUID  `gorm:"column:ingredient_id"`
+		Usable        float64    `gorm:"column:usable"`
 		NearestExpiry *time.Time `gorm:"column:nearest_expiry"`
 	}
 	var rows []stockRow

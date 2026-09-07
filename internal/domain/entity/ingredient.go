@@ -9,13 +9,13 @@ import (
 // Ingredient merepresentasikan bahan baku (telur, beras, dll) — bukan dijual,
 // hanya stok internal dengan batch + tanggal kadaluarsa.
 type Ingredient struct {
-	ID            uuid.UUID `json:"id"            gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	Name          string    `json:"name"          gorm:"not null;size:150"`
-	Unit          string    `json:"unit"          gorm:"not null;size:20;default:'pcs'"`
-	Stock         float64   `json:"stock"         gorm:"-"` // usable stock dari batch (bukan kolom DB)
+	ID            uuid.UUID  `json:"id"            gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	Name          string     `json:"name"          gorm:"not null;size:150"`
+	Unit          string     `json:"unit"          gorm:"not null;size:20;default:'pcs'"`
+	Stock         float64    `json:"stock"         gorm:"-"` // usable stock dari batch (bukan kolom DB)
 	NearestExpiry *time.Time `json:"nearestExpiry" gorm:"-"` // kadaluarsa terdekat batch usable
-	CreatedAt     time.Time `json:"createdAt"     gorm:"autoCreateTime"`
-	UpdatedAt     time.Time `json:"updatedAt"     gorm:"autoUpdateTime"`
+	CreatedAt     time.Time  `json:"createdAt"     gorm:"autoCreateTime"`
+	UpdatedAt     time.Time  `json:"updatedAt"     gorm:"autoUpdateTime"`
 }
 
 func (Ingredient) TableName() string { return "ingredients" }
