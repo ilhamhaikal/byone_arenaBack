@@ -17,24 +17,25 @@ import (
 
 // Handlers mengumpulkan semua handler yang diperlukan router
 type Handlers struct {
-	Auth      *handler.AuthHandler
-	Console   *handler.ConsoleHandler
-	Session   *handler.SessionHandler
-	Customer  *handler.CustomerHandler
-	Payment   *handler.PaymentHandler
-	Shift     *handler.ShiftHandler
-	Voucher   *handler.VoucherHandler
-	Discount  *handler.DiscountHandler
-	Menu      *handler.MenuItemHandler
-	FoodOrder *handler.FoodOrderHandler
-	Dashboard *handler.DashboardHandler
-	Report    *handler.ReportHandler
-	Notify    *handler.NotificationHandler
-	Rental    *handler.RentalHandler
-	Settings  *handler.SettingsHandler
-	Activity  *handler.ActivityHandler
-	User      *handler.UserHandler
-	Hub       *wsHandler.Hub
+	Auth       *handler.AuthHandler
+	Console    *handler.ConsoleHandler
+	Session    *handler.SessionHandler
+	Customer   *handler.CustomerHandler
+	Payment    *handler.PaymentHandler
+	Shift      *handler.ShiftHandler
+	Voucher    *handler.VoucherHandler
+	Discount   *handler.DiscountHandler
+	Menu       *handler.MenuItemHandler
+	Ingredient *handler.IngredientHandler
+	FoodOrder  *handler.FoodOrderHandler
+	Dashboard  *handler.DashboardHandler
+	Report     *handler.ReportHandler
+	Notify     *handler.NotificationHandler
+	Rental     *handler.RentalHandler
+	Settings   *handler.SettingsHandler
+	Activity   *handler.ActivityHandler
+	User       *handler.UserHandler
+	Hub        *wsHandler.Hub
 }
 
 // Setup mendaftarkan semua route ke Fiber app
@@ -239,6 +240,22 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	menus.Put("/:id", h.Menu.Update)
 	menus.Patch("/:id/toggle", h.Menu.Toggle)
 	menus.Delete("/:id", h.Menu.Delete)
+	menus.Put("/:id/ingredients", h.Ingredient.SetMenuIngredients)
+	menus.Get("/:id/ingredients", h.Ingredient.ListMenuIngredients)
+
+	// Ingredient routes — bahan, resep, batch stok
+	ingredients := protected.Group("/ingredients")
+	ingredients.Get("/", h.Ingredient.GetAll)
+	ingredients.Get("/expired", h.Ingredient.GetExpired)    // HARUS sebelum /:id
+	ingredients.Get("/stock-log", h.Ingredient.GetStockLog) // HARUS sebelum /:id
+	ingredients.Post("/", h.Ingredient.Create)
+	ingredients.Get("/:id", h.Ingredient.GetByID)
+	ingredients.Put("/:id", h.Ingredient.Update)
+	ingredients.Delete("/:id", h.Ingredient.Delete)
+	ingredients.Post("/:id/stock", h.Ingredient.AddStock)
+	ingredients.Get("/:id/stock", h.Ingredient.ListBatches)
+	ingredients.Put("/:id/components", h.Ingredient.SetComponents)
+	ingredients.Get("/:id/components", h.Ingredient.ListComponents)
 
 	// Food order routes — semua role bisa buat, lihat, update status & cancel; delete admin only
 	foodOrders := protected.Group("/food-orders")

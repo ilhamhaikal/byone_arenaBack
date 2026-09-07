@@ -145,6 +145,7 @@ func main() {
 	discountRuleRepo := pgRepo.NewDiscountRuleRepository(db)
 	menuRepo := pgRepo.NewMenuItemRepository(db)
 	foodOrderRepo := pgRepo.NewFoodOrderRepository(db)
+	ingredientRepo := pgRepo.NewIngredientRepository(db)
 
 	// Inisialisasi use case (business logic layer)
 	consoleUC := usecase.NewConsoleUseCase(consoleRepo, sessionRepo)
@@ -157,28 +158,30 @@ func main() {
 	discountRuleUC := usecase.NewDiscountRuleUseCase(discountRuleRepo)
 	menuUC := usecase.NewMenuItemUseCase(menuRepo)
 	foodOrderUC := usecase.NewFoodOrderUseCase(foodOrderRepo)
+	ingredientUC := usecase.NewIngredientUseCase(ingredientRepo)
 	userUC := usecase.NewUserUseCase(userRepo)
 
 	// Inisialisasi handler (delivery layer)
 	handlers := &router.Handlers{
-		Auth:      handler.NewAuthHandler(authUC, validate),
-		Console:   handler.NewConsoleHandler(consoleUC, validate, db),
-		Session:   handler.NewSessionHandler(sessionUC, validate, hub, db),
-		Customer:  handler.NewCustomerHandler(customerUC, validate, db),
-		Payment:   handler.NewPaymentHandler(paymentUC, validate, hub, db),
-		Shift:     handler.NewShiftHandler(shiftUC),
-		Voucher:   handler.NewVoucherHandler(voucherUC, validate),
-		Discount:  handler.NewDiscountHandler(discountRuleUC, validate),
-		Menu:      handler.NewMenuItemHandler(menuUC, validate),
-		FoodOrder: handler.NewFoodOrderHandler(foodOrderUC, validate, db, hub),
-		Dashboard: handler.NewDashboardHandler(paymentRepo, db),
-		Report:    handler.NewReportHandler(paymentRepo),
-		Notify:    handler.NewNotificationHandler(db, hub, consoleUC, validate),
-		Rental:    handler.NewRentalHandler(db, validate),
-		Settings:  handler.NewSettingsHandler(db, validate),
-		Activity:  handler.NewActivityHandler(db),
-		User:      handler.NewUserHandler(userUC, validate, db),
-		Hub:       hub,
+		Auth:       handler.NewAuthHandler(authUC, validate),
+		Console:    handler.NewConsoleHandler(consoleUC, validate, db),
+		Session:    handler.NewSessionHandler(sessionUC, validate, hub, db),
+		Customer:   handler.NewCustomerHandler(customerUC, validate, db),
+		Payment:    handler.NewPaymentHandler(paymentUC, validate, hub, db),
+		Shift:      handler.NewShiftHandler(shiftUC),
+		Voucher:    handler.NewVoucherHandler(voucherUC, validate),
+		Discount:   handler.NewDiscountHandler(discountRuleUC, validate),
+		Menu:       handler.NewMenuItemHandler(menuUC, validate),
+		Ingredient: handler.NewIngredientHandler(ingredientUC, validate),
+		FoodOrder:  handler.NewFoodOrderHandler(foodOrderUC, validate, db, hub),
+		Dashboard:  handler.NewDashboardHandler(paymentRepo, db),
+		Report:     handler.NewReportHandler(paymentRepo),
+		Notify:     handler.NewNotificationHandler(db, hub, consoleUC, validate),
+		Rental:     handler.NewRentalHandler(db, validate),
+		Settings:   handler.NewSettingsHandler(db, validate),
+		Activity:   handler.NewActivityHandler(db),
+		User:       handler.NewUserHandler(userUC, validate, db),
+		Hub:        hub,
 	}
 
 	// Inisialisasi Fiber app

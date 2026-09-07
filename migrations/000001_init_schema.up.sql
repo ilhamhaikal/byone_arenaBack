@@ -234,6 +234,8 @@ CREATE TABLE IF NOT EXISTS menu_items (
     category     VARCHAR(30) NOT NULL DEFAULT 'food'
                      CHECK (category IN ('food', 'drink', 'snack', 'other')),
     price        NUMERIC(10,2) NOT NULL CHECK (price >= 0),
+    hpp          NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (hpp >= 0),
+    stock        INT NOT NULL DEFAULT 0,
     description  TEXT,
     is_available BOOLEAN NOT NULL DEFAULT TRUE,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -273,6 +275,7 @@ CREATE TABLE IF NOT EXISTS food_order_items (
     menu_item_id UUID NOT NULL REFERENCES menu_items(id) ON DELETE RESTRICT,
     quantity     INT NOT NULL CHECK (quantity > 0),
     unit_price   NUMERIC(10,2) NOT NULL CHECK (unit_price >= 0),
+    unit_hpp     NUMERIC(10,2) NOT NULL DEFAULT 0,
     subtotal     NUMERIC(10,2) NOT NULL CHECK (subtotal >= 0),
     notes        TEXT,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()

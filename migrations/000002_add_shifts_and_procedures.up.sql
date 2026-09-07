@@ -48,11 +48,89 @@ CREATE OR REPLACE FUNCTION "__SP__ConfirmSessionPendingPayments"(p_session_id UU
 -- 14. generate_food_order_number
 CREATE OR REPLACE FUNCTION "generate_food_order_number"() RETURNS VARCHAR LANGUAGE plpgsql AS $$ DECLARE v_date VARCHAR(8); v_seq INT; v_number VARCHAR(20); BEGIN v_date:=TO_CHAR(NOW() AT TIME ZONE 'Asia/Jakarta','YYYYMMDD'); SELECT COALESCE(MAX(CAST(SPLIT_PART(order_number,'-',3) AS INT)),0)+1 INTO v_seq FROM food_orders WHERE order_number LIKE 'F-'||v_date||'-%'; v_number:='F-'||v_date||'-'||LPAD(v_seq::TEXT,3,'0'); RETURN v_number; END; $$;
 
--- 15. byoneCreateFoodOrder
-CREATE OR REPLACE FUNCTION "__SP__CreateFoodOrder"(p_session_id UUID, p_customer_id UUID, p_notes TEXT, p_items JSONB) RETURNS TABLE(order_id UUID, order_number VARCHAR, total_amount NUMERIC) LANGUAGE plpgsql AS $$ DECLARE v_order_id UUID; v_order_number VARCHAR(20); v_total NUMERIC(10,2):=0; v_item JSONB; v_menu_item_id UUID; v_quantity INT; v_item_notes TEXT; v_price NUMERIC(10,2); v_subtotal NUMERIC(10,2); v_available BOOLEAN; BEGIN IF p_items IS NULL OR jsonb_array_length(p_items)=0 THEN RAISE EXCEPTION 'ORDER_EMPTY'; END IF; v_order_number:=generate_food_order_number(); v_order_id:=uuid_generate_v4(); INSERT INTO food_orders(id,order_number,session_id,customer_id,status,total_amount,notes,created_at,updated_at) VALUES(v_order_id,v_order_number,p_session_id,p_customer_id,'pending',0,p_notes,NOW(),NOW()); FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP v_menu_item_id:=(v_item->>'menu_item_id')::UUID; v_quantity:=(v_item->>'quantity')::INT; v_item_notes:=v_item->>'notes'; IF v_quantity<=0 THEN RAISE EXCEPTION 'INVALID_QUANTITY'; END IF; SELECT price,is_available INTO v_price,v_available FROM menu_items WHERE id=v_menu_item_id; IF NOT FOUND THEN RAISE EXCEPTION 'MENU_NOT_FOUND: %',v_menu_item_id; END IF; IF NOT v_available THEN RAISE EXCEPTION 'MENU_UNAVAILABLE'; END IF; v_subtotal:=v_price*v_quantity; v_total:=v_total+v_subtotal; INSERT INTO food_order_items(id,order_id,menu_item_id,quantity,unit_price,subtotal,notes,created_at) VALUES(uuid_generate_v4(),v_order_id,v_menu_item_id,v_quantity,v_price,v_subtotal,v_item_notes,NOW()); END LOOP; UPDATE food_orders SET total_amount=v_total,updated_at=NOW() WHERE id=v_order_id; RETURN QUERY SELECT v_order_id,v_order_number,v_total; END; $$;
+-- 15. byoneCreateFoodOrder (stok + HPP snapshot)
+CREATE OR REPLACE FUNCTION "__SP__CreateFoodOrder"(p_session_id UUID, p_customer_id UUID, p_notes TEXT, p_items JSONB)
+RETURNS TABLE(order_id UUID, order_number VARCHAR, total_amount NUMERIC)
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_order_id UUID;
+    v_order_number VARCHAR(20);
+    v_total NUMERIC(10,2):=0;
+    v_item JSONB;
+    v_menu_item_id UUID;
+    v_quantity INT;
+    v_item_notes TEXT;
+    v_price NUMERIC(10,2);
+    v_hpp NUMERIC(10,2);
+    v_subtotal NUMERIC(10,2);
+    v_available BOOLEAN;
+    v_stock INT;
+BEGIN
+    IF p_items IS NULL OR jsonb_array_length(p_items)=0 THEN
+        RAISE EXCEPTION 'ORDER_EMPTY';
+    END IF;
+    v_order_number:=generate_food_order_number();
+    v_order_id:=uuid_generate_v4();
+    INSERT INTO food_orders(id,order_number,session_id,customer_id,status,total_amount,notes,created_at,updated_at)
+    VALUES(v_order_id,v_order_number,p_session_id,p_customer_id,'pending',0,p_notes,NOW(),NOW());
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+        v_menu_item_id:=(v_item->>'menu_item_id')::UUID;
+        v_quantity:=(v_item->>'quantity')::INT;
+        v_item_notes:=v_item->>'notes';
+        IF v_quantity<=0 THEN
+            RAISE EXCEPTION 'INVALID_QUANTITY';
+        END IF;
+        SELECT price, hpp, is_available, stock
+        INTO v_price, v_hpp, v_available, v_stock
+        FROM menu_items WHERE id=v_menu_item_id FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'MENU_NOT_FOUND: %',v_menu_item_id;
+        END IF;
+        IF NOT v_available THEN
+            RAISE EXCEPTION 'MENU_UNAVAILABLE';
+        END IF;
+        IF v_stock < v_quantity THEN
+            RAISE EXCEPTION 'INSUFFICIENT_STOCK: %',v_menu_item_id;
+        END IF;
+        v_subtotal:=v_price*v_quantity;
+        v_total:=v_total+v_subtotal;
+        INSERT INTO food_order_items(id,order_id,menu_item_id,quantity,unit_price,unit_hpp,subtotal,notes,created_at)
+        VALUES(uuid_generate_v4(),v_order_id,v_menu_item_id,v_quantity,v_price,v_hpp,v_subtotal,v_item_notes,NOW());
+        UPDATE menu_items SET stock = stock - v_quantity, updated_at = NOW() WHERE id = v_menu_item_id;
+    END LOOP;
+    UPDATE food_orders SET total_amount=v_total,updated_at=NOW() WHERE id=v_order_id;
+    RETURN QUERY SELECT v_order_id,v_order_number,v_total;
+END;
+$$;
 
--- 16. byoneUpdateFoodOrderStatus
-CREATE OR REPLACE FUNCTION "__SP__UpdateFoodOrderStatus"(p_order_id UUID, p_status VARCHAR) RETURNS VOID LANGUAGE plpgsql AS $$ DECLARE v_current_status VARCHAR; BEGIN SELECT status INTO v_current_status FROM food_orders WHERE id=p_order_id FOR UPDATE; IF NOT FOUND THEN RAISE EXCEPTION 'ORDER_NOT_FOUND'; END IF; IF v_current_status='cancelled' THEN RAISE EXCEPTION 'ORDER_CANCELLED'; END IF; IF v_current_status='served' AND p_status!='cancelled' THEN RAISE EXCEPTION 'ORDER_SERVED'; END IF; UPDATE food_orders SET status=p_status,updated_at=NOW() WHERE id=p_order_id; END; $$;
+-- 16. byoneUpdateFoodOrderStatus (kembalikan stok saat dibatalkan)
+CREATE OR REPLACE FUNCTION "__SP__UpdateFoodOrderStatus"(p_order_id UUID, p_status VARCHAR)
+RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE
+    v_current_status VARCHAR;
+    v_item RECORD;
+BEGIN
+    SELECT status INTO v_current_status FROM food_orders WHERE id=p_order_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ORDER_NOT_FOUND';
+    END IF;
+    IF v_current_status='cancelled' THEN
+        RAISE EXCEPTION 'ORDER_CANCELLED';
+    END IF;
+    IF v_current_status='served' AND p_status!='cancelled' THEN
+        RAISE EXCEPTION 'ORDER_SERVED';
+    END IF;
+    IF p_status='cancelled' AND v_current_status IN ('pending','preparing') THEN
+        FOR v_item IN
+            SELECT menu_item_id, quantity FROM food_order_items WHERE order_id=p_order_id
+        LOOP
+            UPDATE menu_items SET stock = stock + v_item.quantity, updated_at = NOW()
+            WHERE id = v_item.menu_item_id;
+        END LOOP;
+    END IF;
+    UPDATE food_orders SET status=p_status,updated_at=NOW() WHERE id=p_order_id;
+END;
+$$;
 
 -- 17. byoneCreateDailyRental (000022 fix: voucher_id for free_days)
 CREATE OR REPLACE FUNCTION "__SP__CreateDailyRental"(p_console_id UUID, p_customer_id UUID, p_start_date DATE, p_end_date DATE, p_daily_price NUMERIC, p_voucher_code VARCHAR DEFAULT NULL, p_notes TEXT DEFAULT NULL) RETURNS TABLE(rental_id UUID, total_days INT, total_amount NUMERIC, discount_amount NUMERIC, free_days_used INT, final_amount NUMERIC, status VARCHAR) LANGUAGE plpgsql AS $$ DECLARE v_rental_id UUID; v_console_stat VARCHAR; v_total_days INT; v_total_amount NUMERIC(10,2); v_voucher_discount NUMERIC(10,2):=0; v_free_days INT:=0; v_final_amount NUMERIC(10,2); v_actual_end_date DATE; v_voucher_type VARCHAR(20); v_voucher_id UUID:=NULL; v_now TIMESTAMPTZ:=NOW(); BEGIN SELECT c.status INTO v_console_stat FROM consoles c WHERE c.id=p_console_id FOR UPDATE; IF NOT FOUND THEN RAISE EXCEPTION 'CONSOLE_NOT_FOUND'; END IF; IF v_console_stat!='available' THEN RAISE EXCEPTION 'CONSOLE_NOT_AVAILABLE: %',v_console_stat; END IF; IF p_end_date<=p_start_date THEN RAISE EXCEPTION 'INVALID_DATE'; END IF; v_total_days:=p_end_date-p_start_date; IF v_total_days<1 THEN v_total_days:=1; END IF; v_total_amount:=v_total_days*p_daily_price; IF p_voucher_code IS NOT NULL AND TRIM(p_voucher_code)!='' THEN SELECT discount_type INTO v_voucher_type FROM vouchers WHERE code=UPPER(p_voucher_code); IF v_voucher_type='free_days' THEN BEGIN SELECT va.voucher_id,va.free_days_used INTO v_voucher_id,v_free_days FROM "__SP__ApplyVoucher"(p_voucher_code,v_total_amount,p_daily_price,v_total_days) va; UPDATE vouchers SET usage_count=usage_count+1,updated_at=v_now WHERE code=UPPER(p_voucher_code); EXCEPTION WHEN OTHERS THEN v_free_days:=0; END; v_voucher_discount:=0; ELSE BEGIN SELECT va.voucher_id,va.discount_amount INTO v_voucher_id,v_voucher_discount FROM "__SP__ApplyVoucher"(p_voucher_code,v_total_amount) va; UPDATE vouchers SET usage_count=usage_count+1,updated_at=v_now WHERE code=UPPER(p_voucher_code); EXCEPTION WHEN OTHERS THEN v_voucher_discount:=0; END; v_free_days:=0; END IF; END IF; IF v_voucher_discount>v_total_amount THEN v_voucher_discount:=v_total_amount; END IF; v_final_amount:=v_total_amount-v_voucher_discount; v_rental_id:=uuid_generate_v4(); IF v_free_days>0 THEN v_total_days:=v_total_days+v_free_days; v_actual_end_date:=p_start_date+v_total_days; ELSE v_actual_end_date:=p_end_date; END IF; INSERT INTO daily_rentals(id,console_id,customer_id,start_date,end_date,daily_price,total_days,free_days_used,total_amount,discount_amount,final_amount,voucher_id,status,notes,created_at,updated_at) VALUES(v_rental_id,p_console_id,p_customer_id,p_start_date,v_actual_end_date,p_daily_price,v_total_days,v_free_days,v_total_amount,v_voucher_discount,v_final_amount,v_voucher_id,'active',p_notes,v_now,v_now); UPDATE consoles SET status='rented_out',updated_at=v_now WHERE consoles.id=p_console_id; RETURN QUERY SELECT v_rental_id,v_total_days,v_total_amount,v_voucher_discount,v_free_days,v_final_amount,'active'::VARCHAR; END; $$;

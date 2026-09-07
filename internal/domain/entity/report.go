@@ -23,20 +23,22 @@ type ReportPeriod struct {
 }
 
 type ReportRevenue struct {
-	TotalRevenue       float64 `json:"totalRevenue"`
-	TotalBaseAmount    float64 `json:"totalBaseAmount"`
-	VoucherDiscount    float64 `json:"voucherDiscount"`
-	AutoDiscount       float64 `json:"autoDiscount"`
-	TotalDiscount      float64 `json:"totalDiscount"`
-	TotalCashReceived  float64 `json:"totalCashReceived"`
-	TotalChange        float64 `json:"totalChange"`
-	DailyRentalRevenue float64 `json:"dailyRentalRevenue"`
-	DailyRentalCount   int     `json:"dailyRentalCount"`
-	MembershipRevenue  float64 `json:"membershipRevenue"`
-	MembershipCount    int     `json:"membershipCount"`
+	TotalRevenue        float64 `json:"totalRevenue"`
+	TotalBaseAmount     float64 `json:"totalBaseAmount"`
+	VoucherDiscount     float64 `json:"voucherDiscount"`
+	AutoDiscount        float64 `json:"autoDiscount"`
+	TotalDiscount       float64 `json:"totalDiscount"`
+	TotalCashReceived   float64 `json:"totalCashReceived"`
+	TotalChange         float64 `json:"totalChange"`
+	DailyRentalRevenue  float64 `json:"dailyRentalRevenue"`
+	DailyRentalCount    int     `json:"dailyRentalCount"`
+	MembershipRevenue   float64 `json:"membershipRevenue"`
+	MembershipCount     int     `json:"membershipCount"`
 	FoodSalesRevenue    float64 `json:"foodSalesRevenue"`
 	FoodSalesBaseAmount float64 `json:"foodSalesBaseAmount"`
 	FoodSalesDiscount   float64 `json:"foodSalesDiscount"`
+	FoodSalesHpp        float64 `json:"foodSalesHpp"`
+	FoodSalesNetRevenue float64 `json:"foodSalesNetRevenue"`
 	FoodSalesCount      int     `json:"foodSalesCount"`
 }
 
@@ -91,6 +93,8 @@ type ReportFoodSales struct {
 	TotalRevenue      float64          `json:"totalRevenue"`
 	BaseAmount        float64          `json:"baseAmount"`
 	DiscountAmount    float64          `json:"discountAmount"`
+	TotalHpp          float64          `json:"totalHpp"`
+	NetRevenue        float64          `json:"netRevenue"`
 	TotalOrders       int              `json:"totalOrders"`
 	AverageOrderValue float64          `json:"averageOrderValue"`
 	TopItems          []ReportFoodItem `json:"topItems"`
@@ -102,4 +106,6 @@ type ReportFoodItem struct {
 	Category     string  `json:"category"`
 	QuantitySold int     `json:"quantitySold"`
 	Revenue      float64 `json:"revenue"`
+	Hpp          float64 `json:"hpp"`
+	NetRevenue   float64 `json:"netRevenue"`
 }

@@ -7,7 +7,7 @@
 -- 1. Dashboard Summary — food revenue = total_amount - discount_amount
 DROP FUNCTION IF EXISTS "byoneDashboardSummary"(DATE);
 CREATE OR REPLACE FUNCTION "byoneDashboardSummary"(p_date DATE DEFAULT CURRENT_DATE)
-RETURNS TABLE(total_revenue NUMERIC, total_base_amount NUMERIC, total_transactions BIGINT, total_discount NUMERIC, total_auto_discount NUMERIC, voucher_usage_count BIGINT, total_cash_received NUMERIC, total_change NUMERIC, active_sessions INT, available_consoles INT, total_consoles INT, daily_rental_revenue NUMERIC, daily_rental_count BIGINT, membership_revenue NUMERIC, membership_count BIGINT, food_sales_revenue NUMERIC, food_order_count BIGINT, pending_food_orders INT, voucher_details JSONB)
+RETURNS TABLE(total_revenue NUMERIC, total_base_amount NUMERIC, total_transactions BIGINT, total_discount NUMERIC, total_auto_discount NUMERIC, voucher_usage_count BIGINT, total_cash_received NUMERIC, total_change NUMERIC, active_sessions INT, available_consoles INT, total_consoles INT, daily_rental_revenue NUMERIC, daily_rental_count BIGINT, membership_revenue NUMERIC, membership_count BIGINT, food_sales_revenue NUMERIC, food_order_count BIGINT, food_sales_hpp NUMERIC, food_sales_net_revenue NUMERIC, pending_food_orders INT, voucher_details JSONB)
 LANGUAGE plpgsql AS $$
 BEGIN
 WITH payment_agg AS (
@@ -21,8 +21,14 @@ membership_agg AS (
     SELECT COALESCE(SUM(p.total_payment),0) AS member_rev, COUNT(*)::BIGINT AS member_count
     FROM payments p WHERE p.payment_status='paid' AND p.session_id IS NULL AND p.paid_at::DATE=p_date),
 food_agg AS (
-    SELECT COALESCE(SUM(fo.total_amount - COALESCE(fo.discount_amount,0)),0) AS food_rev, COUNT(*)::BIGINT AS food_count
-    FROM food_orders fo WHERE fo.status='served' AND fo.updated_at::DATE=p_date),
+    SELECT COALESCE(SUM(fo.total_amount - COALESCE(fo.discount_amount,0)),0) AS food_rev, COUNT(*)::BIGINT AS food_count,
+           COALESCE(SUM(fh.hpp),0) AS food_hpp
+    FROM food_orders fo
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(foi.quantity * COALESCE(foi.unit_hpp,0)),0) AS hpp
+        FROM food_order_items foi WHERE foi.order_id = fo.id
+    ) fh ON TRUE
+    WHERE fo.status='served' AND fo.updated_at::DATE=p_date),
 voucher_agg AS (
     SELECT v.name AS voucher_name, v.code AS voucher_code, COUNT(*) AS usage_count, SUM(src.discount_amount) AS total_discount
     FROM (SELECT p.voucher_id, p.discount_amount FROM payments p WHERE p.payment_status='paid' AND p.voucher_id IS NOT NULL AND p.paid_at::DATE=p_date
@@ -32,12 +38,12 @@ SELECT pa.total_rev+dra.rental_rev+ma.member_rev+fa.food_rev, pa.total_base, pa.
        pa.total_disc, pa.total_auto, pa.voucher_count+(SELECT COUNT(*)::BIGINT FROM daily_rentals WHERE voucher_id IS NOT NULL AND created_at::DATE=p_date),
        pa.total_cash, pa.total_chg, (SELECT COUNT(*)::INT FROM sessions WHERE status='active'),
        (SELECT COUNT(*)::INT FROM consoles WHERE status='available'), (SELECT COUNT(*)::INT FROM consoles),
-       dra.rental_rev, dra.rental_count, ma.member_rev, ma.member_count, fa.food_rev, fa.food_count,
+       dra.rental_rev, dra.rental_count, ma.member_rev, ma.member_count, fa.food_rev, fa.food_count, fa.food_hpp, fa.food_rev - fa.food_hpp,
        (SELECT COUNT(*)::INT FROM food_orders WHERE status IN('pending','preparing')),
        COALESCE((SELECT jsonb_agg(row_to_json(va)) FROM voucher_agg va),'[]'::JSONB)
 INTO total_revenue,total_base_amount,total_transactions,total_discount,total_auto_discount,voucher_usage_count,total_cash_received,total_change,
     active_sessions,available_consoles,total_consoles,daily_rental_revenue,daily_rental_count,membership_revenue,membership_count,
-    food_sales_revenue,food_order_count,pending_food_orders,voucher_details
+    food_sales_revenue,food_order_count,food_sales_hpp,food_sales_net_revenue,pending_food_orders,voucher_details
 FROM payment_agg pa CROSS JOIN daily_rental_agg dra CROSS JOIN membership_agg ma CROSS JOIN food_agg fa;
 RETURN NEXT;
 END;
@@ -87,8 +93,14 @@ BEGIN
         SELECT COALESCE(SUM(fo.total_amount - COALESCE(fo.discount_amount,0)),0) AS revenue,
                COALESCE(SUM(fo.total_amount),0) AS base_amount,
                COALESCE(SUM(fo.discount_amount),0) AS discount,
+               COALESCE(SUM(fh.hpp),0) AS hpp,
                COUNT(*)::INT AS order_count
-        FROM food_orders fo WHERE fo.status='served' AND fo.updated_at::DATE BETWEEN p_start_date AND p_end_date),
+        FROM food_orders fo
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(foi.quantity * COALESCE(foi.unit_hpp,0)),0) AS hpp
+            FROM food_order_items foi WHERE foi.order_id = fo.id
+        ) fh ON TRUE
+        WHERE fo.status='served' AND fo.updated_at::DATE BETWEEN p_start_date AND p_end_date),
     combined AS (
         SELECT sr.revenue+rr.revenue+mr.revenue+fr.revenue AS total_revenue,
                sr.base_amount+rr.base_amount+mr.base_amount+fr.base_amount AS total_base,
@@ -100,7 +112,7 @@ BEGIN
                sr.voucher_trx+rr.voucher_trx+mr.voucher_trx AS voucher_trx,
                rr.revenue AS rental_rev, rr.trx_count AS rental_count,
                mr.revenue AS member_rev, mr.trx_count AS member_count,
-               fr.revenue AS food_rev, fr.base_amount AS food_base, fr.discount AS food_disc, fr.order_count AS food_count
+               fr.revenue AS food_rev, fr.base_amount AS food_base, fr.discount AS food_disc, fr.hpp AS food_hpp, fr.order_count AS food_count
         FROM session_rev sr CROSS JOIN rental_rev rr CROSS JOIN member_rev mr CROSS JOIN food_rev fr),
     session_agg AS (
         SELECT COUNT(*)::INT AS total_sessions, COALESCE(SUM(s.duration_minutes),0)::INT AS total_play_minutes, COALESCE(AVG(s.duration_minutes),0)::INT AS avg_duration_minutes
@@ -134,16 +146,20 @@ BEGIN
         FROM (SELECT dr.name AS "ruleName", dr.rule_type AS "ruleType", dr.discount_type AS "discountType", dr.discount_value AS "discountValue", dr.is_active AS "isActive" FROM discount_rules dr WHERE dr.is_active=TRUE ORDER BY dr.rule_type,dr.name) dr),
     food_top_items AS (
         SELECT COALESCE(jsonb_agg(row_to_json(fi) ORDER BY fi."revenue" DESC),'[]'::JSONB) AS list
-        FROM (SELECT mi.name AS "itemName", mi.category AS "category", SUM(foi.quantity)::INT AS "quantitySold", SUM(foi.subtotal)::NUMERIC(10,2) AS "revenue"
+        FROM (SELECT mi.name AS "itemName", mi.category AS "category",
+                     SUM(foi.quantity)::INT AS "quantitySold",
+                     SUM(foi.subtotal)::NUMERIC(10,2) AS "revenue",
+                     SUM(foi.quantity * COALESCE(foi.unit_hpp,0))::NUMERIC(10,2) AS "hpp",
+                     SUM(foi.subtotal - foi.quantity * COALESCE(foi.unit_hpp,0))::NUMERIC(10,2) AS "netRevenue"
               FROM food_order_items foi JOIN food_orders fo2 ON fo2.id=foi.order_id JOIN menu_items mi ON mi.id=foi.menu_item_id
               WHERE fo2.status='served' AND fo2.updated_at::DATE BETWEEN p_start_date AND p_end_date GROUP BY mi.id,mi.name,mi.category) fi)
     SELECT jsonb_build_object(
         'period',jsonb_build_object('startDate',p_start_date,'endDate',p_end_date,'totalDays',v_total_days),
-        'revenue',jsonb_build_object('totalRevenue',cb.total_revenue,'totalBaseAmount',cb.total_base,'voucherDiscount',cb.total_discount,'autoDiscount',cb.total_auto,'totalDiscount',cb.total_discount+cb.total_auto,'totalCashReceived',cb.total_cash,'totalChange',cb.total_change,'dailyRentalRevenue',cb.rental_rev,'dailyRentalCount',cb.rental_count,'membershipRevenue',cb.member_rev,'membershipCount',cb.member_count,'foodSalesRevenue',cb.food_rev,'foodSalesBaseAmount',cb.food_base,'foodSalesDiscount',cb.food_disc,'foodSalesCount',cb.food_count),
+        'revenue',jsonb_build_object('totalRevenue',cb.total_revenue,'totalBaseAmount',cb.total_base,'voucherDiscount',cb.total_discount,'autoDiscount',cb.total_auto,'totalDiscount',cb.total_discount+cb.total_auto,'totalCashReceived',cb.total_cash,'totalChange',cb.total_change,'dailyRentalRevenue',cb.rental_rev,'dailyRentalCount',cb.rental_count,'membershipRevenue',cb.member_rev,'membershipCount',cb.member_count,'foodSalesRevenue',cb.food_rev,'foodSalesBaseAmount',cb.food_base,'foodSalesDiscount',cb.food_disc,'foodSalesHpp',cb.food_hpp,'foodSalesNetRevenue',cb.food_rev - cb.food_hpp,'foodSalesCount',cb.food_count),
         'transactions',jsonb_build_object('totalTransactions',cb.total_trx,'voucherTransactions',cb.voucher_trx,'averagePerDay',ROUND(cb.total_trx::NUMERIC/GREATEST(v_total_days,1),1)),
         'sessions',jsonb_build_object('totalSessions',sa.total_sessions,'totalPlayMinutes',sa.total_play_minutes,'totalPlayHours',ROUND(sa.total_play_minutes::NUMERIC/60.0,1),'averageMinutes',sa.avg_duration_minutes),
         'vouchers',vu.list,'consoles',cu.list,'dailyBreakdown',d.list,'activeDiscountRules',dr.list,
-        'foodSales',jsonb_build_object('totalRevenue',cb.food_rev,'baseAmount',cb.food_base,'discountAmount',cb.food_disc,'totalOrders',cb.food_count,'averageOrderValue',ROUND(cb.food_rev/GREATEST(cb.food_count,1),2),'topItems',fti.list),
+        'foodSales',jsonb_build_object('totalRevenue',cb.food_rev,'baseAmount',cb.food_base,'discountAmount',cb.food_disc,'totalHpp',cb.food_hpp,'netRevenue',cb.food_rev - cb.food_hpp,'totalOrders',cb.food_count,'averageOrderValue',ROUND(cb.food_rev/GREATEST(cb.food_count,1),2),'topItems',fti.list),
         'generatedAt',NOW()
     ) INTO v_result FROM combined cb CROSS JOIN session_agg sa CROSS JOIN voucher_usage vu CROSS JOIN console_usage cu CROSS JOIN daily d CROSS JOIN discount_rules_summary dr CROSS JOIN food_top_items fti;
     RETURN QUERY SELECT v_result;

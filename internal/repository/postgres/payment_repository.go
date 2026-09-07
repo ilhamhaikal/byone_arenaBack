@@ -124,25 +124,27 @@ func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string
 	}
 
 	type spResult struct {
-		TotalRevenue       float64 `gorm:"column:total_revenue"`
-		TotalBaseAmount    float64 `gorm:"column:total_base_amount"`
-		TotalTransactions  int64   `gorm:"column:total_transactions"`
-		TotalDiscount      float64 `gorm:"column:total_discount"`
-		TotalAutoDiscount  float64 `gorm:"column:total_auto_discount"`
-		VoucherUsageCount  int64   `gorm:"column:voucher_usage_count"`
-		TotalCashReceived  float64 `gorm:"column:total_cash_received"`
-		TotalChange        float64 `gorm:"column:total_change"`
-		DailyRentalRevenue float64 `gorm:"column:daily_rental_revenue"`
-		DailyRentalCount   int64   `gorm:"column:daily_rental_count"`
-		MembershipRevenue  float64 `gorm:"column:membership_revenue"`
-		MembershipCount    int64   `gorm:"column:membership_count"`
-		FoodSalesRevenue   float64 `gorm:"column:food_sales_revenue"`
-		FoodOrderCount     int64   `gorm:"column:food_order_count"`
-		PendingFoodOrders  int     `gorm:"column:pending_food_orders"`
-		ActiveSessions     int     `gorm:"column:active_sessions"`
-		AvailableConsoles  int     `gorm:"column:available_consoles"`
-		TotalConsoles      int     `gorm:"column:total_consoles"`
-		VoucherDetailsRaw  []byte  `gorm:"column:voucher_details;type:jsonb"`
+		TotalRevenue        float64 `gorm:"column:total_revenue"`
+		TotalBaseAmount     float64 `gorm:"column:total_base_amount"`
+		TotalTransactions   int64   `gorm:"column:total_transactions"`
+		TotalDiscount       float64 `gorm:"column:total_discount"`
+		TotalAutoDiscount   float64 `gorm:"column:total_auto_discount"`
+		VoucherUsageCount   int64   `gorm:"column:voucher_usage_count"`
+		TotalCashReceived   float64 `gorm:"column:total_cash_received"`
+		TotalChange         float64 `gorm:"column:total_change"`
+		DailyRentalRevenue  float64 `gorm:"column:daily_rental_revenue"`
+		DailyRentalCount    int64   `gorm:"column:daily_rental_count"`
+		MembershipRevenue   float64 `gorm:"column:membership_revenue"`
+		MembershipCount     int64   `gorm:"column:membership_count"`
+		FoodSalesRevenue    float64 `gorm:"column:food_sales_revenue"`
+		FoodOrderCount      int64   `gorm:"column:food_order_count"`
+		FoodSalesHPP        float64 `gorm:"column:food_sales_hpp"`
+		FoodSalesNetRevenue float64 `gorm:"column:food_sales_net_revenue"`
+		PendingFoodOrders   int     `gorm:"column:pending_food_orders"`
+		ActiveSessions      int     `gorm:"column:active_sessions"`
+		AvailableConsoles   int     `gorm:"column:available_consoles"`
+		TotalConsoles       int     `gorm:"column:total_consoles"`
+		VoucherDetailsRaw   []byte  `gorm:"column:voucher_details;type:jsonb"`
 	}
 
 	var result spResult
@@ -166,27 +168,29 @@ func (r *paymentRepository) GetDashboardSummary(ctx context.Context, date string
 	}
 
 	summary := &entity.DashboardSummary{
-		Date:               date,
-		TotalRevenue:       result.TotalRevenue,
-		TotalBaseAmount:    result.TotalBaseAmount,
-		TotalTransactions:  result.TotalTransactions,
-		TotalDiscount:      result.TotalDiscount,
-		TotalAutoDiscount:  result.TotalAutoDiscount,
-		VoucherUsageCount:  result.VoucherUsageCount,
-		TotalCashReceived:  result.TotalCashReceived,
-		TotalChange:        result.TotalChange,
-		DailyRentalRevenue: result.DailyRentalRevenue,
-		DailyRentalCount:   result.DailyRentalCount,
-		MembershipRevenue:  result.MembershipRevenue,
-		MembershipCount:    result.MembershipCount,
-		FoodSalesRevenue:   result.FoodSalesRevenue,
-		FoodOrderCount:     result.FoodOrderCount,
-		PendingFoodOrders:  result.PendingFoodOrders,
-		ActiveSessions:     result.ActiveSessions,
-		AvailableConsoles:  result.AvailableConsoles,
-		TotalConsoles:      result.TotalConsoles,
-		VoucherDetails:     voucherDetails,
-		GeneratedAt:        time.Now(),
+		Date:                date,
+		TotalRevenue:        result.TotalRevenue,
+		TotalBaseAmount:     result.TotalBaseAmount,
+		TotalTransactions:   result.TotalTransactions,
+		TotalDiscount:       result.TotalDiscount,
+		TotalAutoDiscount:   result.TotalAutoDiscount,
+		VoucherUsageCount:   result.VoucherUsageCount,
+		TotalCashReceived:   result.TotalCashReceived,
+		TotalChange:         result.TotalChange,
+		DailyRentalRevenue:  result.DailyRentalRevenue,
+		DailyRentalCount:    result.DailyRentalCount,
+		MembershipRevenue:   result.MembershipRevenue,
+		MembershipCount:     result.MembershipCount,
+		FoodSalesRevenue:    result.FoodSalesRevenue,
+		FoodOrderCount:      result.FoodOrderCount,
+		FoodSalesHPP:        result.FoodSalesHPP,
+		FoodSalesNetRevenue: result.FoodSalesNetRevenue,
+		PendingFoodOrders:   result.PendingFoodOrders,
+		ActiveSessions:      result.ActiveSessions,
+		AvailableConsoles:   result.AvailableConsoles,
+		TotalConsoles:       result.TotalConsoles,
+		VoucherDetails:      voucherDetails,
+		GeneratedAt:         time.Now(),
 	}
 
 	return summary, nil

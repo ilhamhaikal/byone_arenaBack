@@ -96,17 +96,17 @@ func (r *sessionRepository) FindActiveSession(ctx context.Context) ([]*entity.Se
 // Create menggunakan byoneStartSession untuk atomisitas
 func (r *sessionRepository) Create(ctx context.Context, session *entity.Session) error {
 	type spResult struct {
-		ID                    uuid.UUID  `gorm:"column:id"`
-		ConsoleID             uuid.UUID  `gorm:"column:console_id"`
-		CustomerID            *uuid.UUID `gorm:"column:customer_id"`
+		ID                    uuid.UUID   `gorm:"column:id"`
+		ConsoleID             uuid.UUID   `gorm:"column:console_id"`
+		CustomerID            *uuid.UUID  `gorm:"column:customer_id"`
 		StartTime             interface{} `gorm:"column:start_time"`
 		EndTime               interface{} `gorm:"column:end_time"`
 		EndScheduledAt        interface{} `gorm:"column:end_scheduled_at"`
-		BookedDurationMinutes int        `gorm:"column:booked_duration_minutes"`
-		DurationMinutes       int        `gorm:"column:duration_minutes"`
-		TotalPrice            float64    `gorm:"column:total_price"`
-		Status                string     `gorm:"column:status"`
-		Notes                 string     `gorm:"column:notes"`
+		BookedDurationMinutes int         `gorm:"column:booked_duration_minutes"`
+		DurationMinutes       int         `gorm:"column:duration_minutes"`
+		TotalPrice            float64     `gorm:"column:total_price"`
+		Status                string      `gorm:"column:status"`
+		Notes                 string      `gorm:"column:notes"`
 		CreatedAt             interface{} `gorm:"column:created_at"`
 		UpdatedAt             interface{} `gorm:"column:updated_at"`
 	}
@@ -142,21 +142,21 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 		SessionBookedMin    int        `gorm:"column:session_booked_minutes"`
 		SessionEndScheduled *time.Time `gorm:"column:session_end_scheduled"`
 		// pembayaran
-		PaymentID           uuid.UUID  `gorm:"column:payment_id"`
-		BaseAmount          float64    `gorm:"column:base_amount"`
-		DiscountAmount      float64    `gorm:"column:discount_amount"`
-		AutoDiscountAmount  float64    `gorm:"column:auto_discount_amount"`
-		TotalPayment        float64    `gorm:"column:total_payment"`
-		CashReceived        float64    `gorm:"column:cash_received"`
-		ChangeAmount        float64    `gorm:"column:change_amount"`
-		VoucherID           *uuid.UUID `gorm:"column:voucher_id"`
-		PaidAt              *time.Time `gorm:"column:paid_at"`
+		PaymentID          uuid.UUID  `gorm:"column:payment_id"`
+		BaseAmount         float64    `gorm:"column:base_amount"`
+		DiscountAmount     float64    `gorm:"column:discount_amount"`
+		AutoDiscountAmount float64    `gorm:"column:auto_discount_amount"`
+		TotalPayment       float64    `gorm:"column:total_payment"`
+		CashReceived       float64    `gorm:"column:cash_received"`
+		ChangeAmount       float64    `gorm:"column:change_amount"`
+		VoucherID          *uuid.UUID `gorm:"column:voucher_id"`
+		PaidAt             *time.Time `gorm:"column:paid_at"`
 		// bank waktu & poin loyalitas
-		PaidDurationMinutes     int `gorm:"column:paid_duration_minutes"`
-		TimeBankMinutesUsed     int `gorm:"column:time_bank_minutes_used"`
-		BonusMinutesFromPoints  int `gorm:"column:bonus_minutes_from_points"`
-		PointsRedeemed          int `gorm:"column:points_redeemed"`
-		PointsEarned            int `gorm:"column:points_earned"`
+		PaidDurationMinutes      int `gorm:"column:paid_duration_minutes"`
+		TimeBankMinutesUsed      int `gorm:"column:time_bank_minutes_used"`
+		BonusMinutesFromPoints   int `gorm:"column:bonus_minutes_from_points"`
+		PointsRedeemed           int `gorm:"column:points_redeemed"`
+		PointsEarned             int `gorm:"column:points_earned"`
 		CustomerTimeBalanceAfter int `gorm:"column:customer_time_balance_after"`
 		CustomerPointsAfter      int `gorm:"column:customer_points_after"`
 	}
@@ -252,6 +252,8 @@ func parseStoredProcError(err error) error {
 		"NOT_A_MEMBER", "INSUFFICIENT_TIME_BANK", "INSUFFICIENT_POINTS",
 		"VOUCHER_NOT_FOUND", "VOUCHER_INACTIVE", "VOUCHER_EXPIRED",
 		"VOUCHER_LIMIT_REACHED", "VOUCHER_MIN_PURCHASE",
+		"ORDER_EMPTY", "ORDER_NOT_FOUND", "ORDER_CANCELLED", "ORDER_SERVED",
+		"INVALID_QUANTITY", "MENU_NOT_FOUND", "MENU_UNAVAILABLE", "INSUFFICIENT_STOCK",
 	} {
 		if strings.Contains(msg, prefix+":") {
 			start := strings.Index(msg, prefix+":")
@@ -264,4 +266,3 @@ func parseStoredProcError(err error) error {
 	}
 	return err
 }
-

@@ -36,6 +36,7 @@ type CreateMenuItemRequest struct {
 	Name        string                  `json:"name"        validate:"required,min=2,max=150"`
 	Category    entity.MenuItemCategory `json:"category"    validate:"required,oneof=food drink snack other"`
 	Price       float64                 `json:"price"       validate:"required,gte=0"`
+	HPP         float64                 `json:"hpp"         validate:"gte=0"` // harga pokok per pcs
 	Description string                  `json:"description"`
 }
 
@@ -44,6 +45,7 @@ type UpdateMenuItemRequest struct {
 	Name        string                  `json:"name"        validate:"omitempty,min=2,max=150"`
 	Category    entity.MenuItemCategory `json:"category"    validate:"omitempty,oneof=food drink snack other"`
 	Price       *float64                `json:"price"       validate:"omitempty,gte=0"`
+	HPP         *float64                `json:"hpp"         validate:"omitempty,gte=0"`
 	Description *string                 `json:"description"`
 	IsAvailable *bool                   `json:"isAvailable"`
 }
@@ -82,6 +84,7 @@ func (uc *menuItemUseCase) CreateMenuItem(ctx context.Context, req *CreateMenuIt
 		Name:        req.Name,
 		Category:    req.Category,
 		Price:       req.Price,
+		HPP:         req.HPP,
 		Description: req.Description,
 		IsAvailable: true,
 	}
@@ -108,6 +111,9 @@ func (uc *menuItemUseCase) UpdateMenuItem(ctx context.Context, id uuid.UUID, req
 	}
 	if req.Price != nil {
 		item.Price = *req.Price
+	}
+	if req.HPP != nil {
+		item.HPP = *req.HPP
 	}
 	if req.Description != nil {
 		item.Description = *req.Description
