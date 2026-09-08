@@ -85,13 +85,26 @@ CREATE INDEX IF NOT EXISTS idx_ir_ingredient ON ingredient_recipes(ingredient_id
 -- =============================================================================
 -- 6. Migrasi stok menu lama -> batch (expiry default 1 tahun, bisa diubah admin)
 -- =============================================================================
-INSERT INTO menu_item_stock_batches (id, menu_item_id, quantity, remaining, expires_at, added_at, notes)
-SELECT uuid_generate_v4(), id, stock, stock, CURRENT_DATE + 365, NOW(), 'migrasi stok lama'
-FROM menu_items
-WHERE stock > 0;
+-- Guard: kolom `stock` mungkin sudah tidak ada (mis. skema production lama yang
+-- sudah di-patch). Jalankan migrasi stok hanya jika kolomnya masih ada, supaya
+-- migrasi ini idempoten dan tidak gagal saat dijalankan ulang / pada DB lain.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = CURRENT_SCHEMA()
+          AND table_name = 'menu_items'
+          AND column_name = 'stock'
+    ) THEN
+        INSERT INTO menu_item_stock_batches (id, menu_item_id, quantity, remaining, expires_at, added_at, notes)
+        SELECT uuid_generate_v4(), id, stock, stock, CURRENT_DATE + 365, NOW(), 'migrasi stok lama'
+        FROM menu_items
+        WHERE stock > 0;
 
--- Hapus kolom stock lama (diganti batch)
-ALTER TABLE menu_items DROP COLUMN IF EXISTS stock;
+        -- Hapus kolom stock lama (diganti batch)
+        ALTER TABLE menu_items DROP COLUMN stock;
+    END IF;
+END $$;
 
 -- =============================================================================
 -- 7. CreateFoodOrder — konsumsi stok menu & bahan (FIFO, anti-kadaluarsa)

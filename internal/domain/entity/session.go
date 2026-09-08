@@ -79,3 +79,23 @@ func (s *Session) RemainingMinutes() int {
 	}
 	return rem
 }
+
+// RemainingSeconds menghitung sisa DETIK sesi berdasarkan durasi yang dipesan.
+// Mengembalikan -1 jika sesi tidak memiliki durasi pre-book (open-ended).
+// Mengembalikan 0 jika sesi sudah melewati jadwal selesai.
+//
+// Berbeda dengan RemainingMinutes yang memakai floor ke menit (sisa 40 detik
+// akan menjadi 0 menit), method ini membulatkan KE ATAS (ceil) supaya sesi
+// dengan sisa < 60 detik tidak pernah dilaporkan 0. Nilai detik inilah yang
+// dipakai client TV sebagai seed countdown clock-sync-safe agar countdown
+// presisi hingga detik.
+func (s *Session) RemainingSeconds() int {
+	if s.EndScheduledAt == nil {
+		return -1
+	}
+	rem := int(math.Ceil(time.Until(*s.EndScheduledAt).Seconds()))
+	if rem < 0 {
+		return 0
+	}
+	return rem
+}

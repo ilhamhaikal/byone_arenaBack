@@ -37,6 +37,7 @@ type ActiveSessionInfo struct {
 	BookedDurationMinutes int        `json:"bookedDurationMinutes"`
 	EndScheduledAt        *time.Time `json:"endScheduledAt"`
 	RemainingMinutes      int        `json:"remainingMinutes"` // -1 = open-ended
+	RemainingSeconds      int        `json:"remainingSeconds"` // -1 = open-ended (presisi detik, untuk countdown client)
 	Notes                 string     `json:"notes,omitempty"`
 }
 
@@ -132,6 +133,7 @@ func (uc *consoleUseCase) GetConsoleOverview(ctx context.Context) ([]*ConsoleOve
 				BookedDurationMinutes: s.BookedDurationMinutes,
 				EndScheduledAt:        s.EndScheduledAt,
 				RemainingMinutes:      s.RemainingMinutes(),
+				RemainingSeconds:      s.RemainingSeconds(),
 				Notes:                 s.Notes,
 			}
 			if s.Customer != nil {

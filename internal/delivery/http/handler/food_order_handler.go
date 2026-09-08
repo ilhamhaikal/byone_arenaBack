@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+
 	"byone-arena/internal/usecase"
 	wsHandler "byone-arena/internal/delivery/websocket"
 	"byone-arena/pkg/response"
@@ -174,18 +176,38 @@ func (h *FoodOrderHandler) UpdateStatus(c *fiber.Ctx) error {
 	if req.Status == "preparing" && h.hub != nil {
 		msg := "Pesanan " + order.OrderNumber + " sedang disiapkan! 🍳"
 
-		// WebSocket broadcast
+		// Targetkan notifikasi HANYA ke konsol milik sesi pesanan ini (bukan
+		// broadcast ke semua TV) supaya tidak muncul di konsol lain yang
+		// sedang/sudah dipakai oleh sesi yang berbeda.
+		var consoleIDStr string
+		if order.Session != nil {
+			consoleIDStr = order.Session.ConsoleID.String()
+		}
+
+		// WebSocket broadcast (payload konsisten dengan event lain: consoleId)
 		h.hub.Broadcast(wsHandler.NewEvent("food_order_preparing", fiber.Map{
 			"message":     msg,
 			"orderId":     order.ID,
 			"orderNumber": order.OrderNumber,
+			"consoleId":   consoleIDStr,
 		}))
 
-		// Insert ke tv_notifications untuk client HTTP polling
-		h.db.Exec(`
-			INSERT INTO tv_notifications (id, title, message, target_all, target_console_ids, active_sessions_only, loop_enabled, is_active, priority, created_at, updated_at)
-			VALUES (uuid_generate_v4(), 'Pesanan Disiapkan', ?, true, '[]', true, false, true, 'normal', NOW(), NOW())
-		`, msg)
+		// Insert ke tv_notifications untuk client HTTP polling.
+		// active_sessions_only=true + target console spesifik → hanya TV
+		// konsol pesanan ini yang menampilkan, dan hanya jika masih ada sesi.
+		if consoleIDStr != "" {
+			// Nonaktifkan dulu notifikasi 'Pesanan Disiapkan' lama milik
+			// konsol ini agar tidak muncul kembali saat sesi baru dimulai.
+			h.db.Exec(`
+				UPDATE tv_notifications SET is_active = false, updated_at = NOW()
+				WHERE title = 'Pesanan Disiapkan' AND is_active = true
+				AND target_console_ids::jsonb @> to_jsonb(?::TEXT)
+			`, consoleIDStr)
+			h.db.Exec(`
+				INSERT INTO tv_notifications (id, title, message, target_all, target_console_ids, active_sessions_only, loop_enabled, is_active, priority, created_at, updated_at)
+				VALUES (uuid_generate_v4(), 'Pesanan Disiapkan', ?, false, ?, true, false, true, 'normal', NOW(), NOW())
+			`, msg, fmt.Sprintf(`["%s"]`, consoleIDStr))
+		}
 	}
 
 	return response.OK(c, "Status pesanan berhasil diperbarui", order)
