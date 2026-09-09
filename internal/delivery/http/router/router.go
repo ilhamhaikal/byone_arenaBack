@@ -28,6 +28,7 @@ type Handlers struct {
 	Menu       *handler.MenuItemHandler
 	Ingredient *handler.IngredientHandler
 	FoodOrder  *handler.FoodOrderHandler
+	Capital    *handler.CapitalHandler
 	Dashboard  *handler.DashboardHandler
 	Report     *handler.ReportHandler
 	Notify     *handler.NotificationHandler
@@ -103,6 +104,13 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	// Report routes — admin & superadmin only
 	reports := protected.Group("/reports", middleware.AdminOnly())
 	reports.Get("/summary", h.Report.GetSummary)
+
+	// Capital routes (pembukuan modal awal) — admin & superadmin only
+	capital := protected.Group("/capital", middleware.AdminOnly())
+	capital.Get("/", h.Capital.ListEntries)
+	capital.Post("/", h.Capital.AddEntry)
+	capital.Delete("/:id", h.Capital.DeleteEntry)
+	capital.Get("/monthly", h.Capital.MonthlyReport)
 
 	// Activity routes — realtime activity feed
 	activities := protected.Group("/activities")

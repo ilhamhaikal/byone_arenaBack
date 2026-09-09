@@ -146,6 +146,7 @@ func main() {
 	menuRepo := pgRepo.NewMenuItemRepository(db)
 	foodOrderRepo := pgRepo.NewFoodOrderRepository(db)
 	ingredientRepo := pgRepo.NewIngredientRepository(db)
+	capitalRepo := pgRepo.NewCapitalRepository(db)
 
 	// Inisialisasi use case (business logic layer)
 	consoleUC := usecase.NewConsoleUseCase(consoleRepo, sessionRepo)
@@ -159,6 +160,7 @@ func main() {
 	menuUC := usecase.NewMenuItemUseCase(menuRepo)
 	foodOrderUC := usecase.NewFoodOrderUseCase(foodOrderRepo)
 	ingredientUC := usecase.NewIngredientUseCase(ingredientRepo)
+	capitalUC := usecase.NewCapitalUseCase(capitalRepo)
 	userUC := usecase.NewUserUseCase(userRepo)
 
 	// Inisialisasi handler (delivery layer)
@@ -174,6 +176,7 @@ func main() {
 		Menu:       handler.NewMenuItemHandler(menuUC, validate),
 		Ingredient: handler.NewIngredientHandler(ingredientUC, validate),
 		FoodOrder:  handler.NewFoodOrderHandler(foodOrderUC, validate, db, hub),
+		Capital:    handler.NewCapitalHandler(capitalUC, validate),
 		Dashboard:  handler.NewDashboardHandler(paymentRepo, db),
 		Report:     handler.NewReportHandler(paymentRepo),
 		Notify:     handler.NewNotificationHandler(db, hub, consoleUC, validate),
