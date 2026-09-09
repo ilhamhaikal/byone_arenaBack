@@ -29,6 +29,7 @@ type Handlers struct {
 	Ingredient *handler.IngredientHandler
 	FoodOrder  *handler.FoodOrderHandler
 	Capital    *handler.CapitalHandler
+	RentalPackage *handler.RentalPackageHandler
 	Dashboard  *handler.DashboardHandler
 	Report     *handler.ReportHandler
 	Notify     *handler.NotificationHandler
@@ -111,6 +112,14 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	capital.Post("/", h.Capital.AddEntry)
 	capital.Delete("/:id", h.Capital.DeleteEntry)
 	capital.Get("/monthly", h.Capital.MonthlyReport)
+
+	// Rental Package routes (paket begadang dll) — admin & superadmin only
+	packages := protected.Group("/rental-packages", middleware.AdminOnly())
+	packages.Get("/", h.RentalPackage.List)
+	packages.Post("/", h.RentalPackage.Save)
+	packages.Delete("/:id", h.RentalPackage.Delete)
+	// Mulai sesi dengan paket (semua role terautentikasi)
+	protected.Post("/sessions/start-package", h.RentalPackage.Start)
 
 	// Activity routes — realtime activity feed
 	activities := protected.Group("/activities")
