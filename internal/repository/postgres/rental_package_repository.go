@@ -63,15 +63,21 @@ func (r *rentalPackageRepository) Save(ctx context.Context, pkg *entity.RentalPa
 	}
 	b, _ := json.Marshal(arr)
 
-	var id uuid.UUID
+	// Alias kolom hasil fungsi sebagai "id" supaya GORM scan ke struct dengan
+	// aman (uuid.UUID sebagai destination langsung memicu scan error karena
+	// direfleksikan sebagai array of uint8).
+	type spID struct {
+		ID uuid.UUID `gorm:"column:id"`
+	}
+	var res spID
 	tx := r.db.WithContext(ctx).Raw(
-		fmt.Sprintf("SELECT %s(?, ?, ?::TIME, ?::TIME, ?, ?, ?, ?::JSONB)", spname.Ident("SaveRentalPackage")),
+		fmt.Sprintf("SELECT %s(?, ?, ?::TIME, ?::TIME, ?, ?, ?, ?::JSONB) AS id", spname.Ident("SaveRentalPackage")),
 		pkg.ID, pkg.Name, pkg.StartTime, pkg.EndTime, pkg.Price, pkg.Description, pkg.IsActive, string(b),
-	).Scan(&id)
+	).Scan(&res)
 	if tx.Error != nil {
 		return uuid.Nil, parseStoredProcError(tx.Error)
 	}
-	return id, nil
+	return res.ID, nil
 }
 
 func (r *rentalPackageRepository) Delete(ctx context.Context, id uuid.UUID) error {
