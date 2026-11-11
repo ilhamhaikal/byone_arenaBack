@@ -140,7 +140,30 @@ CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_end_scheduled_at ON sessions(end_scheduled_at);
 
 -- ============================================
--- 7. PAYMENTS
+-- 7. VOUCHERS
+-- (dibuat sebelum payments & daily_rentals karena keduanya mereferensi tabel ini)
+-- ============================================
+CREATE TABLE IF NOT EXISTS vouchers (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code            VARCHAR(50) NOT NULL UNIQUE,
+    name            VARCHAR(150) NOT NULL,
+    discount_type   VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed_amount', 'free_days', 'unlimited_play')),
+    discount_value  NUMERIC(10, 2) NOT NULL CHECK (discount_value >= 0),
+    min_purchase    NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    max_discount    NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    max_usage       INT NOT NULL DEFAULT 0,
+    usage_count     INT NOT NULL DEFAULT 0,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    expires_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code);
+CREATE INDEX IF NOT EXISTS idx_vouchers_active ON vouchers(is_active);
+
+-- ============================================
+-- 8. PAYMENTS
 -- ============================================
 CREATE TABLE IF NOT EXISTS payments (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -165,28 +188,6 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE INDEX IF NOT EXISTS idx_payments_session_id ON payments(session_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(payment_status);
 CREATE INDEX IF NOT EXISTS idx_payments_voucher_id ON payments(voucher_id);
-
--- ============================================
--- 8. VOUCHERS
--- ============================================
-CREATE TABLE IF NOT EXISTS vouchers (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code            VARCHAR(50) NOT NULL UNIQUE,
-    name            VARCHAR(150) NOT NULL,
-    discount_type   VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed_amount', 'free_days', 'unlimited_play')),
-    discount_value  NUMERIC(10, 2) NOT NULL CHECK (discount_value >= 0),
-    min_purchase    NUMERIC(10, 2) NOT NULL DEFAULT 0,
-    max_discount    NUMERIC(10, 2) NOT NULL DEFAULT 0,
-    max_usage       INT NOT NULL DEFAULT 0,
-    usage_count     INT NOT NULL DEFAULT 0,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    expires_at      TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code);
-CREATE INDEX IF NOT EXISTS idx_vouchers_active ON vouchers(is_active);
 
 -- ============================================
 -- 9. DISCOUNT RULES (auto-discount: happy hour, member, etc.)
