@@ -40,6 +40,7 @@ type Handlers struct {
 	Settings      *handler.SettingsHandler
 	Activity      *handler.ActivityHandler
 	User          *handler.UserHandler
+	Device        *handler.DeviceHandler
 	Hub           *wsHandler.Hub
 }
 
@@ -114,6 +115,9 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 
 	// Heartbeat — publik, dari TV Android
 	api.Post("/consoles/:id/heartbeat", h.Console.Heartbeat)
+
+	// Pairing TV: publik, dipanggil aplikasi TV setelah menemukan server.
+	api.Post("/devices/announce", h.Device.Announce)
 
 	// Routes publik lain — HARUS sebelum protected group
 	api.Get("/notifications", h.Notify.GetAllNotifications)
@@ -193,6 +197,12 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	consoles.Post("/:id/sleep", middleware.AdminOnly(), h.Notify.SleepConsole)
 	consoles.Post("/:id/screensaver", middleware.AdminOnly(), h.Notify.ScreensaverConsole)
 	consoles.Get("/:id/tv-logs", h.Console.GetTvLogs) // log aktivitas TV
+
+	// Pairing perangkat TV — admin/superadmin
+	devices := protected.Group("/devices", middleware.AdminOnly())
+	devices.Get("/pending", h.Device.Pending)
+	devices.Post("/:id/bind", h.Device.Bind)
+	devices.Delete("/:id", h.Device.Dismiss)
 
 	// Session routes
 	sessions := protected.Group("/sessions")

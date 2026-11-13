@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -39,6 +40,10 @@ type Config struct {
 
 	// Direktori file update client (APK + manifest.json). Kosong = nonaktif.
 	UpdatesDir string
+
+	// Discovery TV di LAN (UDP). TV broadcast probe, server membalas alamat API.
+	DiscoveryEnabled bool
+	DiscoveryPort    int
 }
 
 // Load membaca konfigurasi dari file .env dan environment variables
@@ -65,6 +70,9 @@ func Load() (*Config, error) {
 		JWTExpireHours: getEnvInt("JWT_EXPIRE_HOURS", 24),
 
 		UpdatesDir: getEnv("UPDATES_DIR", ""),
+
+		DiscoveryEnabled: getEnvBool("DISCOVERY_ENABLED", true),
+		DiscoveryPort:    getEnvInt("DISCOVERY_PORT", 47823),
 	}
 
 	if !spPrefixPattern.MatchString(cfg.SPPrefix) {
@@ -102,6 +110,18 @@ func getEnvInt(key string, defaultVal int) int {
 	if val := os.Getenv(key); val != "" {
 		if i, err := strconv.Atoi(val); err == nil {
 			return i
+		}
+	}
+	return defaultVal
+}
+
+func getEnvBool(key string, defaultVal bool) bool {
+	if val := os.Getenv(key); val != "" {
+		switch strings.ToLower(val) {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
 		}
 	}
 	return defaultVal

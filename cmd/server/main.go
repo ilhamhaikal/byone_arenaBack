@@ -30,6 +30,7 @@ import (
 	"byone-arena/internal/delivery/http/handler"
 	"byone-arena/internal/delivery/http/router"
 	wsHub "byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/discovery"
 	"byone-arena/internal/domain/entity"
 	pgRepo "byone-arena/internal/repository/postgres"
 	"byone-arena/internal/usecase"
@@ -187,6 +188,7 @@ func main() {
 		Settings:   handler.NewSettingsHandler(db, validate),
 		Activity:   handler.NewActivityHandler(db),
 		User:       handler.NewUserHandler(userUC, validate, db),
+		Device:     handler.NewDeviceHandler(db),
 		Hub:        hub,
 	}
 
@@ -212,6 +214,17 @@ func main() {
 
 	// Setup routes
 	router.Setup(app, handlers, cfg)
+
+	// Discovery TV di LAN: TV broadcast probe, server membalas alamat API.
+	if cfg.DiscoveryEnabled {
+		discoveryCtx, discoveryCancel := context.WithCancel(context.Background())
+		defer discoveryCancel()
+		if err := discovery.Start(discoveryCtx, cfg.DiscoveryPort, cfg.Port, cfg.AppName, "1.0.0"); err != nil {
+			log.Warn("Discovery UDP gagal berjalan (pairing TV tetap bisa manual)", zap.Error(err))
+		} else {
+			log.Info("Discovery UDP aktif", zap.Int("port", cfg.DiscoveryPort))
+		}
+	}
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
