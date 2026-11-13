@@ -1,6 +1,9 @@
 package router
 
 import (
+	"os"
+	"path/filepath"
+
 	"byone-arena/internal/delivery/http/handler"
 	"byone-arena/internal/delivery/http/middleware"
 	wsHandler "byone-arena/internal/delivery/websocket"
@@ -17,27 +20,27 @@ import (
 
 // Handlers mengumpulkan semua handler yang diperlukan router
 type Handlers struct {
-	Auth       *handler.AuthHandler
-	Console    *handler.ConsoleHandler
-	Session    *handler.SessionHandler
-	Customer   *handler.CustomerHandler
-	Payment    *handler.PaymentHandler
-	Shift      *handler.ShiftHandler
-	Voucher    *handler.VoucherHandler
-	Discount   *handler.DiscountHandler
-	Menu       *handler.MenuItemHandler
-	Ingredient *handler.IngredientHandler
-	FoodOrder  *handler.FoodOrderHandler
-	Capital    *handler.CapitalHandler
+	Auth          *handler.AuthHandler
+	Console       *handler.ConsoleHandler
+	Session       *handler.SessionHandler
+	Customer      *handler.CustomerHandler
+	Payment       *handler.PaymentHandler
+	Shift         *handler.ShiftHandler
+	Voucher       *handler.VoucherHandler
+	Discount      *handler.DiscountHandler
+	Menu          *handler.MenuItemHandler
+	Ingredient    *handler.IngredientHandler
+	FoodOrder     *handler.FoodOrderHandler
+	Capital       *handler.CapitalHandler
 	RentalPackage *handler.RentalPackageHandler
-	Dashboard  *handler.DashboardHandler
-	Report     *handler.ReportHandler
-	Notify     *handler.NotificationHandler
-	Rental     *handler.RentalHandler
-	Settings   *handler.SettingsHandler
-	Activity   *handler.ActivityHandler
-	User       *handler.UserHandler
-	Hub        *wsHandler.Hub
+	Dashboard     *handler.DashboardHandler
+	Report        *handler.ReportHandler
+	Notify        *handler.NotificationHandler
+	Rental        *handler.RentalHandler
+	Settings      *handler.SettingsHandler
+	Activity      *handler.ActivityHandler
+	User          *handler.UserHandler
+	Hub           *wsHandler.Hub
 }
 
 // Setup mendaftarkan semua route ke Fiber app
@@ -61,8 +64,10 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 		})
 	})
 
-	// Swagger UI - dokumentasi API
-	app.Get("/swagger/*", fiberSwagger.WrapHandler)
+	// Swagger UI - hanya di development (jangan terekspos di production)
+	if cfg.AppEnv != "production" {
+		app.Get("/swagger/*", fiberSwagger.WrapHandler)
+	}
 
 	// WebSocket upgrade middleware
 	app.Use("/ws", func(c *fiber.Ctx) error {
@@ -80,10 +85,29 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	// API v1 routes
 	api := app.Group("/api/v1")
 
+	// Update client TV/HP: manifest + file APK (statis).
+	if cfg.UpdatesDir != "" {
+		app.Static("/updates", cfg.UpdatesDir)
+		api.Get("/updates/latest", func(c *fiber.Ctx) error {
+			b, err := os.ReadFile(filepath.Join(cfg.UpdatesDir, "manifest.json"))
+			if err != nil {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"success": false,
+					"message": "Belum ada update yang dipublikasikan",
+				})
+			}
+			c.Set("Content-Type", "application/json")
+			c.Set("Cache-Control", "no-store")
+			return c.Send(b)
+		})
+	}
+
 	// Auth routes (publik)
 	auth := api.Group("/auth")
 	auth.Post("/login", h.Auth.Login)
-	auth.Post("/register", h.Auth.Register) // Sebaiknya dinonaktifkan di production
+	if cfg.AppEnv != "production" {
+		auth.Post("/register", h.Auth.Register)
+	}
 
 	// Console overview — publik, digunakan oleh client Android TV tanpa login
 	api.Get("/consoles/overview", h.Console.GetOverview)

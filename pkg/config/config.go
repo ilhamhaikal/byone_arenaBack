@@ -36,6 +36,9 @@ type Config struct {
 	// JWT
 	JWTSecret      string
 	JWTExpireHours int
+
+	// Direktori file update client (APK + manifest.json). Kosong = nonaktif.
+	UpdatesDir string
 }
 
 // Load membaca konfigurasi dari file .env dan environment variables
@@ -60,6 +63,8 @@ func Load() (*Config, error) {
 
 		JWTSecret:      getEnv("JWT_SECRET", "change-this-secret-in-production"),
 		JWTExpireHours: getEnvInt("JWT_EXPIRE_HOURS", 24),
+
+		UpdatesDir: getEnv("UPDATES_DIR", ""),
 	}
 
 	if !spPrefixPattern.MatchString(cfg.SPPrefix) {
