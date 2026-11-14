@@ -26,6 +26,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // zona waktu tetap tersedia saat build Windows tanpa tzdata sistem
 
 	"byone-arena/internal/delivery/http/handler"
 	"byone-arena/internal/delivery/http/router"
@@ -193,6 +194,7 @@ func main() {
 		User:          handler.NewUserHandler(userUC, validate, db),
 		Device:        handler.NewDeviceHandler(db),
 		Audit:         handler.NewAuditHandler(db),
+		Promo:         handler.NewPromoHandler(db, validate),
 		Hub:           hub,
 	}
 

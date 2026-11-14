@@ -45,6 +45,7 @@ type Handlers struct {
 	User          *handler.UserHandler
 	Device        *handler.DeviceHandler
 	Audit         *handler.AuditHandler
+	Promo         *handler.PromoHandler
 	Hub           *wsHandler.Hub
 }
 
@@ -156,6 +157,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	// Report routes — admin & superadmin only
 	reports := protected.Group("/reports", middleware.AdminOnly())
 	reports.Get("/summary", h.Report.GetSummary)
+	reports.Get("/promo-bonus", h.Promo.PromoReport)
 
 	// Capital routes (pembukuan modal awal) — admin & superadmin only
 	capital := protected.Group("/capital", middleware.AdminOnly())
@@ -229,6 +231,14 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	devices.Post("/:id/bind", h.Device.Bind)
 	devices.Delete("/:id", h.Device.Dismiss)
 
+	// Promo bonus waktu: baca aturan aktif untuk semua role, kelola hanya admin.
+	promoRules := protected.Group("/promo-bonuses")
+	promoRules.Get("/active", h.Promo.Active)
+	promoRules.Get("/", middleware.AdminOnly(), h.Promo.List)
+	promoRules.Post("/", middleware.AdminOnly(), h.Promo.Create)
+	promoRules.Put("/:id", middleware.AdminOnly(), h.Promo.Update)
+	promoRules.Delete("/:id", middleware.AdminOnly(), h.Promo.Delete)
+
 	// Session routes
 	sessions := protected.Group("/sessions")
 	sessions.Get("/", h.Session.GetAll)
@@ -237,7 +247,8 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	sessions.Post("/start", h.Session.Start)
 	sessions.Patch("/:id/end", h.Session.End)
 	sessions.Patch("/:id/cancel", h.Session.Cancel)
-	sessions.Post("/:id/extend", h.Session.Extend) // tambah waktu sewa
+	sessions.Post("/:id/extend", h.Session.Extend)            // tambah waktu sewa
+	sessions.Post("/:id/promo-bonus", h.Promo.ApplyToSession) // pakai bonus waktu promo
 	sessions.Get("/:session_id/payment", h.Payment.GetBySession)
 	sessions.Get("/:session_id/payments", h.Payment.GetAllBySession)                        // SEMUA payment sesi (base + tiap extend) + ringkasan total
 	sessions.Post("/:session_id/payments/confirm-pending", h.Payment.ConfirmSessionPending) // lunasi semua payment pending sesi ini sekaligus + hitung kembalian gabungan

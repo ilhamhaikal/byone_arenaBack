@@ -35,6 +35,9 @@ type ActiveSessionInfo struct {
 	CustomerName          string     `json:"customerName"`
 	StartTime             time.Time  `json:"startTime"`
 	BookedDurationMinutes int        `json:"bookedDurationMinutes"`
+	PaidDurationMinutes   int        `json:"paidDurationMinutes"`
+	PromoBonusMinutes     int        `json:"promoBonusMinutes"`
+	PromoAppliedAt        *time.Time `json:"promoAppliedAt,omitempty"`
 	EndScheduledAt        *time.Time `json:"endScheduledAt"`
 	RemainingMinutes      int        `json:"remainingMinutes"` // -1 = open-ended
 	RemainingSeconds      int        `json:"remainingSeconds"` // -1 = open-ended (presisi detik, untuk countdown client)
@@ -54,34 +57,34 @@ func NewConsoleUseCase(consoleRepo repository.ConsoleRepository, sessionRepo rep
 // CreateConsoleRequest payload untuk membuat konsol / TV Android baru
 type CreateConsoleRequest struct {
 	// Nama tampilan konsol, contoh: "TV 01"
-	Name         string             `json:"name"         validate:"required,min=2,max=100"                       example:"TV 01"`
+	Name string `json:"name"         validate:"required,min=2,max=100"                       example:"TV 01"`
 	// Tipe konsol: PS3, PS4, PS5, AndroidTV, Switch, atau lainnya
-	ConsoleType  entity.ConsoleType `json:"consoleType"  validate:"required,min=2,max=50"                       example:"Switch"`
+	ConsoleType entity.ConsoleType `json:"consoleType"  validate:"required,min=2,max=50"                       example:"Switch"`
 	// Alamat IP TV Android (wajib untuk AndroidTV)
-	IPAddress    *string            `json:"ipAddress"    validate:"omitempty,max=50"                           example:"192.168.1.101"`
-	ADBPort      int                `json:"adbPort"                                                           example:"5555"`
-	MACAddress   *string            `json:"macAddress"   validate:"omitempty,max=20"                          example:"AA:BB:CC:DD:EE:FF"`
-	PricePerHour float64            `json:"pricePerHour" validate:"required,gt=0"                              example:"9000"`
-	DailyPrice   float64            `json:"dailyPrice"   validate:"omitempty,gte=0"                            example:"50000"`
+	IPAddress    *string `json:"ipAddress"    validate:"omitempty,max=50"                           example:"192.168.1.101"`
+	ADBPort      int     `json:"adbPort"                                                           example:"5555"`
+	MACAddress   *string `json:"macAddress"   validate:"omitempty,max=20"                          example:"AA:BB:CC:DD:EE:FF"`
+	PricePerHour float64 `json:"pricePerHour" validate:"required,gt=0"                              example:"9000"`
+	DailyPrice   float64 `json:"dailyPrice"   validate:"omitempty,gte=0"                            example:"50000"`
 	// PricingTiers — tarif bertingkat opsional. Kosong = pakai pricePerHour flat.
 	// Contoh: jam pertama 9000/jam, jam berikutnya 8000/jam
 	PricingTiers entity.PricingTierList `json:"pricingTiers"  example:"[{\"startMinute\":0,\"endMinute\":60,\"price\":9000},{\"startMinute\":60,\"endMinute\":null,\"price\":8000}]"`
-	Description  string             `json:"description"       example:"TV 43 inch ruang A"`
+	Description  string                 `json:"description"       example:"TV 43 inch ruang A"`
 }
 
 // UpdateConsoleRequest payload untuk memperbarui data konsol
 type UpdateConsoleRequest struct {
-	Name         string               `json:"name"         validate:"omitempty,min=2,max=100"                       example:"TV 01"`
-	ConsoleType  entity.ConsoleType   `json:"consoleType"  validate:"omitempty,min=2,max=50"                       example:"Switch"`
-	IPAddress    *string              `json:"ipAddress"    validate:"omitempty,max=50"                           example:"192.168.1.101"`
-	ADBPort      *int                 `json:"adbPort"`
-	MACAddress   *string              `json:"macAddress"   validate:"omitempty,max=20"`
-	Status       entity.ConsoleStatus `json:"status"       validate:"omitempty,oneof=available in_use maintenance" example:"available"`
-	ScreenStatus *entity.ScreenStatus `json:"screenStatus" validate:"omitempty,oneof=on off screensaver"`
-	PricePerHour float64              `json:"pricePerHour" validate:"omitempty,gt=0"                              example:"9000"`
-	DailyPrice   *float64             `json:"dailyPrice"                                                         example:"50000"`
+	Name         string                  `json:"name"         validate:"omitempty,min=2,max=100"                       example:"TV 01"`
+	ConsoleType  entity.ConsoleType      `json:"consoleType"  validate:"omitempty,min=2,max=50"                       example:"Switch"`
+	IPAddress    *string                 `json:"ipAddress"    validate:"omitempty,max=50"                           example:"192.168.1.101"`
+	ADBPort      *int                    `json:"adbPort"`
+	MACAddress   *string                 `json:"macAddress"   validate:"omitempty,max=20"`
+	Status       entity.ConsoleStatus    `json:"status"       validate:"omitempty,oneof=available in_use maintenance" example:"available"`
+	ScreenStatus *entity.ScreenStatus    `json:"screenStatus" validate:"omitempty,oneof=on off screensaver"`
+	PricePerHour float64                 `json:"pricePerHour" validate:"omitempty,gt=0"                              example:"9000"`
+	DailyPrice   *float64                `json:"dailyPrice"                                                         example:"50000"`
 	PricingTiers *entity.PricingTierList `json:"pricingTiers"  example:"[{\"startMinute\":0,\"endMinute\":60,\"price\":9000},{\"startMinute\":60,\"endMinute\":null,\"price\":8000}]"`
-	Description  string               `json:"description"`
+	Description  string                  `json:"description"`
 }
 
 func (uc *consoleUseCase) GetAllConsoles(ctx context.Context) ([]*entity.Console, error) {
@@ -131,6 +134,9 @@ func (uc *consoleUseCase) GetConsoleOverview(ctx context.Context) ([]*ConsoleOve
 				CustomerID:            s.CustomerID,
 				StartTime:             s.StartTime,
 				BookedDurationMinutes: s.BookedDurationMinutes,
+				PaidDurationMinutes:   s.PaidDurationMinutes,
+				PromoBonusMinutes:     s.PromoBonusMinutes,
+				PromoAppliedAt:        s.PromoAppliedAt,
 				EndScheduledAt:        s.EndScheduledAt,
 				RemainingMinutes:      s.RemainingMinutes(),
 				RemainingSeconds:      s.RemainingSeconds(),

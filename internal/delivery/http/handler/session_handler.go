@@ -2,6 +2,7 @@ package handler
 
 import (
 	"byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/promo"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
@@ -120,9 +121,35 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
 
+	// Validasi awal promo agar pengguna mendapat pesan jelas sebelum sesi dibuat.
+	if req.UsePromoBonus {
+		rule, ruleErr := promo.ActiveRuleToday(h.db.WithContext(c.Context()))
+		if ruleErr != nil {
+			return response.BadRequest(c, "Tidak ada promo bonus waktu yang berlaku hari ini")
+		}
+		if !promo.Eligible(rule, req.BookedDurationMinutes) {
+			return response.BadRequest(c, fmt.Sprintf(
+				"Promo %s butuh minimal %d menit (bonus %d menit)",
+				rule.Name, rule.MinPaidMinutes, rule.BonusMinutes))
+		}
+	}
+
 	result, err := h.sessionUC.StartSession(c.Context(), req)
 	if err != nil {
 		return response.BadRequest(c, err.Error())
+	}
+
+	promoMessage := ""
+	if req.UsePromoBonus {
+		if updated, rule, applyErr := promo.Apply(h.db.WithContext(c.Context()), result.Session.ID.String()); applyErr == nil {
+			result.Session = updated
+			promoMessage = fmt.Sprintf(" + bonus %d menit (%s)", rule.BonusMinutes, rule.Name)
+			audit.Log(h.db, c, "session.promo_bonus", "session", &result.Session.ID, map[string]any{
+				"ruleName": rule.Name, "bonusMinutes": rule.BonusMinutes,
+			})
+		} else {
+			promoMessage = " (bonus promo gagal diterapkan: " + applyErr.Error() + ")"
+		}
 	}
 
 	// Catat pelaku transaksi (tanpa ini selisih kas tidak bisa ditelusuri).
@@ -141,7 +168,7 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 	// Broadcast realtime — sesi dimulai + auto-wake TV (lihat broadcaster.go)
 	h.hub.BroadcastSessionStarted(result, req.ConsoleID)
 
-	return response.Created(c, "Sesi rental berhasil dimulai dan pembayaran lunas", result)
+	return response.Created(c, "Sesi rental berhasil dimulai dan pembayaran lunas"+promoMessage, result)
 }
 
 // End godoc

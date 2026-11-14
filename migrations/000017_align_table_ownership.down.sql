@@ -1,0 +1,2 @@
+-- Tidak ada rollback: kepemilikan tabel adalah kondisi yang diinginkan
+-- (satu owner untuk seluruh skema aplikasi).

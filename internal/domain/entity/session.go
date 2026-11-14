@@ -18,29 +18,34 @@ const (
 
 // Session merepresentasikan satu sesi penyewaan konsol / TV Android
 type Session struct {
-	ID                     uuid.UUID     `json:"id"                     gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	ConsoleID              uuid.UUID     `json:"consoleId"              gorm:"type:uuid;not null;index"`
-	CustomerID             *uuid.UUID    `json:"customerId,omitempty"   gorm:"type:uuid;index"` // nullable, walk-in
-	StartTime              time.Time     `json:"startTime"              gorm:"not null"`
-	EndTime                *time.Time    `json:"endTime,omitempty"`
+	ID         uuid.UUID  `json:"id"                     gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ConsoleID  uuid.UUID  `json:"consoleId"              gorm:"type:uuid;not null;index"`
+	CustomerID *uuid.UUID `json:"customerId,omitempty"   gorm:"type:uuid;index"` // nullable, walk-in
+	StartTime  time.Time  `json:"startTime"              gorm:"not null"`
+	EndTime    *time.Time `json:"endTime,omitempty"`
 	// BookedDurationMinutes adalah durasi yang dipesan di awal (contoh: 120 menit = 2 jam)
-	BookedDurationMinutes  int           `json:"bookedDurationMinutes"  gorm:"not null;default:0"`
+	BookedDurationMinutes int `json:"bookedDurationMinutes"  gorm:"not null;default:0"`
 	// EndScheduledAt adalah waktu selesai yang direncanakan (StartTime + BookedDurationMinutes)
-	EndScheduledAt         *time.Time    `json:"endScheduledAt,omitempty"`
-	DurationMinutes        int           `json:"durationMinutes"        gorm:"not null;default:0"`
-	TotalPrice             float64       `json:"totalPrice"             gorm:"not null;default:0;type:numeric(10,2)"`
-	Status                 SessionStatus `json:"status"                 gorm:"not null;default:'active';size:20;index"`
-	Notes                  string        `json:"notes,omitempty"        gorm:"type:text"`
+	EndScheduledAt  *time.Time    `json:"endScheduledAt,omitempty"`
+	DurationMinutes int           `json:"durationMinutes"        gorm:"not null;default:0"`
+	TotalPrice      float64       `json:"totalPrice"             gorm:"not null;default:0;type:numeric(10,2)"`
+	Status          SessionStatus `json:"status"                 gorm:"not null;default:'active';size:20;index"`
+	Notes           string        `json:"notes,omitempty"        gorm:"type:text"`
 	// Transparansi Bank Waktu & Poin Loyalitas (khusus member)
 	// PaidDurationMinutes adalah durasi yang benar-benar DIBAYAR (dasar hitung harga & poin).
 	// BookedDurationMinutes (di atas) adalah TOTAL menit bermain termasuk bonus dari bank waktu/poin.
-	PaidDurationMinutes     int `json:"paidDurationMinutes"     gorm:"not null;default:0"`
-	TimeBankMinutesUsed     int `json:"timeBankMinutesUsed"     gorm:"not null;default:0"` // menit bonus dari saldo bank waktu member
-	BonusMinutesFromPoints  int `json:"bonusMinutesFromPoints"  gorm:"not null;default:0"` // menit bonus dari penukaran poin
-	PointsRedeemed          int `json:"pointsRedeemed"          gorm:"not null;default:0"` // poin yang ditukar pada sesi ini
-	PointsEarned            int `json:"pointsEarned"            gorm:"not null;default:0"` // poin yang didapat dari sesi ini
-	CreatedAt              time.Time     `json:"createdAt"              gorm:"autoCreateTime"`
-	UpdatedAt              time.Time     `json:"updatedAt"              gorm:"autoUpdateTime"`
+	PaidDurationMinutes    int `json:"paidDurationMinutes"     gorm:"not null;default:0"`
+	TimeBankMinutesUsed    int `json:"timeBankMinutesUsed"     gorm:"not null;default:0"` // menit bonus dari saldo bank waktu member
+	BonusMinutesFromPoints int `json:"bonusMinutesFromPoints"  gorm:"not null;default:0"` // menit bonus dari penukaran poin
+	PointsRedeemed         int `json:"pointsRedeemed"          gorm:"not null;default:0"` // poin yang ditukar pada sesi ini
+	PointsEarned           int `json:"pointsEarned"            gorm:"not null;default:0"` // poin yang didapat dari sesi ini
+	// Bonus waktu gratis dari promo (mis. weekend 30 menit). Tidak menambah
+	// tagihan; hanya menambah total menit bermain (booked_duration_minutes).
+	PromoBonusMinutes int        `json:"promoBonusMinutes" gorm:"not null;default:0"`
+	PromoRuleID       *uuid.UUID `json:"promoRuleId,omitempty" gorm:"type:uuid"`
+	PromoAppliedAt    *time.Time `json:"promoAppliedAt,omitempty"`
+	CreatedAt         time.Time  `json:"createdAt"              gorm:"autoCreateTime"`
+	UpdatedAt         time.Time  `json:"updatedAt"              gorm:"autoUpdateTime"`
 
 	// Relasi (join data)
 	Console  *Console  `json:"console,omitempty"  gorm:"foreignKey:ConsoleID"`
