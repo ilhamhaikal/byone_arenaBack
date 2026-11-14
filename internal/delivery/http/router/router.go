@@ -137,6 +137,9 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	// Pairing TV: publik, dipanggil aplikasi TV setelah menemukan server.
 	api.Post("/devices/announce", h.Device.Announce)
 
+	// Promo bonus yang berlaku hari ini — publik (dipakai TV & dialog sesi).
+	api.Get("/promo-bonuses/active", h.Promo.Active)
+
 	// Routes publik lain — HARUS sebelum protected group
 	api.Get("/notifications", h.Notify.GetAllNotifications)
 	api.Get("/notifications/loop/status", h.Notify.LoopStatus)
@@ -233,7 +236,6 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 
 	// Promo bonus waktu: baca aturan aktif untuk semua role, kelola hanya admin.
 	promoRules := protected.Group("/promo-bonuses")
-	promoRules.Get("/active", h.Promo.Active)
 	promoRules.Get("/", middleware.AdminOnly(), h.Promo.List)
 	promoRules.Post("/", middleware.AdminOnly(), h.Promo.Create)
 	promoRules.Put("/:id", middleware.AdminOnly(), h.Promo.Update)
