@@ -84,12 +84,19 @@ func Load() (*Config, error) {
 
 // DSN mengembalikan string koneksi PostgreSQL
 func (c *Config) DSN() string {
+	// statement_cache_capacity=0 mematikan cache prepared statement di driver
+	// pgx. Tanpa ini, migrasi yang menambah kolom (SELECT * berubah bentuk)
+	// membuat query gagal dengan "cached plan must not change result type"
+	// sampai aplikasi di-restart. Dengan cache dimatikan, perubahan skema
+	// langsung berlaku.
 	return "host=" + c.DBHost +
 		" port=" + c.DBPort +
 		" user=" + c.DBUser +
 		" password=" + c.DBPassword +
 		" dbname=" + c.DBName +
-		" sslmode=" + c.DBSSLMode
+		" sslmode=" + c.DBSSLMode +
+		" statement_cache_capacity=0" +
+		" default_query_exec_mode=exec"
 }
 
 // PostgresDSN mengembalikan DSN dalam format URL

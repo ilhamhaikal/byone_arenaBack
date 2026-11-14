@@ -18,9 +18,17 @@ func NewGormDB(cfg *config.Config) (*gorm.DB, error) {
 		logLevel = logger.Error
 	}
 
+	// PrepareStmt sengaja dimatikan.
+	//
+	// Dengan prepared statement yang di-cache, `SELECT *` menyimpan bentuk
+	// hasil (result type) di sisi server. Begitu migrasi menambah kolom
+	// (mis. promo_bonus_minutes), PostgreSQL menolak plan lama dengan
+	// "cached plan must not change result type" (SQLSTATE 0A000) sampai
+	// koneksi di-reset. Mematikan cache membuat perubahan skema langsung
+	// terpakai tanpa harus memutus semua koneksi.
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
 		Logger:                                   logger.Default.LogMode(logLevel),
-		PrepareStmt:                              true,
+		PrepareStmt:                              false,
 		DisableForeignKeyConstraintWhenMigrating: false,
 	})
 	if err != nil {
