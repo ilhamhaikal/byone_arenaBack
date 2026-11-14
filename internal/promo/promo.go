@@ -21,7 +21,7 @@ import (
 var (
 	ErrNoActiveRule = errors.New("tidak ada promo bonus yang berlaku")
 	ErrNotEligible  = errors.New("sesi belum memenuhi syarat promo")
-	ErrAlreadyUsed  = errors.New("bonus promo sudah dipakai pada sesi ini")
+	ErrLimitReached = errors.New("batas pemakaian bonus untuk sesi ini sudah tercapai")
 	ErrNotActive    = errors.New("sesi tidak aktif")
 )
 
@@ -109,9 +109,6 @@ func Apply(db *gorm.DB, sessionID string) (*entity.Session, *entity.PromoBonusRu
 		if s.Status != entity.SessionStatusActive {
 			return ErrNotActive
 		}
-		if s.PromoBonusMinutes > 0 {
-			return ErrAlreadyUsed
-		}
 
 		paid := PaidMinutes(&s)
 
@@ -136,6 +133,9 @@ func Apply(db *gorm.DB, sessionID string) (*entity.Session, *entity.PromoBonusRu
 		if rule == nil {
 			return ErrNotEligible
 		}
+		if rule.MaxPerSession > 0 && s.PromoApplyCount >= rule.MaxPerSession {
+			return ErrLimitReached
+		}
 
 		now := Now()
 		newBooked := s.BookedDurationMinutes + rule.BonusMinutes
@@ -149,7 +149,9 @@ func Apply(db *gorm.DB, sessionID string) (*entity.Session, *entity.PromoBonusRu
 		}
 
 		updates := map[string]any{
-			"promo_bonus_minutes":     rule.BonusMinutes,
+			// Akumulasi: pemakaian berulang menambah menit bonus, bukan menimpa.
+			"promo_bonus_minutes":     s.PromoBonusMinutes + rule.BonusMinutes,
+			"promo_apply_count":       s.PromoApplyCount + 1,
 			"promo_rule_id":           rule.ID,
 			"promo_applied_at":        now,
 			"booked_duration_minutes": newBooked,

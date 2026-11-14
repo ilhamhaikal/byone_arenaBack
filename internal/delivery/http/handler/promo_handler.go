@@ -30,6 +30,7 @@ type promoRuleRequest struct {
 	DaysOfWeek     string  `json:"daysOfWeek"     validate:"required"`
 	MinPaidMinutes int     `json:"minPaidMinutes" validate:"required,min=1"`
 	BonusMinutes   int     `json:"bonusMinutes"   validate:"required,min=1"`
+	MaxPerSession  int     `json:"maxPerSession"  validate:"min=0"`
 	ValidFrom      *string `json:"validFrom"`
 	ValidTo        *string `json:"validTo"`
 	IsActive       *bool   `json:"isActive"`
@@ -105,6 +106,7 @@ func (h *PromoHandler) Create(c *fiber.Ctx) error {
 		DaysOfWeek:     req.DaysOfWeek,
 		MinPaidMinutes: req.MinPaidMinutes,
 		BonusMinutes:   req.BonusMinutes,
+		MaxPerSession:  req.MaxPerSession,
 		ValidFrom:      from,
 		ValidTo:        to,
 		IsActive:       active,
@@ -150,6 +152,7 @@ func (h *PromoHandler) Update(c *fiber.Ctx) error {
 		"days_of_week":     req.DaysOfWeek,
 		"min_paid_minutes": req.MinPaidMinutes,
 		"bonus_minutes":    req.BonusMinutes,
+		"max_per_session":  req.MaxPerSession,
 		"valid_from":       from,
 		"valid_to":         to,
 		"updated_at":       promo.Now(),
@@ -212,7 +215,7 @@ func (h *PromoHandler) ApplyToSession(c *fiber.Ctx) error {
 	session, rule, err := promo.Apply(h.db.WithContext(c.Context()), id.String())
 	if err != nil {
 		switch {
-		case errors.Is(err, promo.ErrAlreadyUsed):
+		case errors.Is(err, promo.ErrLimitReached):
 			return response.Conflict(c, err.Error())
 		case errors.Is(err, promo.ErrNotEligible), errors.Is(err, promo.ErrNoActiveRule):
 			return response.BadRequest(c, err.Error())
@@ -226,9 +229,11 @@ func (h *PromoHandler) ApplyToSession(c *fiber.Ctx) error {
 	}
 
 	audit.Log(h.db, c, "session.promo_bonus", "session", &id, map[string]any{
-		"ruleName":     rule.Name,
-		"bonusMinutes": rule.BonusMinutes,
-		"paidMinutes":  promo.PaidMinutes(session),
+		"ruleName":          rule.Name,
+		"bonusMinutes":      rule.BonusMinutes,
+		"paidMinutes":       promo.PaidMinutes(session),
+		"totalBonusMinutes": session.PromoBonusMinutes,
+		"applyCount":        session.PromoApplyCount,
 	})
 
 	return response.OK(c, "Bonus waktu berhasil diterapkan", session)

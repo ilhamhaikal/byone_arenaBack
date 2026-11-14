@@ -37,6 +37,7 @@ type ActiveSessionInfo struct {
 	BookedDurationMinutes int        `json:"bookedDurationMinutes"`
 	PaidDurationMinutes   int        `json:"paidDurationMinutes"`
 	PromoBonusMinutes     int        `json:"promoBonusMinutes"`
+	PromoApplyCount       int        `json:"promoApplyCount"`
 	PromoAppliedAt        *time.Time `json:"promoAppliedAt,omitempty"`
 	EndScheduledAt        *time.Time `json:"endScheduledAt"`
 	RemainingMinutes      int        `json:"remainingMinutes"` // -1 = open-ended
@@ -136,6 +137,7 @@ func (uc *consoleUseCase) GetConsoleOverview(ctx context.Context) ([]*ConsoleOve
 				BookedDurationMinutes: s.BookedDurationMinutes,
 				PaidDurationMinutes:   s.PaidDurationMinutes,
 				PromoBonusMinutes:     s.PromoBonusMinutes,
+				PromoApplyCount:       s.PromoApplyCount,
 				PromoAppliedAt:        s.PromoAppliedAt,
 				EndScheduledAt:        s.EndScheduledAt,
 				RemainingMinutes:      s.RemainingMinutes(),

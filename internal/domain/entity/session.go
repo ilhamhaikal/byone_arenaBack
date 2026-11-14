@@ -42,6 +42,7 @@ type Session struct {
 	// Bonus waktu gratis dari promo (mis. weekend 30 menit). Tidak menambah
 	// tagihan; hanya menambah total menit bermain (booked_duration_minutes).
 	PromoBonusMinutes int        `json:"promoBonusMinutes" gorm:"not null;default:0"`
+	PromoApplyCount   int        `json:"promoApplyCount"   gorm:"not null;default:0"`
 	PromoRuleID       *uuid.UUID `json:"promoRuleId,omitempty" gorm:"type:uuid"`
 	PromoAppliedAt    *time.Time `json:"promoAppliedAt,omitempty"`
 	CreatedAt         time.Time  `json:"createdAt"              gorm:"autoCreateTime"`
