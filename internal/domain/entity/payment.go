@@ -25,21 +25,21 @@ const (
 
 // Payment merepresentasikan transaksi pembayaran tunai dari satu sesi rental
 type Payment struct {
-	ID             uuid.UUID     `json:"id"              gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	SessionID      uuid.UUID     `json:"sessionId"       gorm:"type:uuid;not null;uniqueIndex"`
-	VoucherID      *uuid.UUID    `json:"voucherId,omitempty" gorm:"type:uuid;index"`
-	Amount         float64       `json:"amount"          gorm:"not null;type:numeric(10,2)"`
-	DiscountAmount float64       `json:"discountAmount"  gorm:"not null;default:0;type:numeric(10,2)"` // nominal diskon yang diberikan
-	PaymentMethod  PaymentMethod `json:"paymentMethod"   gorm:"not null;default:'cash';size:20"`
-	PaymentStatus  PaymentStatus `json:"paymentStatus"   gorm:"not null;default:'pending';size:20;index"`
-	PaidAt         *time.Time    `json:"paidAt,omitempty"`
-	CashReceived        float64       `json:"cashReceived"        gorm:"not null;default:0;type:numeric(10,2)"` // uang yang diterima
-	ChangeAmount        float64       `json:"changeAmount"        gorm:"not null;default:0;type:numeric(10,2)"` // kembalian
-	AutoDiscountAmount  float64       `json:"autoDiscountAmount" gorm:"not null;default:0;type:numeric(10,2)"` // diskon otomatis (happy hour, member, dll)
-	TotalPayment        float64       `json:"totalPayment"       gorm:"not null;default:0;type:numeric(10,2)"` // jumlah final dibayar = amount - discount - auto_discount
-	Notes               string        `json:"notes,omitempty"    gorm:"type:text"`
-	CreatedAt      time.Time     `json:"createdAt"       gorm:"autoCreateTime"`
-	UpdatedAt      time.Time     `json:"updatedAt"       gorm:"autoUpdateTime"`
+	ID                 uuid.UUID     `json:"id"              gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	SessionID          uuid.UUID     `json:"sessionId"       gorm:"type:uuid;not null;index"`
+	VoucherID          *uuid.UUID    `json:"voucherId,omitempty" gorm:"type:uuid;index"`
+	Amount             float64       `json:"amount"          gorm:"not null;type:numeric(10,2)"`
+	DiscountAmount     float64       `json:"discountAmount"  gorm:"not null;default:0;type:numeric(10,2)"` // nominal diskon yang diberikan
+	PaymentMethod      PaymentMethod `json:"paymentMethod"   gorm:"not null;default:'cash';size:20"`
+	PaymentStatus      PaymentStatus `json:"paymentStatus"   gorm:"not null;default:'pending';size:20;index"`
+	PaidAt             *time.Time    `json:"paidAt,omitempty"`
+	CashReceived       float64       `json:"cashReceived"        gorm:"not null;default:0;type:numeric(10,2)"` // uang yang diterima
+	ChangeAmount       float64       `json:"changeAmount"        gorm:"not null;default:0;type:numeric(10,2)"` // kembalian
+	AutoDiscountAmount float64       `json:"autoDiscountAmount" gorm:"not null;default:0;type:numeric(10,2)"`  // diskon otomatis (happy hour, member, dll)
+	TotalPayment       float64       `json:"totalPayment"       gorm:"not null;default:0;type:numeric(10,2)"`  // jumlah final dibayar = amount - discount - auto_discount
+	Notes              string        `json:"notes,omitempty"    gorm:"type:text"`
+	CreatedAt          time.Time     `json:"createdAt"       gorm:"autoCreateTime"`
+	UpdatedAt          time.Time     `json:"updatedAt"       gorm:"autoUpdateTime"`
 
 	// Relasi
 	Session *Session `json:"session,omitempty"  gorm:"foreignKey:SessionID"`

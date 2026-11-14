@@ -11,7 +11,7 @@ package main
 // @license.name  MIT
 // @license.url   https://opensource.org/licenses/MIT
 
-// @host      localhost:8080
+// @host      localhost:8081   (dev; saat runtime di-override sesuai PORT di .env)
 // @BasePath  /
 
 // @securityDefinitions.apikey  BearerAuth
@@ -40,7 +40,7 @@ import (
 	"byone-arena/pkg/spname"
 	appValidator "byone-arena/pkg/validator"
 
-	_ "byone-arena/docs" // swagger docs
+	docs "byone-arena/docs" // swagger docs
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -97,6 +97,9 @@ func main() {
 		zap.String("env", cfg.AppEnv),
 		zap.String("port", cfg.Port),
 	)
+
+	// Swagger: host mengikuti port aktif (dev 8081, production 8080)
+	docs.SwaggerInfo.Host = "localhost:" + cfg.Port
 
 	// Set prefix nama stored procedure (white-label per client, default "byone")
 	spname.Init(cfg.SPPrefix)
@@ -168,28 +171,29 @@ func main() {
 
 	// Inisialisasi handler (delivery layer)
 	handlers := &router.Handlers{
-		Auth:       handler.NewAuthHandler(authUC, validate),
-		Console:    handler.NewConsoleHandler(consoleUC, validate, db),
-		Session:    handler.NewSessionHandler(sessionUC, validate, hub, db),
-		Customer:   handler.NewCustomerHandler(customerUC, validate, db),
-		Payment:    handler.NewPaymentHandler(paymentUC, validate, hub, db),
-		Shift:      handler.NewShiftHandler(shiftUC),
-		Voucher:    handler.NewVoucherHandler(voucherUC, validate),
-		Discount:   handler.NewDiscountHandler(discountRuleUC, validate),
-		Menu:       handler.NewMenuItemHandler(menuUC, validate),
-		Ingredient: handler.NewIngredientHandler(ingredientUC, validate),
-		FoodOrder:  handler.NewFoodOrderHandler(foodOrderUC, validate, db, hub),
-		Capital:    handler.NewCapitalHandler(capitalUC, validate),
+		Auth:          handler.NewAuthHandler(authUC, validate, db),
+		Console:       handler.NewConsoleHandler(consoleUC, validate, db),
+		Session:       handler.NewSessionHandler(sessionUC, validate, hub, db),
+		Customer:      handler.NewCustomerHandler(customerUC, validate, db),
+		Payment:       handler.NewPaymentHandler(paymentUC, validate, hub, db),
+		Shift:         handler.NewShiftHandler(shiftUC, db),
+		Voucher:       handler.NewVoucherHandler(voucherUC, validate),
+		Discount:      handler.NewDiscountHandler(discountRuleUC, validate),
+		Menu:          handler.NewMenuItemHandler(menuUC, validate),
+		Ingredient:    handler.NewIngredientHandler(ingredientUC, validate),
+		FoodOrder:     handler.NewFoodOrderHandler(foodOrderUC, validate, db, hub),
+		Capital:       handler.NewCapitalHandler(capitalUC, validate),
 		RentalPackage: handler.NewRentalPackageHandler(rentalPackageUC, validate),
-		Dashboard:  handler.NewDashboardHandler(paymentRepo, db),
-		Report:     handler.NewReportHandler(paymentRepo),
-		Notify:     handler.NewNotificationHandler(db, hub, consoleUC, validate),
-		Rental:     handler.NewRentalHandler(db, validate),
-		Settings:   handler.NewSettingsHandler(db, validate),
-		Activity:   handler.NewActivityHandler(db),
-		User:       handler.NewUserHandler(userUC, validate, db),
-		Device:     handler.NewDeviceHandler(db),
-		Hub:        hub,
+		Dashboard:     handler.NewDashboardHandler(paymentRepo, db),
+		Report:        handler.NewReportHandler(paymentRepo),
+		Notify:        handler.NewNotificationHandler(db, hub, consoleUC, validate),
+		Rental:        handler.NewRentalHandler(db, validate),
+		Settings:      handler.NewSettingsHandler(db, validate),
+		Activity:      handler.NewActivityHandler(db),
+		User:          handler.NewUserHandler(userUC, validate, db),
+		Device:        handler.NewDeviceHandler(db),
+		Audit:         handler.NewAuditHandler(db),
+		Hub:           hub,
 	}
 
 	// Inisialisasi Fiber app
@@ -213,7 +217,7 @@ func main() {
 	})
 
 	// Setup routes
-	router.Setup(app, handlers, cfg)
+	router.Setup(app, handlers, cfg, db)
 
 	// Discovery TV di LAN: TV broadcast probe, server membalas alamat API.
 	if cfg.DiscoveryEnabled {

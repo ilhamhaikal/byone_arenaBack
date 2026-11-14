@@ -5,6 +5,7 @@ import (
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
+	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/validator"
 
@@ -88,6 +89,9 @@ func (h *UserHandler) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+	audit.Log(h.db, c, "user.create", "user", &user.ID, map[string]any{
+		"username": user.Username, "role": user.Role,
+	})
 	return response.Created(c, "User berhasil dibuat", user)
 }
 
@@ -123,6 +127,9 @@ func (h *UserHandler) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+	audit.Log(h.db, c, "user.update", "user", &id, map[string]any{
+		"username": user.Username, "role": user.Role, "isActive": user.IsActive,
+	})
 	return response.OK(c, "User berhasil diperbarui", user)
 }
 
@@ -147,6 +154,7 @@ func (h *UserHandler) Delete(c *fiber.Ctx) error {
 	if err := h.userUC.DeleteUser(c.Context(), id, currentUserID, currentUserRole); err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+	audit.Log(h.db, c, "user.delete", "user", &id, nil)
 	return response.OK(c, "User berhasil dihapus", nil)
 }
 

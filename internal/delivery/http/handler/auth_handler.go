@@ -1,22 +1,50 @@
 package handler
 
 import (
+	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/validator"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // AuthHandler menangani HTTP request untuk autentikasi
 type AuthHandler struct {
 	authUC    usecase.AuthUseCase
 	validator *validator.Validator
+	db        *gorm.DB
 }
 
 // NewAuthHandler membuat instance baru AuthHandler
-func NewAuthHandler(authUC usecase.AuthUseCase, v *validator.Validator) *AuthHandler {
-	return &AuthHandler{authUC: authUC, validator: v}
+func NewAuthHandler(authUC usecase.AuthUseCase, v *validator.Validator, db *gorm.DB) *AuthHandler {
+	return &AuthHandler{authUC: authUC, validator: v, db: db}
+}
+
+// Me godoc
+// @Summary      Profil pemilik token
+// @Description  Dipakai frontend untuk memastikan token masih valid dan mengambil role terbaru.
+// @Tags         Autentikasi
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  response.Response{data=entity.User}
+// @Failure      401  {object}  response.ErrorResponse
+// @Router       /api/v1/auth/me [get]
+func (h *AuthHandler) Me(c *fiber.Ctx) error {
+	uid, ok := c.Locals("userID").(uuid.UUID)
+	if !ok {
+		return response.Unauthorized(c, "Tidak terautentikasi")
+	}
+	var user entity.User
+	if err := h.db.WithContext(c.Context()).First(&user, "id = ?", uid).Error; err != nil {
+		return response.Unauthorized(c, "Sesi tidak valid, silakan login ulang")
+	}
+	if !user.IsActive {
+		return response.Unauthorized(c, "Akun tidak aktif, hubungi administrator")
+	}
+	return response.OK(c, "Profil pengguna", user)
 }
 
 // Login godoc
@@ -72,4 +100,3 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	}
 	return response.Created(c, "Akun berhasil dibuat", user)
 }
-

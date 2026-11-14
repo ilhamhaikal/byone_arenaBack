@@ -2,24 +2,28 @@ package handler
 
 import (
 	"byone-arena/internal/usecase"
+	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // ShiftHandler menangani endpoint manajemen shift kasir
 type ShiftHandler struct {
 	shiftUC  usecase.ShiftUseCase
 	validate *validator.Validate
+	db       *gorm.DB
 }
 
 // NewShiftHandler membuat instance baru ShiftHandler
-func NewShiftHandler(shiftUC usecase.ShiftUseCase) *ShiftHandler {
+func NewShiftHandler(shiftUC usecase.ShiftUseCase, db *gorm.DB) *ShiftHandler {
 	return &ShiftHandler{
 		shiftUC:  shiftUC,
 		validate: validator.New(),
+		db:       db,
 	}
 }
 
@@ -118,6 +122,10 @@ func (h *ShiftHandler) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+	audit.Log(h.db, c, "shift.create", "shift", &shift.ID, map[string]any{
+		"userId": shift.UserID, "startHour": shift.StartHour,
+		"endHour": shift.EndHour, "is24Hour": shift.Is24Hour,
+	})
 	return response.Created(c, "Shift berhasil dibuat", shift)
 }
 
@@ -154,6 +162,10 @@ func (h *ShiftHandler) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+	audit.Log(h.db, c, "shift.update", "shift", &id, map[string]any{
+		"startHour": shift.StartHour, "endHour": shift.EndHour,
+		"is24Hour": shift.Is24Hour, "status": shift.Status,
+	})
 	return response.OK(c, "Shift berhasil diperbarui", shift)
 }
 
@@ -178,5 +190,6 @@ func (h *ShiftHandler) Delete(c *fiber.Ctx) error {
 	if err := h.shiftUC.DeleteShift(c.Context(), id); err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+	audit.Log(h.db, c, "shift.delete", "shift", &id, nil)
 	return response.OK(c, "Shift berhasil dihapus", nil)
 }

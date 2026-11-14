@@ -3,6 +3,7 @@ package handler
 import (
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
+	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
@@ -145,10 +146,23 @@ func (h *ConsoleHandler) Update(c *fiber.Ctx) error {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
 
+	var before struct {
+		PricePerHour float64 `gorm:"column:price_per_hour"`
+	}
+	h.db.WithContext(c.Context()).Raw(
+		"SELECT price_per_hour FROM consoles WHERE id = ?", id).Scan(&before)
+
 	console, err := h.consoleUC.UpdateConsole(c.Context(), id, req)
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+
+	audit.Log(h.db, c, "console.update", "console", &id, map[string]any{
+		"pricePerHourBefore": before.PricePerHour,
+		"pricePerHourAfter":  console.PricePerHour,
+		"status":             console.Status,
+	})
+
 	return response.OK(c, "Data konsol berhasil diperbarui", console)
 }
 
@@ -284,11 +298,11 @@ func (h *ConsoleHandler) Heartbeat(c *fiber.Ctx) error {
 
 	if body.ScreenStatus == "on" || body.ScreenStatus == "off" || body.ScreenStatus == "sleep" || body.ScreenStatus == "screensaver" {
 		type spResult struct {
-			LogID        uuid.UUID `gorm:"column:log_id"`
-			IsAuthorized bool      `gorm:"column:is_authorized"`
+			LogID        uuid.UUID  `gorm:"column:log_id"`
+			IsAuthorized bool       `gorm:"column:is_authorized"`
 			SessionID    *uuid.UUID `gorm:"column:session_id"`
-			DurationMin  *int      `gorm:"column:duration_minutes"`
-			Message      string    `gorm:"column:message"`
+			DurationMin  *int       `gorm:"column:duration_minutes"`
+			Message      string     `gorm:"column:message"`
 		}
 		var result spResult
 		tx := h.db.WithContext(c.Context()).Raw(
@@ -378,13 +392,12 @@ func (h *ConsoleHandler) GetTvLogs(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, "Log aktivitas TV", fiber.Map{
-		"logs":                 logsJSON,
-		"unauthorizedCount":    result.UnauthorizedCount,
-		"totalOnMinutes":       result.TotalOnMinutes,
-		"authorizedMinutes":    result.AuthorizedMinutes,
-		"unauthorizedMinutes":  result.UnauthorizedMinutes,
-		"activeSession":        sessionJSON,
-		"unauthorizedLogs":     unauthLogsJSON,
+		"logs":                logsJSON,
+		"unauthorizedCount":   result.UnauthorizedCount,
+		"totalOnMinutes":      result.TotalOnMinutes,
+		"authorizedMinutes":   result.AuthorizedMinutes,
+		"unauthorizedMinutes": result.UnauthorizedMinutes,
+		"activeSession":       sessionJSON,
+		"unauthorizedLogs":    unauthLogsJSON,
 	})
 }
-

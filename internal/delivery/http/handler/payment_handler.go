@@ -4,6 +4,7 @@ import (
 	"byone-arena/internal/delivery/websocket"
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
+	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
@@ -148,6 +149,12 @@ func (h *PaymentHandler) Create(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
+	audit.Log(h.db, c, "payment.create", "payment", &payment.ID, map[string]any{
+		"sessionId":    payment.SessionID,
+		"totalPayment": payment.TotalPayment,
+		"cashReceived": payment.CashReceived,
+	})
+
 	h.hub.BroadcastPaymentCreated(payment)
 
 	return response.Created(c, "Pembayaran tunai berhasil diproses", payment)
@@ -175,6 +182,16 @@ func (h *PaymentHandler) Refund(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+
+	// Atribusi refund — ini aksi paling sensitif (uang keluar dari sistem).
+	if uid := audit.CurrentUserID(c); uid != nil {
+		h.db.WithContext(c.Context()).Exec(
+			"UPDATE payments SET refunded_by = ?, refunded_at = NOW() WHERE id = ?", *uid, id)
+	}
+	audit.Log(h.db, c, "payment.refund", "payment", &id, map[string]any{
+		"sessionId":    payment.SessionID,
+		"totalPayment": payment.TotalPayment,
+	})
 
 	h.hub.BroadcastPaymentRefunded(payment)
 
@@ -227,6 +244,11 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 	if tx.Error != nil {
 		return response.BadRequest(c, tx.Error.Error())
 	}
+
+	audit.Log(h.db, c, "payment.confirm", "payment", &result.PaymentID, map[string]any{
+		"totalPayment": result.TotalPayment,
+		"cashReceived": result.CashReceived,
+	})
 
 	// Broadcast realtime — pembayaran pending sudah dikonfirmasi lunas
 	h.hub.BroadcastPaymentConfirmed(fiber.Map{
@@ -329,4 +351,3 @@ func (h *PaymentHandler) GetPendingExtensions(c *fiber.Ctx) error {
 		"payments":     list,
 	})
 }
-

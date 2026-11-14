@@ -10,10 +10,16 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
-// AuthMiddleware memverifikasi JWT token pada setiap request yang dilindungi
-func AuthMiddleware(cfg *config.Config) fiber.Handler {
+// AuthMiddleware memverifikasi JWT token pada setiap request yang dilindungi.
+//
+// Selain validasi tanda tangan token, status user dicek ulang ke database pada
+// setiap request. Tanpa ini, user yang dinonaktifkan atau dihapus tetap bisa
+// memakai token lamanya sampai 24 jam (JWT_EXPIRE_HOURS), dan perubahan role
+// tidak langsung berlaku.
+func AuthMiddleware(cfg *config.Config, db *gorm.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
@@ -39,7 +45,23 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 			return response.Unauthorized(c, "Token tidak valid atau sudah kadaluarsa")
 		}
 
-		// Simpan claims ke context untuk digunakan handler berikutnya
+		if db != nil {
+			var user entity.User
+			if err := db.WithContext(c.Context()).
+				Select("id", "username", "role", "is_active").
+				First(&user, "id = ?", claims.UserID).Error; err != nil {
+				return response.Unauthorized(c, "Sesi tidak valid, silakan login ulang")
+			}
+			if !user.IsActive {
+				return response.Unauthorized(c, "Akun tidak aktif, hubungi administrator")
+			}
+			// Gunakan data terbaru dari DB, bukan klaim token (role bisa berubah).
+			c.Locals("userID", user.ID)
+			c.Locals("username", user.Username)
+			c.Locals("role", user.Role)
+			return c.Next()
+		}
+
 		c.Locals("userID", claims.UserID)
 		c.Locals("username", claims.Username)
 		c.Locals("role", claims.Role)

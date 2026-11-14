@@ -3,6 +3,7 @@ package handler
 import (
 	"byone-arena/internal/delivery/websocket"
 	"byone-arena/internal/usecase"
+	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
@@ -124,6 +125,19 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
+	// Catat pelaku transaksi (tanpa ini selisih kas tidak bisa ditelusuri).
+	if uid := audit.CurrentUserID(c); uid != nil {
+		h.db.WithContext(c.Context()).Exec(
+			"UPDATE sessions SET created_by = ? WHERE id = ? AND created_by IS NULL", *uid, result.Session.ID)
+		h.db.WithContext(c.Context()).Exec(
+			"UPDATE payments SET created_by = ? WHERE session_id = ? AND created_by IS NULL", *uid, result.Session.ID)
+	}
+	audit.Log(h.db, c, "session.start", "session", &result.Session.ID, map[string]any{
+		"consoleId":     result.Session.ConsoleID,
+		"bookedMinutes": result.Session.BookedDurationMinutes,
+		"totalPrice":    result.Session.TotalPrice,
+	})
+
 	// Broadcast realtime — sesi dimulai + auto-wake TV (lihat broadcaster.go)
 	h.hub.BroadcastSessionStarted(result, req.ConsoleID)
 
@@ -152,8 +166,19 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
+	// Atribusi: siapa yang mengakhiri sesi.
+	if uid := audit.CurrentUserID(c); uid != nil {
+		h.db.WithContext(c.Context()).Exec("UPDATE sessions SET ended_by = ? WHERE id = ?", *uid, id)
+	}
+	audit.Log(h.db, c, "session.end", "session", &id, map[string]any{
+		"durationMinutes": session.DurationMinutes,
+		"totalPrice":      session.TotalPrice,
+	})
+
 	// Cek unpaid pending payments (dari extend yg belum bayar)
-	var unpaidRow struct{ Count int64 `gorm:"column:count"` }
+	var unpaidRow struct {
+		Count int64 `gorm:"column:count"`
+	}
 	h.db.WithContext(c.Context()).Raw(
 		"SELECT COUNT(*) as count FROM payments WHERE session_id = ? AND payment_status = 'pending'", id,
 	).Scan(&unpaidRow)
@@ -202,6 +227,13 @@ func (h *SessionHandler) Cancel(c *fiber.Ctx) error {
 	if err := h.sessionUC.CancelSession(c.Context(), id); err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+
+	if uid := audit.CurrentUserID(c); uid != nil {
+		h.db.WithContext(c.Context()).Exec("UPDATE sessions SET cancelled_by = ? WHERE id = ?", *uid, id)
+	}
+	audit.Log(h.db, c, "session.cancel", "session", &id, map[string]any{
+		"note": "dibatalkan tanpa tagihan",
+	})
 
 	h.hub.BroadcastSessionCancelled(id)
 
@@ -265,7 +297,9 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 
 	// Broadcast ke TV bahwa waktu ditambah
 	// Ambil console_id dulu (pakai struct untuk GORM Scan)
-	var consoleRow struct{ ConsoleID uuid.UUID `gorm:"column:console_id"` }
+	var consoleRow struct {
+		ConsoleID uuid.UUID `gorm:"column:console_id"`
+	}
 	h.db.WithContext(c.Context()).Raw("SELECT console_id FROM sessions WHERE id = ?", id).Scan(&consoleRow)
 	consoleID := consoleRow.ConsoleID
 
@@ -305,9 +339,9 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 
 	return response.OK(c, "Waktu sewa berhasil ditambah", fiber.Map{
 		"session": fiber.Map{
-			"id":                result.SessionID,
+			"id":                    result.SessionID,
 			"bookedDurationMinutes": result.SessionBookedMinutes,
-			"endScheduledAt":    result.SessionEndScheduled,
+			"endScheduledAt":        result.SessionEndScheduled,
 		},
 		"payment": fiber.Map{
 			"id":             result.PaymentID,

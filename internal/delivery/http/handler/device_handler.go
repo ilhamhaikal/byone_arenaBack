@@ -31,7 +31,9 @@ type announceDeviceRequest struct {
 // Announce godoc
 // @Summary      Daftarkan TV yang baru menemukan server
 // @Description  Dipanggil aplikasi TV (tanpa login). Server memakai IP sumber
-//               request sehingga TV tidak perlu mengetik alamat apa pun.
+//
+//	request sehingga TV tidak perlu mengetik alamat apa pun.
+//
 // @Tags         Perangkat
 // @Accept       json
 // @Produce      json
@@ -97,7 +99,9 @@ type bindDeviceRequest struct {
 // Bind godoc
 // @Summary      Hubungkan TV ke konsol
 // @Description  Menulis IP perangkat ke consoles.ip_address sehingga aplikasi
-//               TV langsung menemukan konsolnya.
+//
+//	TV langsung menemukan konsolnya.
+//
 // @Tags         Perangkat
 // @Security     BearerAuth
 // @Router       /api/v1/devices/{id}/bind [post]

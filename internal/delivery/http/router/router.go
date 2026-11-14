@@ -3,6 +3,7 @@ package router
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"byone-arena/internal/delivery/http/handler"
 	"byone-arena/internal/delivery/http/middleware"
@@ -13,9 +14,11 @@ import (
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	fiberCors "github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	fiberSwagger "github.com/swaggo/fiber-swagger"
+	"gorm.io/gorm"
 )
 
 // Handlers mengumpulkan semua handler yang diperlukan router
@@ -41,11 +44,12 @@ type Handlers struct {
 	Activity      *handler.ActivityHandler
 	User          *handler.UserHandler
 	Device        *handler.DeviceHandler
+	Audit         *handler.AuditHandler
 	Hub           *wsHandler.Hub
 }
 
 // Setup mendaftarkan semua route ke Fiber app
-func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
+func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	// Middleware global
 	app.Use(recover.New())
 	app.Use(logger.New(logger.Config{
@@ -105,7 +109,20 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 
 	// Auth routes (publik)
 	auth := api.Group("/auth")
-	auth.Post("/login", h.Auth.Login)
+	// Batasi percobaan login untuk mencegah brute force password kasir.
+	auth.Post("/login", limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"success": false,
+				"message": "Terlalu banyak percobaan login, coba lagi dalam 1 menit",
+			})
+		},
+	}), h.Auth.Login)
 	if cfg.AppEnv != "production" {
 		auth.Post("/register", h.Auth.Register)
 	}
@@ -124,7 +141,13 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	api.Get("/notifications/loop/status", h.Notify.LoopStatus)
 
 	// Protected routes (memerlukan JWT)
-	protected := api.Group("", middleware.AuthMiddleware(cfg))
+	protected := api.Group("", middleware.AuthMiddleware(cfg, db))
+
+	// Profil pemilik token — dipakai frontend untuk memvalidasi sesi.
+	protected.Get("/auth/me", h.Auth.Me)
+
+	// Audit trail aksi sensitif — admin & superadmin.
+	protected.Get("/audit-logs", middleware.AdminOnly(), h.Audit.List)
 
 	// Dashboard summary — memerlukan autentikasi
 	protected.Get("/dashboard/summary", h.Dashboard.GetSummary)
@@ -189,7 +212,9 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	consoles.Get("/overview", h.Console.GetOverview)
 	consoles.Get("/:id", h.Console.GetByID)
 	consoles.Post("/", h.Console.Create)
-	consoles.Put("/:id", h.Console.Update)
+	// Harga & tarif konsol hanya boleh diubah admin: mencegah kasir menurunkan
+	// harga sebelum memulai sesi.
+	consoles.Put("/:id", middleware.AdminOnly(), h.Console.Update)
 	consoles.Delete("/:id", middleware.AdminOnly(), h.Console.Delete)
 	consoles.Get("/:id/price", h.Console.PreviewPrice)
 	// TV Control — admin only
@@ -232,16 +257,19 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	payments.Get("/pending", h.Payment.GetPendingExtensions) // list pending extend payments — HARUS sebelum /:id
 	payments.Get("/:id", h.Payment.GetByID)
 	payments.Post("/", h.Payment.Create)
-	payments.Patch("/:id/refund", h.Payment.Refund)
+	payments.Patch("/:id/refund", middleware.AdminOnly(), h.Payment.Refund)
 	payments.Post("/:id/confirm", h.Payment.Confirm) // admin konfirmasi pembayaran extend
 
 	// Shift routes (admin & superadmin only)
 	shifts := protected.Group("/shifts", middleware.AdminOnly())
 	shifts.Get("/", h.Shift.GetAll)
 	shifts.Get("/:id", h.Shift.GetByID)
-	shifts.Post("/", h.Shift.Create)
-	shifts.Put("/:id", h.Shift.Update)
-	shifts.Delete("/:id", h.Shift.Delete)
+	// Jadwal shift menentukan validasi jam kerja kasir: hanya admin yang boleh
+	// membuat/mengubah/menghapus, agar kasir tidak bisa memberi shift 24 jam
+	// untuk dirinya sendiri atau menghapus riwayat jam kerjanya.
+	shifts.Post("/", middleware.AdminOnly(), h.Shift.Create)
+	shifts.Put("/:id", middleware.AdminOnly(), h.Shift.Update)
+	shifts.Delete("/:id", middleware.AdminOnly(), h.Shift.Delete)
 
 	// Shifts by user
 	protected.Get("/users/:user_id/shifts", middleware.AdminOnly(), h.Shift.GetByUser)
@@ -259,11 +287,13 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	// Change password — semua user terautentikasi bisa
 	protected.Patch("/users/change-password", h.User.ChangePassword)
 
-	// Voucher routes — lihat boleh semua role, edit hanya admin
+	// Voucher routes — kode boleh dicek semua role (pelanggan menyerahkan kode),
+	// tetapi daftar seluruh voucher hanya admin agar kasir tidak bisa memanen kode
+	// diskon yang tidak seharusnya dipakai.
 	vouchers := protected.Group("/vouchers")
-	vouchers.Get("/", h.Voucher.GetAll)
+	vouchers.Get("/", middleware.AdminOnly(), h.Voucher.GetAll)
 	vouchers.Get("/code/:code", h.Voucher.GetByCode)
-	vouchers.Get("/:id", h.Voucher.GetByID)
+	vouchers.Get("/:id", middleware.AdminOnly(), h.Voucher.GetByID)
 	// Write operations: admin only
 	protected.Post("/vouchers", middleware.AdminOnly(), h.Voucher.Create)
 	protected.Put("/vouchers/:id", middleware.AdminOnly(), h.Voucher.Update)
@@ -287,11 +317,13 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	menus.Get("/available", h.Menu.GetAvailable)
 	menus.Get("/category/:category", h.Menu.GetByCategory)
 	menus.Get("/:id", h.Menu.GetByID)
-	menus.Post("/", h.Menu.Create)
-	menus.Put("/:id", h.Menu.Update)
-	menus.Patch("/:id/toggle", h.Menu.Toggle)
-	menus.Delete("/:id", h.Menu.Delete)
-	menus.Put("/:id/ingredients", h.Ingredient.SetMenuIngredients)
+	// Harga menu memengaruhi pendapatan makanan: hanya admin yang boleh
+	// membuat/mengubah/menghapus menu dan resepnya.
+	menus.Post("/", middleware.AdminOnly(), h.Menu.Create)
+	menus.Put("/:id", middleware.AdminOnly(), h.Menu.Update)
+	menus.Patch("/:id/toggle", middleware.AdminOnly(), h.Menu.Toggle)
+	menus.Delete("/:id", middleware.AdminOnly(), h.Menu.Delete)
+	menus.Put("/:id/ingredients", middleware.AdminOnly(), h.Ingredient.SetMenuIngredients)
 	menus.Get("/:id/ingredients", h.Ingredient.ListMenuIngredients)
 
 	// Ingredient routes — bahan, resep, batch stok
@@ -299,13 +331,13 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config) {
 	ingredients.Get("/", h.Ingredient.GetAll)
 	ingredients.Get("/expired", h.Ingredient.GetExpired)    // HARUS sebelum /:id
 	ingredients.Get("/stock-log", h.Ingredient.GetStockLog) // HARUS sebelum /:id
-	ingredients.Post("/", h.Ingredient.Create)
+	ingredients.Post("/", middleware.AdminOnly(), h.Ingredient.Create)
 	ingredients.Get("/:id", h.Ingredient.GetByID)
-	ingredients.Put("/:id", h.Ingredient.Update)
-	ingredients.Delete("/:id", h.Ingredient.Delete)
-	ingredients.Post("/:id/stock", h.Ingredient.AddStock)
+	ingredients.Put("/:id", middleware.AdminOnly(), h.Ingredient.Update)
+	ingredients.Delete("/:id", middleware.AdminOnly(), h.Ingredient.Delete)
+	ingredients.Post("/:id/stock", middleware.AdminOnly(), h.Ingredient.AddStock)
 	ingredients.Get("/:id/stock", h.Ingredient.ListBatches)
-	ingredients.Put("/:id/components", h.Ingredient.SetComponents)
+	ingredients.Put("/:id/components", middleware.AdminOnly(), h.Ingredient.SetComponents)
 	ingredients.Get("/:id/components", h.Ingredient.ListComponents)
 
 	// Food order routes — semua role bisa buat, lihat, update status & cancel; delete admin only

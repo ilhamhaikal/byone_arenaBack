@@ -86,8 +86,8 @@ docker-up:
 	@echo ">> Memulai service Docker..."
 	$(DOCKER_COMPOSE) up -d
 	@echo ">> Semua service berjalan."
-	@echo "   API  : http://localhost:$${PORT:-8080}"
-	@echo "   WS   : ws://localhost:$${PORT:-8080}/ws"
+	@echo "   API  : http://localhost:$${PORT:-8081}"
+	@echo "   WS   : ws://localhost:$${PORT:-8081}/ws"
 
 ## docker-down: Hentikan semua service Docker
 docker-down:
@@ -99,7 +99,7 @@ docker-dev:
 	@echo ">> Memulai service Docker (mode development)..."
 	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml up -d
 	@echo ">> Service development berjalan."
-	@echo "   API     : http://localhost:$${PORT:-8080}"
+	@echo "   API     : http://localhost:$${PORT:-8081}"
 	@echo "   pgAdmin : http://localhost:5050"
 
 ## docker-build: Build ulang image Docker

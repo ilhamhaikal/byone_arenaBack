@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 
+	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/validator"
 
@@ -61,10 +62,16 @@ func (h *SettingsHandler) UpdateMembershipPrice(c *fiber.Ctx) error {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
 
+	// Nilai di-cast ke float lalu diformat numerik murni sebelum masuk SQL;
+	// tidak ada string dari klien yang disisipkan apa adanya.
+	price := fmt.Sprintf("%.0f", req.MembershipPrice)
 	h.db.WithContext(c.Context()).Exec(
-		fmt.Sprintf("UPDATE app_settings SET value = '%s', updated_at = NOW() WHERE key = 'membership_price'",
-			fmt.Sprintf("%.0f", req.MembershipPrice)),
+		"UPDATE app_settings SET value = ?, updated_at = NOW() WHERE key = 'membership_price'", price,
 	)
+
+	audit.Log(h.db, c, "settings.membership_price", "setting", nil, map[string]any{
+		"membershipPrice": req.MembershipPrice,
+	})
 
 	return response.OK(c, "Harga membership diupdate", fiber.Map{
 		"membershipPrice": req.MembershipPrice,
@@ -79,7 +86,9 @@ func (h *SettingsHandler) UpdateMembershipPrice(c *fiber.Ctx) error {
 // @Success      200  {object}  response.Response
 // @Router       /api/v1/settings/daily-price [get]
 func (h *SettingsHandler) GetDailyPrice(c *fiber.Ctx) error {
-	var row struct{ Value string `gorm:"column:value"` }
+	var row struct {
+		Value string `gorm:"column:value"`
+	}
 	h.db.WithContext(c.Context()).Raw("SELECT value FROM app_settings WHERE key = 'daily_price'").Scan(&row)
 	return response.OK(c, "Harga sewa harian", fiber.Map{"dailyPrice": row.Value})
 }
@@ -95,7 +104,9 @@ func (h *SettingsHandler) GetDailyPrice(c *fiber.Ctx) error {
 // @Success      200  {object}  response.Response
 // @Router       /api/v1/settings/daily-price [put]
 func (h *SettingsHandler) UpdateDailyPrice(c *fiber.Ctx) error {
-	var req struct{ DailyPrice float64 `json:"dailyPrice" validate:"gte=0"` }
+	var req struct {
+		DailyPrice float64 `json:"dailyPrice" validate:"gte=0"`
+	}
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "Format request tidak valid")
 	}
