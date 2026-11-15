@@ -67,6 +67,9 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 		return response.OK(c, "Byone Arena API aktif", fiber.Map{
 			"status":  "ok",
 			"version": "1.0.0",
+			// Terlihat jelas instance ini memakai environment & DB yang mana.
+			"env": cfg.AppEnv,
+			"db":  cfg.DBName,
 		})
 	})
 

@@ -94,10 +94,20 @@ func main() {
 	}
 	defer log.Sync()
 
+	// Tolak kombinasi environment yang berbahaya (dev memakai DB produksi,
+	// atau production dijalankan dari workspace development).
+	if err := cfg.ValidateRuntime(); err != nil {
+		log.Error("Konfigurasi environment DITOLAK", zap.Error(err))
+		log.Sync()
+		fmt.Fprintf(os.Stderr, "\n  %v\n\n", err)
+		os.Exit(1)
+	}
+
 	log.Info("Memulai Byone Arena API",
 		zap.String("app", cfg.AppName),
 		zap.String("env", cfg.AppEnv),
 		zap.String("port", cfg.Port),
+		zap.String("db", cfg.DBName),
 	)
 
 	// Swagger: host mengikuti port aktif (dev 8081, production 8080)
