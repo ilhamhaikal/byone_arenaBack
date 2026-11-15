@@ -33,6 +33,7 @@ import (
 	wsHub "byone-arena/internal/delivery/websocket"
 	"byone-arena/internal/discovery"
 	"byone-arena/internal/domain/entity"
+	"byone-arena/internal/janitor"
 	pgRepo "byone-arena/internal/repository/postgres"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/config"
@@ -232,6 +233,11 @@ func main() {
 		}
 	}
 
+	// Janitor: tutup sesi yang terlantar (TV mati / aplikasi tidak aktif).
+	janitorCtx, janitorCancel := context.WithCancel(context.Background())
+	defer janitorCancel()
+	janitor.StartStaleSessionWatcher(janitorCtx, db, log)
+
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -245,6 +251,7 @@ func main() {
 	}()
 
 	<-quit
+	janitorCancel()
 	log.Info("Menerima sinyal shutdown, menghentikan server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
