@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS "__SP__AutoEndSession"(UUID);
