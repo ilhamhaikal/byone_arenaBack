@@ -6,12 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// PaymentMethod mendefinisikan metode pembayaran
-// Saat ini hanya mendukung pembayaran tunai (cash)
+// PaymentMethod mendefinisikan metode pembayaran.
 type PaymentMethod string
 
 const (
-	PaymentMethodCash PaymentMethod = "cash"
+	PaymentMethodCash     PaymentMethod = "cash"
+	PaymentMethodQRIS     PaymentMethod = "qris"
+	PaymentMethodTransfer PaymentMethod = "transfer"
 )
 
 // PaymentStatus mendefinisikan status pembayaran

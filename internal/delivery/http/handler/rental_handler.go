@@ -39,9 +39,10 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 		CustomerID    *uuid.UUID `json:"customerId"`
 		StartDate     string     `json:"startDate"     validate:"required"`
 		EndDate       string     `json:"endDate"       validate:"required"`
-		DailyPrice    float64    `json:"dailyPrice"`    // opsional, auto dari settings jika 0
+		DailyPrice    float64    `json:"dailyPrice"` // opsional, auto dari settings jika 0
 		VoucherCode   string     `json:"voucherCode"`
 		Notes         string     `json:"notes"`
+		PaymentMethod string     `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "Format request tidak valid")
@@ -52,9 +53,11 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 
 	// Auto-fill dailyPrice dari console jika tidak diisi
 	if req.DailyPrice == 0 {
-		var console struct{ DailyPrice float64 `gorm:"column:daily_price"` }
+		var console struct {
+			DailyPrice float64 `gorm:"column:daily_price"`
+		}
 		h.db.WithContext(c.Context()).Raw(
-			"SELECT daily_price FROM consoles WHERE id = ?", req.ConsoleID,
+			"SELECT * FROM "+spname.Ident("ConsoleDailyPrice")+"(?::uuid)", req.ConsoleID,
 		).Scan(&console)
 		if console.DailyPrice > 0 {
 			req.DailyPrice = console.DailyPrice
@@ -83,6 +86,10 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 	if tx.Error != nil {
 		return response.BadRequest(c, tx.Error.Error())
 	}
+
+	method := normalizePaymentMethod(req.PaymentMethod)
+	h.db.WithContext(c.Context()).Exec(
+		"SELECT "+spname.Ident("SetDailyRentalPaymentMethod")+"(?::uuid, ?::varchar)", result.RentalID, method)
 
 	// Load full object
 	var rental entity.DailyRental
@@ -145,13 +152,13 @@ func (h *RentalHandler) ReturnDailyRental(c *fiber.Ctx) error {
 // @Router       /api/v1/bookings [post]
 func (h *RentalHandler) CreateBooking(c *fiber.Ctx) error {
 	var req struct {
-		ConsoleID       uuid.UUID `json:"consoleId"       validate:"required"`
+		ConsoleID       uuid.UUID  `json:"consoleId"       validate:"required"`
 		CustomerID      *uuid.UUID `json:"customerId"      validate:"omitempty"`
-		BookingDate     string    `json:"bookingDate"     validate:"required"`
-		StartHour       int       `json:"startHour"       validate:"required,min=0,max=23"`
-		StartMinute     int       `json:"startMinute"     validate:"min=0,max=59"`
-		DurationMinutes int       `json:"durationMinutes" validate:"required,min=30"`
-		Notes           string    `json:"notes"`
+		BookingDate     string     `json:"bookingDate"     validate:"required"`
+		StartHour       int        `json:"startHour"       validate:"required,min=0,max=23"`
+		StartMinute     int        `json:"startMinute"     validate:"min=0,max=59"`
+		DurationMinutes int        `json:"durationMinutes" validate:"required,min=30"`
+		Notes           string     `json:"notes"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "Format request tidak valid")

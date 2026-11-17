@@ -1,11 +1,10 @@
 package handler
 
 import (
-	"fmt"
-
-	"byone-arena/internal/usecase"
 	wsHandler "byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
+	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
 
 	"github.com/gofiber/fiber/v2"
@@ -135,6 +134,13 @@ func (h *FoodOrderHandler) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+
+	method := normalizePaymentMethod(req.PaymentMethod)
+	h.db.WithContext(c.Context()).Exec(
+		"SELECT "+spname.Ident("SetFoodOrderPaymentMethod")+"(?::uuid, ?::varchar)",
+		order.ID, method)
+	order.PaymentMethod = method
+
 	return response.Created(c, "Pesanan berhasil dibuat", order)
 }
 
@@ -198,15 +204,12 @@ func (h *FoodOrderHandler) UpdateStatus(c *fiber.Ctx) error {
 		if consoleIDStr != "" {
 			// Nonaktifkan dulu notifikasi 'Pesanan Disiapkan' lama milik
 			// konsol ini agar tidak muncul kembali saat sesi baru dimulai.
-			h.db.Exec(`
-				UPDATE tv_notifications SET is_active = false, updated_at = NOW()
-				WHERE title = 'Pesanan Disiapkan' AND is_active = true
-				AND target_console_ids::jsonb @> to_jsonb(?::TEXT)
-			`, consoleIDStr)
-			h.db.Exec(`
-				INSERT INTO tv_notifications (id, title, message, target_all, target_console_ids, active_sessions_only, loop_enabled, is_active, priority, created_at, updated_at)
-				VALUES (uuid_generate_v4(), 'Pesanan Disiapkan', ?, false, ?, true, false, true, 'normal', NOW(), NOW())
-			`, msg, fmt.Sprintf(`["%s"]`, consoleIDStr))
+			h.db.WithContext(c.Context()).Exec(
+				"SELECT "+spname.Ident("DeactivateTvNotification")+"(?::text, ?::text)",
+				"Pesanan Disiapkan", consoleIDStr)
+			h.db.WithContext(c.Context()).Exec(
+				"SELECT "+spname.Ident("InsertTvNotification")+"(?::text, ?::text, ?::text, ?::boolean, ?::varchar)",
+				"Pesanan Disiapkan", msg, consoleIDStr, true, "normal")
 		}
 	}
 
@@ -229,9 +232,9 @@ type FoodPricePreviewRequest struct {
 
 // FoodPricePreviewResponse hasil kalkulasi harga makanan + auto diskon
 type FoodPricePreviewResponse struct {
-	TotalAmount    float64 `json:"totalAmount"`
-	AutoDiscount   float64 `json:"autoDiscount"`
-	FinalAmount    float64 `json:"finalAmount"`
+	TotalAmount  float64 `json:"totalAmount"`
+	AutoDiscount float64 `json:"autoDiscount"`
+	FinalAmount  float64 `json:"finalAmount"`
 }
 
 // GetPricePreview godoc
@@ -253,9 +256,13 @@ func (h *FoodOrderHandler) GetPricePreview(c *fiber.Ctx) error {
 	// Hitung total dari menu items
 	var totalAmount float64
 	for _, item := range req.Items {
-		var price float64
-		h.db.Raw("SELECT price FROM menu_items WHERE id = ?", item.MenuID).Scan(&price)
-		subtotal := price * float64(item.Quantity)
+		var priceRow struct {
+			Price float64 `gorm:"column:price"`
+		}
+		h.db.WithContext(c.Context()).Raw(
+			"SELECT * FROM "+spname.Ident("MenuItemPrice")+"(?::uuid)", item.MenuID,
+		).Scan(&priceRow)
+		subtotal := priceRow.Price * float64(item.Quantity)
 		totalAmount += subtotal
 	}
 
@@ -266,12 +273,19 @@ func (h *FoodOrderHandler) GetPricePreview(c *fiber.Ctx) error {
 	// Cek apakah customer adalah member
 	var isMember bool
 	if req.CustomerID != nil && *req.CustomerID != "" {
-		h.db.Raw("SELECT COALESCE(is_member, false) FROM customers WHERE id = ?", *req.CustomerID).Scan(&isMember)
+		var memberRow struct {
+			IsMember bool `gorm:"column:is_member"`
+		}
+		h.db.WithContext(c.Context()).Raw(
+			"SELECT * FROM "+spname.Ident("CustomerIsMember")+"(?::uuid)", *req.CustomerID,
+		).Scan(&memberRow)
+		isMember = memberRow.IsMember
 	}
 
 	// Aplikasikan auto-diskon via EvaluateDiscountRules
 	var autoDiscount float64
-	h.db.Raw("SELECT COALESCE(\"byoneEvaluateDiscountRules\"(?::NUMERIC, NOW(), ?::BOOLEAN), 0)",
+	h.db.WithContext(c.Context()).Raw(
+		"SELECT COALESCE("+spname.Ident("EvaluateDiscountRules")+"(?::NUMERIC, NOW(), ?::BOOLEAN), 0)",
 		totalAmount, isMember).Scan(&autoDiscount)
 
 	finalAmount := totalAmount - autoDiscount

@@ -23,6 +23,8 @@ type ExtendSessionRequest struct {
 	CashReceived      float64 `json:"cashReceived"      validate:"omitempty,gte=0"  example:"50000"` // wajib jika payNow=true
 	VoucherCode       string  `json:"voucherCode"                                    example:""`
 	Notes             string  `json:"notes"                                          example:"Tambah 2 jam"`
+	// Metode pembayaran: cash (default), qris, atau transfer.
+	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer" example:"cash"`
 }
 
 // SessionHandler menangani HTTP request untuk manajemen sesi rental
@@ -134,9 +136,23 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		}
 	}
 
+	method := normalizePaymentMethod(req.PaymentMethod)
+	if isCashless(method) {
+		// QRIS/transfer: uang diterima = total (tidak ada kembalian).
+		req.CashReceived = paymentMethodSentinel
+	}
+
 	result, err := h.sessionUC.StartSession(c.Context(), req)
 	if err != nil {
 		return response.BadRequest(c, err.Error())
+	}
+
+	if result.Payment != nil {
+		finalizePaymentMethod(h.db, result.Payment.ID, method)
+		if isCashless(method) {
+			result.Payment.CashReceived = result.Payment.TotalPayment
+			result.Payment.ChangeAmount = 0
+		}
 	}
 
 	promoMessage := ""
@@ -155,9 +171,9 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 	// Catat pelaku transaksi (tanpa ini selisih kas tidak bisa ditelusuri).
 	if uid := audit.CurrentUserID(c); uid != nil {
 		h.db.WithContext(c.Context()).Exec(
-			"UPDATE sessions SET created_by = ? WHERE id = ? AND created_by IS NULL", *uid, result.Session.ID)
+			"SELECT "+spname.Ident("SetSessionCreatedBy")+"(?::uuid, ?::uuid)", result.Session.ID, *uid)
 		h.db.WithContext(c.Context()).Exec(
-			"UPDATE payments SET created_by = ? WHERE session_id = ? AND created_by IS NULL", *uid, result.Session.ID)
+			"SELECT "+spname.Ident("SetPaymentCreatedBy")+"(?::uuid, ?::uuid)", result.Session.ID, *uid)
 	}
 	audit.Log(h.db, c, "session.start", "session", &result.Session.ID, map[string]any{
 		"consoleId":     result.Session.ConsoleID,
@@ -195,7 +211,8 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 
 	// Atribusi: siapa yang mengakhiri sesi.
 	if uid := audit.CurrentUserID(c); uid != nil {
-		h.db.WithContext(c.Context()).Exec("UPDATE sessions SET ended_by = ? WHERE id = ?", *uid, id)
+		h.db.WithContext(c.Context()).Exec(
+			"SELECT "+spname.Ident("SetSessionEndedBy")+"(?::uuid, ?::uuid)", id, *uid)
 	}
 	audit.Log(h.db, c, "session.end", "session", &id, map[string]any{
 		"durationMinutes": session.DurationMinutes,
@@ -207,26 +224,24 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 		Count int64 `gorm:"column:count"`
 	}
 	h.db.WithContext(c.Context()).Raw(
-		"SELECT COUNT(*) as count FROM payments WHERE session_id = ? AND payment_status = 'pending'", id,
+		"SELECT * FROM "+spname.Ident("CountPendingPayments")+"(?::uuid)", id,
 	).Scan(&unpaidRow)
 
 	consoleIDStr := session.ConsoleID.String()
 
 	if unpaidRow.Count > 0 {
 		// Insert notifikasi: ada perpanjangan yg belum dibayar
-		h.db.WithContext(c.Context()).Exec(`
-			INSERT INTO tv_notifications (id, title, message, target_all, target_console_ids, active_sessions_only, loop_enabled, is_active, priority, created_at, updated_at)
-			VALUES (uuid_generate_v4(), 'Pembayaran Tertunda', ?, false, ?, false, false, true, 'high', NOW(), NOW())
-		`, fmt.Sprintf("Unit %s memiliki %d perpanjangan sesi yang belum dibayar. Segera konfirmasi pembayaran.", session.Console.Name, unpaidRow.Count),
-			fmt.Sprintf(`["%s"]`, consoleIDStr))
+		h.db.WithContext(c.Context()).Exec(
+			"SELECT "+spname.Ident("InsertTvNotification")+"(?::text, ?::text, ?::text, ?::boolean, ?::varchar)",
+			"Pembayaran Tertunda",
+			fmt.Sprintf("Unit %s memiliki %d perpanjangan sesi yang belum dibayar. Segera konfirmasi pembayaran.", session.Console.Name, unpaidRow.Count),
+			consoleIDStr, false, "high")
 	}
 
 	// Cleanup notifikasi "Sesi Diperpanjang" — sudah tidak relevan setelah sesi berakhir
-	h.db.WithContext(c.Context()).Exec(`
-		UPDATE tv_notifications SET is_active = false, updated_at = NOW()
-		WHERE title = 'Sesi Diperpanjang' AND is_active = true
-		AND target_console_ids::jsonb @> to_jsonb(?::TEXT)
-	`, consoleIDStr)
+	h.db.WithContext(c.Context()).Exec(
+		"SELECT "+spname.Ident("DeactivateTvNotification")+"(?::text, ?::text)",
+		"Sesi Diperpanjang", consoleIDStr)
 
 	// Broadcast realtime — sesi berakhir + auto-sleep TV (lihat broadcaster.go)
 	h.hub.BroadcastSessionEnded(session, session.ConsoleID)
@@ -256,7 +271,8 @@ func (h *SessionHandler) Cancel(c *fiber.Ctx) error {
 	}
 
 	if uid := audit.CurrentUserID(c); uid != nil {
-		h.db.WithContext(c.Context()).Exec("UPDATE sessions SET cancelled_by = ? WHERE id = ?", *uid, id)
+		h.db.WithContext(c.Context()).Exec(
+			"SELECT "+spname.Ident("SetSessionCancelledBy")+"(?::uuid, ?::uuid)", id, *uid)
 	}
 	audit.Log(h.db, c, "session.cancel", "session", &id, map[string]any{
 		"note": "dibatalkan tanpa tagihan",
@@ -293,6 +309,12 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
 
+	method := normalizePaymentMethod(req.PaymentMethod)
+	if req.PayNow && isCashless(method) {
+		// QRIS/transfer: uang diterima dianggap pas (tidak ada kembalian).
+		req.CashReceived = paymentMethodSentinel
+	}
+
 	// Validasi: jika payNow=true, cashReceived wajib > 0
 	if req.PayNow && req.CashReceived <= 0 {
 		return response.BadRequest(c, "cashReceived harus > 0 jika payNow=true (langsung bayar)")
@@ -322,12 +344,21 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 		return response.BadRequest(c, tx.Error.Error())
 	}
 
+	if req.PayNow {
+		finalizePaymentMethod(h.db, result.PaymentID, method)
+		if isCashless(method) {
+			result.PaymentCashReceived = result.PaymentTotal
+			result.PaymentChange = 0
+		}
+	}
+
 	// Broadcast ke TV bahwa waktu ditambah
 	// Ambil console_id dulu (pakai struct untuk GORM Scan)
 	var consoleRow struct {
 		ConsoleID uuid.UUID `gorm:"column:console_id"`
 	}
-	h.db.WithContext(c.Context()).Raw("SELECT console_id FROM sessions WHERE id = ?", id).Scan(&consoleRow)
+	h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("SessionConsoleID")+"(?::uuid)", id).Scan(&consoleRow)
 	consoleID := consoleRow.ConsoleID
 
 	hours := req.AdditionalMinutes / 60
@@ -354,15 +385,12 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 	// Insert notifikasi untuk client polling
 	consoleIDStr := consoleID.String()
 	// Deactivate old "Sesi Diperpanjang" notif untuk console ini sebelum insert baru
-	h.db.WithContext(c.Context()).Exec(`
-		UPDATE tv_notifications SET is_active = false, updated_at = NOW()
-		WHERE title = 'Sesi Diperpanjang' AND is_active = true
-		AND target_console_ids::jsonb @> to_jsonb(?::TEXT)
-	`, consoleIDStr)
-	h.db.WithContext(c.Context()).Exec(`
-		INSERT INTO tv_notifications (id, title, message, target_all, target_console_ids, active_sessions_only, loop_enabled, is_active, priority, created_at, updated_at)
-		VALUES (uuid_generate_v4(), 'Sesi Diperpanjang', ?, false, ?, true, false, true, 'high', NOW(), NOW())
-	`, msg, fmt.Sprintf(`["%s"]`, consoleIDStr))
+	h.db.WithContext(c.Context()).Exec(
+		"SELECT "+spname.Ident("DeactivateTvNotification")+"(?::text, ?::text)",
+		"Sesi Diperpanjang", consoleIDStr)
+	h.db.WithContext(c.Context()).Exec(
+		"SELECT "+spname.Ident("InsertTvNotification")+"(?::text, ?::text, ?::text, ?::boolean, ?::varchar)",
+		"Sesi Diperpanjang", msg, consoleIDStr, true, "high")
 
 	return response.OK(c, "Waktu sewa berhasil ditambah", fiber.Map{
 		"session": fiber.Map{

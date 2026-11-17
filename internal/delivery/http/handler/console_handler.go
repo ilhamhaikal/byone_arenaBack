@@ -150,7 +150,7 @@ func (h *ConsoleHandler) Update(c *fiber.Ctx) error {
 		PricePerHour float64 `gorm:"column:price_per_hour"`
 	}
 	h.db.WithContext(c.Context()).Raw(
-		"SELECT price_per_hour FROM consoles WHERE id = ?", id).Scan(&before)
+		"SELECT * FROM "+spname.Ident("ConsolePricePerHour")+"(?::uuid)", id).Scan(&before)
 
 	console, err := h.consoleUC.UpdateConsole(c.Context(), id, req)
 	if err != nil {

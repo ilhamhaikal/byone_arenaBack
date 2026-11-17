@@ -53,13 +53,9 @@ func StartStaleSessionWatcher(ctx context.Context, db *gorm.DB, log *zap.Logger)
 // autoEndExpiredSessions menutup sesi yang sudah melewati jadwal selesai.
 func autoEndExpiredSessions(db *gorm.DB, log *zap.Logger) {
 	var rows []sessionRow
-	err := db.Raw(`
-		SELECT id
-		  FROM sessions
-		 WHERE status = 'active'
-		   AND end_scheduled_at IS NOT NULL
-		   AND end_scheduled_at <= NOW()
-		 LIMIT 200`).Scan(&rows).Error
+	err := db.Raw(
+		"SELECT * FROM "+spname.Ident("ExpiredActiveSessions")+"(?)", 200,
+	).Scan(&rows).Error
 	if err != nil {
 		log.Warn("janitor: gagal membaca sesi kedaluwarsa", zap.Error(err))
 		return
@@ -81,16 +77,9 @@ func autoEndExpiredSessions(db *gorm.DB, log *zap.Logger) {
 // berjalan) tanpa tagihan tambahan.
 func closeStaleSessions(db *gorm.DB, log *zap.Logger) {
 	var rows []sessionRow
-	err := db.Raw(`
-		SELECT s.id
-		  FROM sessions s
-		  JOIN consoles c ON c.id = s.console_id
-		 WHERE s.status = 'active'
-		   AND s.end_scheduled_at IS NOT NULL
-		   AND s.end_scheduled_at < NOW() - INTERVAL '6 hours'
-		   AND (c.last_seen_at IS NULL
-		        OR c.last_seen_at < NOW() - INTERVAL '30 minutes')
-		 LIMIT 100`).Scan(&rows).Error
+	err := db.Raw(
+		"SELECT * FROM "+spname.Ident("StaleActiveSessions")+"(?)", 100,
+	).Scan(&rows).Error
 	if err != nil {
 		log.Warn("janitor: gagal membaca sesi terlantar", zap.Error(err))
 		return

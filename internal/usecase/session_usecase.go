@@ -52,6 +52,8 @@ type StartSessionRequest struct {
 	// Gunakan bonus waktu promo (mis. weekend 30 menit) bila memenuhi syarat.
 	// Bonus tidak menambah tagihan, hanya menambah menit bermain.
 	UsePromoBonus bool `json:"usePromoBonus" example:"false"`
+	// Metode pembayaran: cash (default), qris, atau transfer.
+	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer" example:"cash"`
 }
 
 // StartSessionResponse respons setelah memulai sesi — berisi data sesi dan pembayaran lunas

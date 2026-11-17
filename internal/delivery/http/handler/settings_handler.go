@@ -5,6 +5,7 @@ import (
 
 	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
+	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
 
 	"github.com/gofiber/fiber/v2"
@@ -33,7 +34,7 @@ func (h *SettingsHandler) GetMembershipPrice(c *fiber.Ctx) error {
 		Value string `gorm:"column:value"`
 	}
 	h.db.WithContext(c.Context()).Raw(
-		"SELECT value FROM app_settings WHERE key = 'membership_price'",
+		"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "membership_price",
 	).Scan(&row)
 
 	return response.OK(c, "Harga membership", fiber.Map{
@@ -66,7 +67,7 @@ func (h *SettingsHandler) UpdateMembershipPrice(c *fiber.Ctx) error {
 	// tidak ada string dari klien yang disisipkan apa adanya.
 	price := fmt.Sprintf("%.0f", req.MembershipPrice)
 	h.db.WithContext(c.Context()).Exec(
-		"UPDATE app_settings SET value = ?, updated_at = NOW() WHERE key = 'membership_price'", price,
+		"SELECT "+spname.Ident("SetAppSetting")+"(?::text, ?::text)", "membership_price", price,
 	)
 
 	audit.Log(h.db, c, "settings.membership_price", "setting", nil, map[string]any{
@@ -89,7 +90,9 @@ func (h *SettingsHandler) GetDailyPrice(c *fiber.Ctx) error {
 	var row struct {
 		Value string `gorm:"column:value"`
 	}
-	h.db.WithContext(c.Context()).Raw("SELECT value FROM app_settings WHERE key = 'daily_price'").Scan(&row)
+	h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "daily_price",
+	).Scan(&row)
 	return response.OK(c, "Harga sewa harian", fiber.Map{"dailyPrice": row.Value})
 }
 
@@ -114,8 +117,8 @@ func (h *SettingsHandler) UpdateDailyPrice(c *fiber.Ctx) error {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
 	h.db.WithContext(c.Context()).Exec(
-		fmt.Sprintf("UPDATE app_settings SET value = '%s', updated_at = NOW() WHERE key = 'daily_price'",
-			fmt.Sprintf("%.0f", req.DailyPrice)),
+		"SELECT "+spname.Ident("SetAppSetting")+"(?::text, ?::text)",
+		"daily_price", fmt.Sprintf("%.0f", req.DailyPrice),
 	)
 	return response.OK(c, "Harga sewa harian diupdate", fiber.Map{"dailyPrice": req.DailyPrice})
 }

@@ -8,6 +8,7 @@ import (
 	"byone-arena/internal/promo"
 	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
+	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
 
 	"github.com/gofiber/fiber/v2"
@@ -255,15 +256,9 @@ func (h *PromoHandler) PromoReport(c *fiber.Ctx) error {
 		TotalBonusMinutes int    `json:"totalBonusMinutes"`
 	}
 	var rows []row
-	err := h.db.WithContext(c.Context()).Raw(`
-		SELECT TO_CHAR(start_time AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS date,
-		       COUNT(*) FILTER (WHERE promo_bonus_minutes > 0)::INT        AS sessions_with_bonus,
-		       COALESCE(SUM(promo_bonus_minutes), 0)::INT                  AS total_bonus_minutes
-		  FROM sessions
-		 WHERE (start_time AT TIME ZONE 'Asia/Jakarta')::DATE BETWEEN ?::DATE AND ?::DATE
-		   AND status <> 'cancelled'
-		 GROUP BY 1
-		 ORDER BY 1`, start, end).Scan(&rows).Error
+	err := h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("PromoBonusReport")+"(?::DATE, ?::DATE)", start, end,
+	).Scan(&rows).Error
 	if err != nil {
 		return response.InternalServerError(c, "Gagal mengambil laporan bonus")
 	}

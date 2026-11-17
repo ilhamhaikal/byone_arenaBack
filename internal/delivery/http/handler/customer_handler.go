@@ -99,9 +99,11 @@ func (h *CustomerHandler) Create(c *fiber.Ctx) error {
 	// Auto-sell membership jika is_member=true
 	var membershipInfo fiber.Map
 	if req.IsMember {
-		var row struct{ Value string `gorm:"column:value"` }
+		var row struct {
+			Value string `gorm:"column:value"`
+		}
 		h.db.WithContext(c.Context()).Raw(
-			"SELECT value FROM app_settings WHERE key = 'membership_price'",
+			"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "membership_price",
 		).Scan(&row)
 
 		var sp struct {
@@ -114,6 +116,7 @@ func (h *CustomerHandler) Create(c *fiber.Ctx) error {
 			fmt.Sprintf(`SELECT * FROM %s('%s'::UUID, %s::NUMERIC)`, spname.Ident("SellMembership"),
 				customer.ID, row.Value),
 		).Scan(&sp)
+		finalizePaymentMethod(h.db, sp.PaymentID, req.PaymentMethod)
 		membershipInfo = fiber.Map{
 			"paymentId":    sp.PaymentID,
 			"changeAmount": sp.ChangeAmount,
@@ -205,7 +208,8 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 
 	// CashReceived opsional — default ke harga dari settings
 	var req struct {
-		CashReceived *float64 `json:"cashReceived"`
+		CashReceived  *float64 `json:"cashReceived"`
+		PaymentMethod string   `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 	}
 	c.BodyParser(&req)
 
@@ -213,9 +217,11 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 	if req.CashReceived != nil {
 		cashStr = fmt.Sprintf("%.0f", *req.CashReceived)
 	} else {
-		var row struct{ Value string `gorm:"column:value"` }
+		var row struct {
+			Value string `gorm:"column:value"`
+		}
 		h.db.WithContext(c.Context()).Raw(
-			"SELECT value FROM app_settings WHERE key = 'membership_price'",
+			"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "membership_price",
 		).Scan(&row)
 		cashStr = row.Value
 		if cashStr == "" || cashStr == "0" {
@@ -239,6 +245,8 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 	if tx.Error != nil {
 		return response.BadRequest(c, tx.Error.Error())
 	}
+
+	finalizePaymentMethod(h.db, result.PaymentID, req.PaymentMethod)
 
 	return response.OK(c, result.Message, fiber.Map{
 		"membershipPrice": result.MembershipPrice,
@@ -269,22 +277,22 @@ func (h *CustomerHandler) GetLoyalty(c *fiber.Ctx) error {
 		return response.NotFound(c, err.Error())
 	}
 
-	var settingsRows []struct {
-		Key   string `gorm:"column:key"`
+	pointThreshold := 15
+	pointRedeemMinutes := 60
+	var thrRow, redeemRow struct {
 		Value string `gorm:"column:value"`
 	}
 	h.db.WithContext(c.Context()).Raw(
-		"SELECT key, value FROM app_settings WHERE key IN ('loyalty_point_threshold', 'loyalty_point_redeem_minutes')",
-	).Scan(&settingsRows)
-	pointThreshold := 15
-	pointRedeemMinutes := 60
-	for _, r := range settingsRows {
-		switch r.Key {
-		case "loyalty_point_threshold":
-			fmt.Sscanf(r.Value, "%d", &pointThreshold)
-		case "loyalty_point_redeem_minutes":
-			fmt.Sscanf(r.Value, "%d", &pointRedeemMinutes)
-		}
+		"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "loyalty_point_threshold",
+	).Scan(&thrRow)
+	if thrRow.Value != "" {
+		fmt.Sscanf(thrRow.Value, "%d", &pointThreshold)
+	}
+	h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "loyalty_point_redeem_minutes",
+	).Scan(&redeemRow)
+	if redeemRow.Value != "" {
+		fmt.Sscanf(redeemRow.Value, "%d", &pointRedeemMinutes)
 	}
 
 	var timeBankLogs []entity.CustomerTimeBankLog
@@ -316,4 +324,3 @@ func (h *CustomerHandler) GetLoyalty(c *fiber.Ctx) error {
 		"pointLogs":          pointLogs,
 	})
 }
-

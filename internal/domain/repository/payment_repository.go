@@ -24,4 +24,7 @@ type PaymentRepository interface {
 	GetDashboardSummary(ctx context.Context, date string) (*entity.DashboardSummary, error)
 	// GetReportSummary mengambil laporan komprehensif untuk rentang tanggal.
 	GetReportSummary(ctx context.Context, startDate, endDate string) (*entity.ReportSummary, error)
+	// GetPaymentMethodSummary menghitung pendapatan per metode pembayaran
+	// (rental + makanan + rental harian) pada rentang tanggal.
+	GetPaymentMethodSummary(ctx context.Context, startDate, endDate string) ([]entity.ReportPaymentMethod, error)
 }

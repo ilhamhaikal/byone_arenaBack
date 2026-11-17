@@ -32,26 +32,28 @@ func NewCustomerUseCase(customerRepo repository.CustomerRepository) CustomerUseC
 
 // CreateCustomerRequest payload untuk mendaftarkan pelanggan baru
 type CreateCustomerRequest struct {
-	Name  string `json:"name" validate:"required,min=2,max=100"`
-	Phone string `json:"phone" validate:"required,min=8,max=20"`
-	Email string `json:"email" validate:"omitempty,email"`
-	IsMember        bool    `json:"isMember"`
-	MembershipType  *string `json:"membershipType"`
-	MembershipStart *string `json:"membershipStart"`
+	Name             string  `json:"name" validate:"required,min=2,max=100"`
+	Phone            string  `json:"phone" validate:"required,min=8,max=20"`
+	Email            string  `json:"email" validate:"omitempty,email"`
+	IsMember         bool    `json:"isMember"`
+	MembershipType   *string `json:"membershipType"`
+	MembershipStart  *string `json:"membershipStart"`
 	MembershipExpiry *string `json:"membershipExpiry"`
-	MembershipPrice float64 `json:"membershipPrice"`
+	MembershipPrice  float64 `json:"membershipPrice"`
+	// Metode pembayaran membership: cash (default), qris, transfer.
+	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 }
 
 // UpdateCustomerRequest payload untuk memperbarui data pelanggan
 type UpdateCustomerRequest struct {
-	Name  string `json:"name" validate:"omitempty,min=2,max=100"`
-	Phone string `json:"phone" validate:"omitempty,min=8,max=20"`
-	Email string `json:"email" validate:"omitempty,email"`
-	IsMember        *bool    `json:"isMember"`
-	MembershipType  *string  `json:"membershipType"`
-	MembershipStart *string  `json:"membershipStart"`
-	MembershipExpiry *string `json:"membershipExpiry"`
-	MembershipPrice *float64 `json:"membershipPrice"`
+	Name             string   `json:"name" validate:"omitempty,min=2,max=100"`
+	Phone            string   `json:"phone" validate:"omitempty,min=8,max=20"`
+	Email            string   `json:"email" validate:"omitempty,email"`
+	IsMember         *bool    `json:"isMember"`
+	MembershipType   *string  `json:"membershipType"`
+	MembershipStart  *string  `json:"membershipStart"`
+	MembershipExpiry *string  `json:"membershipExpiry"`
+	MembershipPrice  *float64 `json:"membershipPrice"`
 }
 
 func (uc *customerUseCase) GetAllCustomers(ctx context.Context) ([]*entity.Customer, error) {
@@ -85,15 +87,15 @@ func (uc *customerUseCase) CreateCustomer(ctx context.Context, req *CreateCustom
 
 	now := time.Now()
 	customer := &entity.Customer{
-		ID:        uuid.New(),
-		Name:      req.Name,
-		Phone:     req.Phone,
-		Email:     req.Email,
+		ID:    uuid.New(),
+		Name:  req.Name,
+		Phone: req.Phone,
+		Email: req.Email,
 		// IsMember selalu false saat create — membership diaktifkan via SP oleh handler
-		IsMember:         false,
-		MembershipPrice:  0,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		IsMember:        false,
+		MembershipPrice: 0,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	if err := uc.customerRepo.Create(ctx, customer); err != nil {

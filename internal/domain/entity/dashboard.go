@@ -26,7 +26,12 @@ type DashboardSummary struct {
 	AvailableConsoles   int                  `json:"availableConsoles"`
 	TotalConsoles       int                  `json:"totalConsoles"`
 	VoucherDetails      []VoucherUsageDetail `json:"voucherDetails"`
-	GeneratedAt         time.Time            `json:"generatedAt"`
+	// RevenueMethods: rincian pendapatan hari ini per metode pembayaran
+	// (tunai/qris/…) dari semua sumber — untuk detail saat kartu diklik.
+	RevenueMethods []ReportPaymentMethod `json:"revenueMethods"`
+	// FoodMethods: rincian penjualan makanan hari ini per metode pembayaran.
+	FoodMethods []ReportPaymentMethod `json:"foodMethods"`
+	GeneratedAt time.Time             `json:"generatedAt"`
 }
 
 // VoucherUsageDetail adalah detail penggunaan satu voucher dalam laporan

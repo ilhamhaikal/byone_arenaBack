@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 package main
@@ -8,6 +9,7 @@ import (
 
 	"byone-arena/pkg/config"
 	"byone-arena/pkg/database"
+	"byone-arena/pkg/spname"
 )
 
 func main() {
@@ -22,11 +24,15 @@ func main() {
 	}
 
 	// Cleanup stale "Sesi Diperpanjang" notifications
-	result := db.Exec(`UPDATE tv_notifications SET is_active = false, updated_at = NOW() WHERE title = 'Sesi Diperpanjang' AND is_active = true`)
-	if result.Error != nil {
-		log.Fatal("Cleanup error:", result.Error)
+	var r struct {
+		Updated int64 `gorm:"column:updated"`
 	}
-	fmt.Printf("✅ Cleaned up %d stale 'Sesi Diperpanjang' notifications\n", result.RowsAffected)
+	tx := db.Raw("SELECT * FROM "+spname.Ident("DeactivateTvNotificationByTitle")+"(?::text)",
+		"Sesi Diperpanjang").Scan(&r)
+	if tx.Error != nil {
+		log.Fatal("Cleanup error:", tx.Error)
+	}
+	fmt.Printf("✅ Cleaned up %d stale 'Sesi Diperpanjang' notifications\n", r.Updated)
 
 	// Show remaining active notifications
 	type Notif struct {

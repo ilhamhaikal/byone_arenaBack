@@ -37,8 +37,10 @@ func NewPaymentUseCase(paymentRepo repository.PaymentRepository, sessionRepo rep
 type CreateCashPaymentRequest struct {
 	SessionID    uuid.UUID `json:"sessionId"    validate:"required"`
 	CashReceived float64   `json:"cashReceived" validate:"required,gt=0"`
-	VoucherCode  string    `json:"voucherCode"`  // opsional — kode diskon voucher
+	VoucherCode  string    `json:"voucherCode"` // opsional — kode diskon voucher
 	Notes        string    `json:"notes"`
+	// Metode pembayaran: cash (default), qris, atau transfer.
+	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 }
 
 func (uc *paymentUseCase) GetPaymentByID(ctx context.Context, id uuid.UUID) (*entity.Payment, error) {
@@ -63,9 +65,16 @@ func (uc *paymentUseCase) GetPaymentsBySessionID(ctx context.Context, sessionID 
 // CreateCashPayment membuat pembayaran tunai melalui stored procedure
 // Validasi, diskon voucher, perhitungan kembalian, dan update status dilakukan di SP
 func (uc *paymentUseCase) CreateCashPayment(ctx context.Context, req *CreateCashPaymentRequest) (*entity.Payment, error) {
+	// Metode pembayaran: default cash; qris/transfer tetap dicatat meski uang
+	// tunai tidak dikirim (SP akan dikoreksi oleh handler via finalizePaymentMethod).
+	method := entity.PaymentMethod(req.PaymentMethod)
+	if method != entity.PaymentMethodQRIS && method != entity.PaymentMethodTransfer {
+		method = entity.PaymentMethodCash
+	}
+
 	payment := &entity.Payment{
 		SessionID:     req.SessionID,
-		PaymentMethod: entity.PaymentMethodCash,
+		PaymentMethod: method,
 		CashReceived:  req.CashReceived,
 		VoucherCode:   req.VoucherCode,
 		Notes:         req.Notes,
@@ -95,4 +104,3 @@ func (uc *paymentUseCase) RefundPayment(ctx context.Context, id uuid.UUID) (*ent
 	payment.PaymentStatus = entity.PaymentStatusRefunded
 	return payment, nil
 }
-

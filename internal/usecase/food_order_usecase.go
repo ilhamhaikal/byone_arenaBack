@@ -41,10 +41,12 @@ type FoodOrderItemRequest struct {
 
 // CreateFoodOrderRequest payload untuk membuat pesanan baru
 type CreateFoodOrderRequest struct {
-	SessionID     *uuid.UUID             `json:"sessionId"`     // opsional: sesi PS yang sedang berjalan
-	CustomerID    *uuid.UUID             `json:"customerId"`    // opsional: pelanggan terdaftar
-	Notes         string                 `json:"notes"`
-	AutoDiscount  float64                `json:"autoDiscount"`  // diskon otomatis dari aturan diskon aktif
+	SessionID    *uuid.UUID `json:"sessionId"`  // opsional: sesi PS yang sedang berjalan
+	CustomerID   *uuid.UUID `json:"customerId"` // opsional: pelanggan terdaftar
+	Notes        string     `json:"notes"`
+	AutoDiscount float64    `json:"autoDiscount"` // diskon otomatis dari aturan diskon aktif
+	// Metode pembayaran: cash (default), qris, transfer.
+	PaymentMethod string                 `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 	Items         []FoodOrderItemRequest `json:"items" validate:"required,min=1,dive"`
 }
 

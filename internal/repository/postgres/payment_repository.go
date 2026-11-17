@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type paymentRepository struct {
@@ -225,4 +226,42 @@ func (r *paymentRepository) GetReportSummary(ctx context.Context, startDate, end
 	}
 
 	return &summary, nil
+}
+
+// GetPaymentMethodSummary memanggil SP ringkasan per metode pembayaran.
+func (r *paymentRepository) GetPaymentMethodSummary(ctx context.Context, startDate, endDate string) ([]entity.ReportPaymentMethod, error) {
+	if startDate == "" {
+		startDate = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+	}
+	if endDate == "" {
+		endDate = time.Now().Format("2006-01-02")
+	}
+
+	type row struct {
+		Method string  `gorm:"column:payment_method"`
+		Total  float64 `gorm:"column:total"`
+		Trx    int     `gorm:"column:trx"`
+	}
+	var rows []row
+	// SP ini opsional antar-versi (ditambahkan oleh migrasi 000021). Bila DB
+	// client belum termigrasi, jangan tulis ERROR ke log — cukup kembalikan
+	// error agar pemanggil melewatinya dengan halus. Gunakan sesi silent.
+	silent := r.db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
+	tx := silent.WithContext(ctx).Raw(
+		fmt.Sprintf(`SELECT * FROM %s(?::DATE, ?::DATE)`, spname.Ident("PaymentMethodSummary")),
+		startDate, endDate,
+	).Scan(&rows)
+	if tx.Error != nil {
+		return nil, parseStoredProcError(tx.Error)
+	}
+
+	out := make([]entity.ReportPaymentMethod, 0, len(rows))
+	for _, rw := range rows {
+		out = append(out, entity.ReportPaymentMethod{
+			Method: rw.Method,
+			Total:  rw.Total,
+			Trx:    rw.Trx,
+		})
+	}
+	return out, nil
 }

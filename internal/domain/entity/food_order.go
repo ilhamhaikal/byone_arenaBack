@@ -26,6 +26,7 @@ type FoodOrder struct {
 	TotalAmount    float64     `json:"totalAmount"    gorm:"not null;default:0;type:numeric(10,2)"`
 	DiscountAmount float64     `json:"discountAmount" gorm:"not null;default:0;type:numeric(10,2)"`
 	Notes          string      `json:"notes,omitempty" gorm:"type:text"`
+	PaymentMethod  string      `json:"paymentMethod" gorm:"size:20;not null;default:'cash'"`
 	CreatedAt      time.Time   `json:"createdAt"   gorm:"autoCreateTime"`
 	UpdatedAt      time.Time   `json:"updatedAt"   gorm:"autoUpdateTime"`
 

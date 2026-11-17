@@ -38,5 +38,9 @@ func (h *ReportHandler) GetSummary(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
+	if methods, mErr := h.paymentRepo.GetPaymentMethodSummary(c.Context(), startDate, endDate); mErr == nil {
+		report.PaymentMethods = methods
+	}
+
 	return response.OK(c, "Laporan berhasil diambil", report)
 }

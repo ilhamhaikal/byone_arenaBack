@@ -7,6 +7,7 @@ import (
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
+	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -92,12 +93,8 @@ func (r *menuItemRepository) fillStock(ctx context.Context, items []*entity.Menu
 		NearestExpiry *time.Time `gorm:"column:nearest_expiry"`
 	}
 	var stocks []ingStock
-	r.db.WithContext(ctx).Raw(`
-		SELECT ingredient_id, COALESCE(SUM(remaining),0)::numeric AS usable,
-		       MIN(expires_at) AS nearest_expiry
-		FROM ingredient_stock_batches
-		WHERE remaining > 0 AND expires_at >= CURRENT_DATE
-		GROUP BY ingredient_id`).Scan(&stocks)
+	r.db.WithContext(ctx).Raw(
+		"SELECT * FROM " + spname.Ident("IngredientUsableStock") + "()").Scan(&stocks)
 	batchStock := make(map[uuid.UUID]float64, len(stocks))
 	batchExpiry := make(map[uuid.UUID]*time.Time, len(stocks))
 	for _, s := range stocks {
@@ -119,7 +116,8 @@ func (r *menuItemRepository) fillStock(ctx context.Context, items []*entity.Menu
 		Name string    `gorm:"column:name"`
 	}
 	var ingNames []ingName
-	r.db.WithContext(ctx).Raw(`SELECT id, name FROM ingredients`).Scan(&ingNames)
+	r.db.WithContext(ctx).Raw(
+		"SELECT * FROM " + spname.Ident("IngredientNames") + "()").Scan(&ingNames)
 	nameMap := make(map[uuid.UUID]string, len(ingNames))
 	for _, n := range ingNames {
 		nameMap[n.ID] = n.Name

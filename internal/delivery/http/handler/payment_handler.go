@@ -140,6 +140,14 @@ func (h *PaymentHandler) Create(c *fiber.Ctx) error {
 	if err := c.BodyParser(req); err != nil {
 		return response.BadRequest(c, "Format request tidak valid")
 	}
+
+	// QRIS/transfer: uang tunai tidak relevan. Pakai sentinel agar SP tetap
+	// memproses (butuh cashReceived > 0), lalu koreksi cash_received/change.
+	method := normalizePaymentMethod(req.PaymentMethod)
+	if isCashless(method) {
+		req.CashReceived = paymentMethodSentinel
+	}
+
 	if err := h.validator.ValidateStruct(req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
@@ -147,6 +155,13 @@ func (h *PaymentHandler) Create(c *fiber.Ctx) error {
 	payment, err := h.paymentUC.CreateCashPayment(c.Context(), req)
 	if err != nil {
 		return response.BadRequest(c, err.Error())
+	}
+
+	finalizePaymentMethod(h.db, payment.ID, method)
+	payment.PaymentMethod = entity.PaymentMethod(method)
+	if isCashless(method) {
+		payment.CashReceived = payment.TotalPayment
+		payment.ChangeAmount = 0
 	}
 
 	audit.Log(h.db, c, "payment.create", "payment", &payment.ID, map[string]any{
@@ -157,7 +172,7 @@ func (h *PaymentHandler) Create(c *fiber.Ctx) error {
 
 	h.hub.BroadcastPaymentCreated(payment)
 
-	return response.Created(c, "Pembayaran tunai berhasil diproses", payment)
+	return response.Created(c, "Pembayaran berhasil diproses", payment)
 }
 
 // Refund godoc
@@ -186,7 +201,7 @@ func (h *PaymentHandler) Refund(c *fiber.Ctx) error {
 	// Atribusi refund — ini aksi paling sensitif (uang keluar dari sistem).
 	if uid := audit.CurrentUserID(c); uid != nil {
 		h.db.WithContext(c.Context()).Exec(
-			"UPDATE payments SET refunded_by = ?, refunded_at = NOW() WHERE id = ?", *uid, id)
+			"SELECT "+spname.Ident("SetPaymentRefundedBy")+"(?::uuid, ?::uuid)", id, *uid)
 	}
 	audit.Log(h.db, c, "payment.refund", "payment", &id, map[string]any{
 		"sessionId":    payment.SessionID,
@@ -203,6 +218,8 @@ func (h *PaymentHandler) Refund(c *fiber.Ctx) error {
 // berdasarkan uang tunai yang benar-benar diterima saat konfirmasi.
 type ConfirmPaymentRequest struct {
 	CashReceived *float64 `json:"cashReceived"`
+	// Metode pembayaran saat konfirmasi: cash (default), qris, transfer.
+	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 }
 
 // Confirm godoc
@@ -227,6 +244,12 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 	// body opsional — abaikan error parsing kalau body kosong
 	_ = c.BodyParser(req)
 
+	method := normalizePaymentMethod(req.PaymentMethod)
+	if isCashless(method) {
+		sentinel := paymentMethodSentinel
+		req.CashReceived = &sentinel
+	}
+
 	type spResult struct {
 		PaymentID     uuid.UUID  `gorm:"column:payment_id"`
 		PaymentStatus string     `gorm:"column:payment_status"`
@@ -243,6 +266,12 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 
 	if tx.Error != nil {
 		return response.BadRequest(c, tx.Error.Error())
+	}
+
+	finalizePaymentMethod(h.db, result.PaymentID, method)
+	if isCashless(method) {
+		result.CashReceived = result.TotalPayment
+		result.ChangeAmount = 0
 	}
 
 	audit.Log(h.db, c, "payment.confirm", "payment", &result.PaymentID, map[string]any{
@@ -271,6 +300,8 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 // milik satu sesi sekaligus dengan satu nilai uang tunai.
 type ConfirmSessionPendingRequest struct {
 	CashReceived float64 `json:"cashReceived" validate:"required,gt=0"`
+	// Metode pembayaran: cash (default), qris, transfer.
+	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 }
 
 // ConfirmSessionPending godoc
@@ -295,9 +326,21 @@ func (h *PaymentHandler) ConfirmSessionPending(c *fiber.Ctx) error {
 	if err := c.BodyParser(req); err != nil {
 		return response.BadRequest(c, "Format request tidak valid")
 	}
+
+	method := normalizePaymentMethod(req.PaymentMethod)
+	if isCashless(method) {
+		req.CashReceived = paymentMethodSentinel
+	}
+
 	if err := h.validator.ValidateStruct(req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
+
+	// Catat dulu payment mana yang masih pending, untuk dikoreksi metodenya.
+	var pendingIDs []uuid.UUID
+	h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("PendingPaymentIDs")+"(?::uuid)", sessionID,
+	).Scan(&pendingIDs)
 
 	type spResult struct {
 		SessionID      uuid.UUID `gorm:"column:session_id"`
@@ -314,6 +357,14 @@ func (h *PaymentHandler) ConfirmSessionPending(c *fiber.Ctx) error {
 
 	if tx.Error != nil {
 		return response.BadRequest(c, tx.Error.Error())
+	}
+
+	for _, pid := range pendingIDs {
+		finalizePaymentMethod(h.db, pid, method)
+	}
+	if isCashless(method) {
+		result.CashReceived = result.TotalPaid
+		result.ChangeAmount = 0
 	}
 
 	h.hub.Broadcast(websocket.NewEvent(websocket.EventPaymentCreated, fiber.Map{

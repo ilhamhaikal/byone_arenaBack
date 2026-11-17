@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
+	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -127,30 +129,18 @@ func (r *ingredientRepository) ListIngredientComponents(ctx context.Context, ing
 
 func (r *ingredientRepository) FindExpiredIngredients(ctx context.Context, days int) ([]repository.ExpiredStockItem, error) {
 	var rows []repository.ExpiredStockItem
-	err := r.db.WithContext(ctx).Raw(`
-		SELECT i.id, i.name, i.unit,
-		       COALESCE(SUM(b.remaining) FILTER (WHERE b.expires_at < CURRENT_DATE),0)::numeric AS expired_qty,
-		       COALESCE(SUM(b.remaining) FILTER (WHERE b.expires_at >= CURRENT_DATE),0)::numeric AS usable_stock,
-		       MIN(b.expires_at)::text AS nearest_expiry
-		FROM ingredients i
-		JOIN ingredient_stock_batches b ON b.ingredient_id = i.id
-		WHERE b.remaining > 0
-		GROUP BY i.id, i.name, i.unit
-		HAVING MIN(b.expires_at) < CURRENT_DATE + (? * INTERVAL '1 day')
-		ORDER BY nearest_expiry ASC`, days).Scan(&rows).Error
+	err := r.db.WithContext(ctx).Raw(
+		"SELECT * FROM "+spname.Ident("ExpiredIngredients")+"(?)", days,
+	).Scan(&rows).Error
 	return rows, err
 }
 
 func (r *ingredientRepository) GetStockLog(ctx context.Context, startDate, endDate string) ([]repository.StockLogEntry, error) {
 	var rows []repository.StockLogEntry
-	err := r.db.WithContext(ctx).Raw(`
-		SELECT 'ingredient'::text AS type, i.name AS item_name, i.unit,
-		       b.quantity, b.remaining, b.expires_at::text AS expires_at,
-		       b.added_at::date::text AS added_at, COALESCE(b.notes,'') AS notes
-		FROM ingredient_stock_batches b
-		JOIN ingredients i ON i.id = b.ingredient_id
-		WHERE b.added_at::date BETWEEN ?::date AND ?::date
-		ORDER BY added_at DESC, item_name ASC`, startDate, endDate).Scan(&rows).Error
+	err := r.db.WithContext(ctx).Raw(
+		"SELECT * FROM "+spname.Ident("StockLog")+"(?::DATE, ?::DATE)",
+		startDate, endDate,
+	).Scan(&rows).Error
 	return rows, err
 }
 
@@ -169,14 +159,14 @@ func (r *ingredientRepository) fillStock(ctx context.Context, items []*entity.In
 		NearestExpiry *time.Time `gorm:"column:nearest_expiry"`
 	}
 	var rows []stockRow
-	r.db.WithContext(ctx).Raw(`
-		SELECT ingredient_id,
-		       COALESCE(SUM(remaining),0)::numeric AS usable,
-		       MIN(expires_at) AS nearest_expiry
-		FROM ingredient_stock_batches
-		WHERE remaining > 0 AND expires_at >= CURRENT_DATE
-		  AND ingredient_id IN ?
-		GROUP BY ingredient_id`, ids).Scan(&rows)
+	idStrs := make([]string, len(ids))
+	for i, id := range ids {
+		idStrs[i] = id.String()
+	}
+	r.db.WithContext(ctx).Raw(
+		"SELECT * FROM "+spname.Ident("IngredientUsableStock")+"(?)",
+		strings.Join(idStrs, ","),
+	).Scan(&rows)
 
 	stockMap := make(map[uuid.UUID]float64, len(rows))
 	expiryMap := make(map[uuid.UUID]*time.Time, len(rows))

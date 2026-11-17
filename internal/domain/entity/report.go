@@ -4,16 +4,17 @@ import "time"
 
 // ReportSummary adalah laporan komprehensif untuk periode tertentu
 type ReportSummary struct {
-	Period              ReportPeriod         `json:"period"`
-	Revenue             ReportRevenue        `json:"revenue"`
-	Transactions        ReportTransactions   `json:"transactions"`
-	Sessions            ReportSessions       `json:"sessions"`
-	Vouchers            []ReportVoucherUsage `json:"vouchers"`
-	Consoles            []ReportConsoleUsage `json:"consoles"`
-	DailyBreakdown      []ReportDailyItem    `json:"dailyBreakdown"`
-	ActiveDiscountRules []ReportDiscountRule `json:"activeDiscountRules"`
-	FoodSales           ReportFoodSales      `json:"foodSales"`
-	GeneratedAt         time.Time            `json:"generatedAt"`
+	Period              ReportPeriod          `json:"period"`
+	Revenue             ReportRevenue         `json:"revenue"`
+	Transactions        ReportTransactions    `json:"transactions"`
+	Sessions            ReportSessions        `json:"sessions"`
+	Vouchers            []ReportVoucherUsage  `json:"vouchers"`
+	Consoles            []ReportConsoleUsage  `json:"consoles"`
+	DailyBreakdown      []ReportDailyItem     `json:"dailyBreakdown"`
+	ActiveDiscountRules []ReportDiscountRule  `json:"activeDiscountRules"`
+	FoodSales           ReportFoodSales       `json:"foodSales"`
+	PaymentMethods      []ReportPaymentMethod `json:"paymentMethods"`
+	GeneratedAt         time.Time             `json:"generatedAt"`
 }
 
 type ReportPeriod struct {
@@ -108,4 +109,11 @@ type ReportFoodItem struct {
 	Revenue      float64 `json:"revenue"`
 	Hpp          float64 `json:"hpp"`
 	NetRevenue   float64 `json:"netRevenue"`
+}
+
+// ReportPaymentMethod ringkasan pendapatan per metode pembayaran.
+type ReportPaymentMethod struct {
+	Method string  `json:"method"`
+	Total  float64 `json:"total"`
+	Trx    int     `json:"trx"`
 }
