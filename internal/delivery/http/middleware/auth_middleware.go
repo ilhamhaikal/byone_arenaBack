@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"strings"
 
 	"byone-arena/internal/domain/entity"
@@ -48,7 +49,7 @@ func AuthMiddleware(cfg *config.Config, db *gorm.DB) fiber.Handler {
 		if db != nil {
 			var user entity.User
 			if err := db.WithContext(c.Context()).
-				Select("id", "username", "role", "is_active").
+				Select("id", "username", "role", "is_active", "permissions").
 				First(&user, "id = ?", claims.UserID).Error; err != nil {
 				return response.Unauthorized(c, "Sesi tidak valid, silakan login ulang")
 			}
@@ -59,12 +60,22 @@ func AuthMiddleware(cfg *config.Config, db *gorm.DB) fiber.Handler {
 			c.Locals("userID", user.ID)
 			c.Locals("username", user.Username)
 			c.Locals("role", user.Role)
+
+			var perms []string
+			if strings.TrimSpace(user.Permissions) != "" {
+				_ = json.Unmarshal([]byte(user.Permissions), &perms)
+			}
+			if perms == nil {
+				perms = []string{}
+			}
+			c.Locals("permissions", perms)
 			return c.Next()
 		}
 
 		c.Locals("userID", claims.UserID)
 		c.Locals("username", claims.Username)
 		c.Locals("role", claims.Role)
+		c.Locals("permissions", []string{})
 
 		return c.Next()
 	}
@@ -86,5 +97,66 @@ func AdminOnly() fiber.Handler {
 			return response.Forbidden(c, "Hanya admin atau superadmin yang dapat mengakses endpoint ini")
 		}
 		return c.Next()
+	}
+}
+
+// SuperAdminOnly membatasi akses hanya untuk superadmin/owner.
+// Dipakai untuk operasi sensitif seperti aktivasi lisensi.
+func SuperAdminOnly() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		roleValue := c.Locals("role")
+		role, ok := roleValue.(entity.UserRole)
+		if !ok {
+			if roleString, stringOK := roleValue.(string); stringOK {
+				role = entity.UserRole(roleString)
+				ok = true
+			}
+		}
+		if !ok || role != entity.UserRoleSuperAdmin {
+			return response.Forbidden(c, "Hanya owner (superadmin) yang dapat mengakses endpoint ini")
+		}
+		return c.Next()
+	}
+}
+
+// RequireWrite membatasi aksi tambah/ubah data pada sebuah menu.
+// Superadmin selalu boleh; user lain harus punya izin "<menu>.write".
+func RequireWrite(menu string) fiber.Handler {
+	return RequirePermission(menu + ".write")
+}
+
+// RequireDelete membatasi aksi hapus data pada sebuah menu.
+// Superadmin selalu boleh; user lain harus punya izin "<menu>.delete".
+func RequireDelete(menu string) fiber.Handler {
+	return RequirePermission(menu + ".delete")
+}
+
+// RequirePermission mengizinkan superadmin ATAU user yang memiliki izin
+// tertentu (dari kolom users.permissions). Dipakai untuk pengaturan sensitif
+// seperti harga member/harian.
+func RequirePermission(permission string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		roleValue := c.Locals("role")
+		role, ok := roleValue.(entity.UserRole)
+		if !ok {
+			if roleString, stringOK := roleValue.(string); stringOK {
+				role = entity.UserRole(roleString)
+				ok = true
+			}
+		}
+		if ok && role == entity.UserRoleSuperAdmin {
+			return c.Next()
+		}
+
+		if perms, pok := c.Locals("permissions").([]string); pok {
+			for _, p := range perms {
+				if p == permission {
+					return c.Next()
+				}
+			}
+		}
+
+		return response.Forbidden(c,
+			"Anda tidak memiliki akses untuk tindakan ini")
 	}
 }

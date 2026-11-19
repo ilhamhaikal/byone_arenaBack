@@ -1,9 +1,13 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -35,11 +39,19 @@ type Config struct {
 	SPPrefix string
 
 	// JWT
-	JWTSecret      string
-	JWTExpireHours int
+	JWTSecret string
+	// JWTSecretSource: env | file | generated | ephemeral (untuk logging).
+	JWTSecretSource string
+	JWTExpireHours  int
 
 	// Direktori file update client (APK + manifest.json). Kosong = nonaktif.
 	UpdatesDir string
+
+	// Lisensi offline (Ed25519). Public key di-set vendor di .env.
+	LicensePublicKey  string
+	LicenseTrialDays  int
+	LicenseTrialUnits int
+	LicenseGraceDays  int
 
 	// Discovery TV di LAN (UDP). TV broadcast probe, server membalas alamat API.
 	DiscoveryEnabled bool
@@ -50,6 +62,11 @@ type Config struct {
 func Load() (*Config, error) {
 	// Hanya load .env jika file tersedia (diabaikan di production/Docker)
 	_ = godotenv.Load()
+
+	jwtSecret, jwtSource := resolveJWTSecret()
+	if jwtSecret == "" {
+		return nil, fmt.Errorf("gagal menyiapkan JWT secret")
+	}
 
 	cfg := &Config{
 		AppName:  getEnv("APP_NAME", "Byone Arena"),
@@ -66,10 +83,16 @@ func Load() (*Config, error) {
 
 		SPPrefix: getEnv("SP_PREFIX", "byone"),
 
-		JWTSecret:      getEnv("JWT_SECRET", "change-this-secret-in-production"),
-		JWTExpireHours: getEnvInt("JWT_EXPIRE_HOURS", 24),
+		JWTSecret:       jwtSecret,
+		JWTSecretSource: jwtSource,
+		JWTExpireHours:  getEnvInt("JWT_EXPIRE_HOURS", 24),
 
 		UpdatesDir: getEnv("UPDATES_DIR", ""),
+
+		LicensePublicKey:  getEnv("LICENSE_PUBLIC_KEY", ""),
+		LicenseTrialDays:  getEnvInt("LICENSE_TRIAL_DAYS", 14),
+		LicenseTrialUnits: getEnvInt("LICENSE_TRIAL_UNITS", 2),
+		LicenseGraceDays:  getEnvInt("LICENSE_GRACE_DAYS", 14),
 
 		DiscoveryEnabled: getEnvBool("DISCOVERY_ENABLED", true),
 		DiscoveryPort:    getEnvInt("DISCOVERY_PORT", 47823),
@@ -104,6 +127,61 @@ func (c *Config) PostgresDSN() string {
 	return "postgres://" + c.DBUser + ":" + c.DBPassword +
 		"@" + c.DBHost + ":" + c.DBPort + "/" + c.DBName +
 		"?sslmode=" + c.DBSSLMode
+}
+
+// insecureJWTDefaults adalah nilai contoh yang tidak boleh dipakai.
+var insecureJWTDefaults = map[string]bool{
+	"change-this-secret-in-production":                                  true,
+	"ganti-dengan-secret-key-yang-sangat-panjang-dan-aman-min-32-chars": true,
+}
+
+// resolveJWTSecret menentukan JWT secret dengan urutan:
+//  1. env JWT_SECRET (jika diisi dan bukan nilai contoh)
+//  2. file JWT_SECRET_FILE / lokasi default
+//  3. dibuat otomatis lalu disimpan
+//
+// Lokasi default: Windows -> %PROGRAMDATA%\ByoneArena\jwt.secret,
+// platform lain -> ./jwt.secret. Dengan begitu klien tidak perlu mengisi
+// JWT_SECRET di .env.
+func resolveJWTSecret() (string, string) {
+	if env := strings.TrimSpace(os.Getenv("JWT_SECRET")); env != "" && !insecureJWTDefaults[env] {
+		return env, "env"
+	}
+
+	path := strings.TrimSpace(os.Getenv("JWT_SECRET_FILE"))
+	if path == "" {
+		if runtime.GOOS == "windows" {
+			base := strings.TrimSpace(os.Getenv("PROGRAMDATA"))
+			if base == "" {
+				base = `C:\ProgramData`
+			}
+			path = filepath.Join(base, "ByoneArena", "jwt.secret")
+		} else {
+			path = "jwt.secret"
+		}
+	}
+
+	if b, err := os.ReadFile(path); err == nil {
+		if s := strings.TrimSpace(string(b)); s != "" {
+			return s, "file"
+		}
+	}
+
+	buf := make([]byte, 48)
+	if _, err := rand.Read(buf); err != nil {
+		return "", ""
+	}
+	secret := base64.RawURLEncoding.EncodeToString(buf)
+
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return secret, "ephemeral"
+		}
+	}
+	if err := os.WriteFile(path, []byte(secret+"\n"), 0o600); err != nil {
+		return secret, "ephemeral"
+	}
+	return secret, "generated"
 }
 
 func getEnv(key, defaultVal string) string {

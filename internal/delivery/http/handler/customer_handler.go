@@ -122,6 +122,11 @@ func (h *CustomerHandler) Create(c *fiber.Ctx) error {
 			"changeAmount": sp.ChangeAmount,
 			"message":      sp.Message,
 		}
+		// Ambil ulang customer agar response sudah berisi isMember=true dan
+		// harga membership yang benar-benar tersimpan.
+		if updated, err := h.customerUC.GetCustomerByID(c.Context(), customer.ID); err == nil {
+			customer = updated
+		}
 	}
 
 	return response.Created(c, "Pelanggan berhasil didaftarkan", fiber.Map{
@@ -248,11 +253,18 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 
 	finalizePaymentMethod(h.db, result.PaymentID, req.PaymentMethod)
 
-	return response.OK(c, result.Message, fiber.Map{
+	// Sertakan data customer terbaru supaya frontend tidak perlu menebak dari
+	// response pembayaran (yang tidak berisi id/nama/status member).
+	payload := fiber.Map{
 		"membershipPrice": result.MembershipPrice,
 		"paymentId":       result.PaymentID,
 		"changeAmount":    result.ChangeAmount,
-	})
+	}
+	if customer, err := h.customerUC.GetCustomerByID(c.Context(), id); err == nil {
+		payload["customer"] = customer
+	}
+
+	return response.OK(c, result.Message, payload)
 }
 
 // GetLoyalty godoc

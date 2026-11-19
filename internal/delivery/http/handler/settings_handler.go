@@ -30,15 +30,15 @@ func NewSettingsHandler(db *gorm.DB, v *validator.Validator) *SettingsHandler {
 // @Success      200  {object}  response.Response
 // @Router       /api/v1/settings/membership [get]
 func (h *SettingsHandler) GetMembershipPrice(c *fiber.Ctx) error {
-	var row struct {
-		Value string `gorm:"column:value"`
+	value, err := h.appSettingValue(c, "membership_price")
+	if err != nil {
+		return response.InternalServerError(c, "Gagal membaca harga membership")
 	}
-	h.db.WithContext(c.Context()).Raw(
-		"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "membership_price",
-	).Scan(&row)
-
+	if value == "" {
+		value = "0"
+	}
 	return response.OK(c, "Harga membership", fiber.Map{
-		"membershipPrice": row.Value,
+		"membershipPrice": value,
 	})
 }
 
@@ -66,16 +66,26 @@ func (h *SettingsHandler) UpdateMembershipPrice(c *fiber.Ctx) error {
 	// Nilai di-cast ke float lalu diformat numerik murni sebelum masuk SQL;
 	// tidak ada string dari klien yang disisipkan apa adanya.
 	price := fmt.Sprintf("%.0f", req.MembershipPrice)
-	h.db.WithContext(c.Context()).Exec(
-		"SELECT "+spname.Ident("SetAppSetting")+"(?::text, ?::text)", "membership_price", price,
-	)
+	if err := h.setAppSetting(c, "membership_price", price); err != nil {
+		return response.InternalServerError(c, "Gagal menyimpan harga membership")
+	}
+
+	// Baca ulang dari database supaya response mencerminkan nilai yang benar-
+	// benar tersimpan (bukan sekadar echo input).
+	stored, err := h.appSettingValue(c, "membership_price")
+	if err != nil {
+		return response.InternalServerError(c, "Harga tersimpan tetapi gagal dibaca ulang")
+	}
+	if stored == "" {
+		stored = price
+	}
 
 	audit.Log(h.db, c, "settings.membership_price", "setting", nil, map[string]any{
-		"membershipPrice": req.MembershipPrice,
+		"membershipPrice": stored,
 	})
 
 	return response.OK(c, "Harga membership diupdate", fiber.Map{
-		"membershipPrice": req.MembershipPrice,
+		"membershipPrice": stored,
 	})
 }
 
@@ -87,13 +97,14 @@ func (h *SettingsHandler) UpdateMembershipPrice(c *fiber.Ctx) error {
 // @Success      200  {object}  response.Response
 // @Router       /api/v1/settings/daily-price [get]
 func (h *SettingsHandler) GetDailyPrice(c *fiber.Ctx) error {
-	var row struct {
-		Value string `gorm:"column:value"`
+	value, err := h.appSettingValue(c, "daily_price")
+	if err != nil {
+		return response.InternalServerError(c, "Gagal membaca harga sewa harian")
 	}
-	h.db.WithContext(c.Context()).Raw(
-		"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "daily_price",
-	).Scan(&row)
-	return response.OK(c, "Harga sewa harian", fiber.Map{"dailyPrice": row.Value})
+	if value == "" {
+		value = "0"
+	}
+	return response.OK(c, "Harga sewa harian", fiber.Map{"dailyPrice": value})
 }
 
 // UpdateDailyPrice godoc
@@ -116,9 +127,37 @@ func (h *SettingsHandler) UpdateDailyPrice(c *fiber.Ctx) error {
 	if err := h.validator.ValidateStruct(&req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
-	h.db.WithContext(c.Context()).Exec(
-		"SELECT "+spname.Ident("SetAppSetting")+"(?::text, ?::text)",
-		"daily_price", fmt.Sprintf("%.0f", req.DailyPrice),
-	)
-	return response.OK(c, "Harga sewa harian diupdate", fiber.Map{"dailyPrice": req.DailyPrice})
+	price := fmt.Sprintf("%.0f", req.DailyPrice)
+	if err := h.setAppSetting(c, "daily_price", price); err != nil {
+		return response.InternalServerError(c, "Gagal menyimpan harga sewa harian")
+	}
+	stored, err := h.appSettingValue(c, "daily_price")
+	if err != nil {
+		return response.InternalServerError(c, "Harga tersimpan tetapi gagal dibaca ulang")
+	}
+	if stored == "" {
+		stored = price
+	}
+	return response.OK(c, "Harga sewa harian diupdate", fiber.Map{"dailyPrice": stored})
+}
+
+// appSettingValue membaca satu nilai dari tabel app_settings lewat SP.
+func (h *SettingsHandler) appSettingValue(c *fiber.Ctx, key string) (string, error) {
+	var row struct {
+		Value string `gorm:"column:value"`
+	}
+	err := h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", key,
+	).Scan(&row).Error
+	if err != nil {
+		return "", err
+	}
+	return row.Value, nil
+}
+
+// setAppSetting menyimpan satu nilai app_settings lewat SP (upsert).
+func (h *SettingsHandler) setAppSetting(c *fiber.Ctx, key, value string) error {
+	return h.db.WithContext(c.Context()).Exec(
+		"SELECT "+spname.Ident("SetAppSetting")+"(?::text, ?::text)", key, value,
+	).Error
 }

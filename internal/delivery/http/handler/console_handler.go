@@ -146,6 +146,16 @@ func (h *ConsoleHandler) Update(c *fiber.Ctx) error {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
 
+	// Harga per jam/harian/tarif bertingkat hanya boleh diubah user dengan
+	// izin khusus. Kasir tetap bisa mengubah nama, tipe, status, deskripsi, IP.
+	priceChangeRequested := req.PricePerHour > 0 ||
+		req.DailyPrice != nil ||
+		req.PricingTiers != nil
+	if priceChangeRequested && !canEditConsolePrice(c) {
+		return response.Forbidden(c,
+			"Harga per jam/harian konsol hanya dapat diubah oleh user dengan izin Harga Konsol")
+	}
+
 	var before struct {
 		PricePerHour float64 `gorm:"column:price_per_hour"`
 	}
@@ -400,4 +410,27 @@ func (h *ConsoleHandler) GetTvLogs(c *fiber.Ctx) error {
 		"activeSession":       sessionJSON,
 		"unauthorizedLogs":    unauthLogsJSON,
 	})
+}
+
+// canEditConsolePrice mengecek apakah user boleh mengubah harga konsol.
+// Superadmin selalu boleh; user lain butuh izin "console.price".
+func canEditConsolePrice(c *fiber.Ctx) bool {
+	roleValue := c.Locals("role")
+	role, ok := roleValue.(entity.UserRole)
+	if !ok {
+		if roleString, stringOK := roleValue.(string); stringOK {
+			role = entity.UserRole(roleString)
+		}
+	}
+	if role == entity.UserRoleSuperAdmin {
+		return true
+	}
+
+	perms, _ := c.Locals("permissions").([]string)
+	for _, p := range perms {
+		if p == entity.PermConsolePrice {
+			return true
+		}
+	}
+	return false
 }

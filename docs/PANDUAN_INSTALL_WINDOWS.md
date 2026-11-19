@@ -5,7 +5,32 @@
 
 ---
 
-## 📦 Isi Folder
+## ⚡ Cara Cepat: Pakai Installer (Disarankan)
+
+Kalau Anda menerima file **`byone-arena-setup-1.0.0.exe`**, pakai cara ini —
+tidak perlu menyalin folder manual.
+
+1. **Klik 2x** file installer.
+2. Kalau muncul **"Windows protected your PC"**:
+   - Klik **More info**
+   - Klik **Run anyway**
+3. Klik **Next** sampai selesai (biarkan centang **auto-start** terpilih).
+4. Buka folder instalasi (biasanya `C:\Program Files\Byone Arena`):
+   - Salin `.env.example` → rename menjadi `.env`
+   - Buka `.env` dengan Notepad, isi `DB_USER` dan `DB_PASSWORD`
+     (sesuai PostgreSQL Anda). JWT secret & public key lisensi otomatis.
+5. Buka **Start Menu → Byone Arena → Setup Database** (sekali saja).
+6. Buka **Start Menu → Byone Arena → Start Server**.
+   Atau restart PC — server akan jalan otomatis.
+7. Jika Windows menanyakan **firewall**, pilih **Allow access**.
+
+> ℹ️ Installer ini **belum ditandatangani secara digital**. Peringatan
+> "Unknown publisher" adalah hal normal; pilih **More info → Run anyway**.
+> Lihat juga bagian **"Windows memblokir file"** di bawah.
+
+---
+
+## 📦 Isi Folder (Cara Manual)
 
 Setelah Anda terima folder `byone-arena`, isinya seperti ini:
 
@@ -81,18 +106,20 @@ Setelah Anda terima folder `byone-arena`, isinya seperti ini:
 
 3. **Klik kanan `.env` → Open with → Notepad**
 
-4. Isi seperti ini (sesuaikan password PostgreSQL Anda):
+4. Isi seperti ini (sesuaikan user & password PostgreSQL Anda):
 
    ```env
    DB_HOST=localhost
    DB_PORT=5432
    DB_USER=postgres
-   DB_PASSWORD=By0N3-4r3NA        ← GANTI dengan password PostgreSQL Anda!
+   DB_PASSWORD=GANTI_DENGAN_PASSWORD_DB   ← GANTI!
    DB_NAME=byone_arena
    DB_SSLMODE=disable
-
-   JWT_SECRET=byone-arena-rental-2026  ← bebas, untuk keamanan login
    ```
+
+   > JWT secret dibuat otomatis oleh server. Public key lisensi sudah
+   > tertanam di program, jadi **tidak perlu diisi**. Cukup 2 baris di atas
+   > (`DB_USER` dan `DB_PASSWORD`) yang perlu disesuaikan.
 
 5. **Save** (Ctrl+S), tutup Notepad.
 
@@ -154,11 +181,14 @@ Supaya tidak repot, bikin shortcut supaya **otomatis jalan sendiri**:
 
 3. Halaman login akan muncul.
 
-4. Login dengan:
+4. Login dengan akun default:
    ```
-   Username: admin
-   Password: password
+   owner / owner123   → superadmin (semua akses, termasuk lisensi)
+   admin / admin123   → admin (semua menu kecuali lisensi)
+   kasir / kasir123   → kasir (Dashboard, Konsol, Controller, Member,
+                        menu Penjualan & Rental)
    ```
+   > ⚠️ Ganti password setelah login pertama.
 
 5. ✅ **Selesai!** Aplikasi sudah bisa dipakai.
 
@@ -202,6 +232,30 @@ Setelah PC di-restart:
 | "Port 8080 sudah dipakai" | Edit `.env`, ganti `PORT=8080` jadi `PORT=3000` |
 | Lupa password admin | Hubungi support |
 | Jendela hitam hilang sendiri | Buka Command Prompt, drag `byone-server.exe` ke situ, Enter — biar kelihatan errornya |
+
+### 🛡️ Windows memblokir file
+
+Ini biasanya **false positive** karena file belum ditandatangani digital.
+Coba berurutan:
+
+1. **"Windows protected your PC"**
+   → klik **More info** → **Run anyway**.
+
+2. **File "terkunci" setelah diunduh**
+   → klik kanan file → **Properties** → centang **Unblock** → **OK**.
+
+3. **Windows Defender menghapus/mengkarantina file**
+   → buka **Windows Security → Protection history** → **Restore**.
+   → Laporkan ke Microsoft agar tidak terulang:
+   `https://www.microsoft.com/en-us/wdsi/filesubmission`
+   (sertakan file installer dan `SHA256SUMS.txt`).
+
+4. **Prompt firewall**
+   → pilih **Allow access** (ini bukan virus).
+
+> ℹ️ Solusi permanen untuk peringatan "Unknown publisher" adalah
+> **code signing certificate**. Lihat `docs/WINDOWS_CODE_SIGNING.md`
+> (untuk developer/vendor).
 
 ---
 

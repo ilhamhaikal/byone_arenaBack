@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"byone-arena/internal/license"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/validator"
@@ -13,11 +14,12 @@ import (
 type RentalPackageHandler struct {
 	uc        usecase.RentalPackageUseCase
 	validator *validator.Validator
+	license   *license.Service
 }
 
 // NewRentalPackageHandler membuat instance baru RentalPackageHandler
-func NewRentalPackageHandler(uc usecase.RentalPackageUseCase, v *validator.Validator) *RentalPackageHandler {
-	return &RentalPackageHandler{uc: uc, validator: v}
+func NewRentalPackageHandler(uc usecase.RentalPackageUseCase, v *validator.Validator, licenseSvc *license.Service) *RentalPackageHandler {
+	return &RentalPackageHandler{uc: uc, validator: v, license: licenseSvc}
 }
 
 // List godoc
@@ -94,6 +96,11 @@ func (h *RentalPackageHandler) Start(c *fiber.Ctx) error {
 	}
 	if err := h.validator.ValidateStruct(req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
+	}
+	if h.license != nil {
+		if err := h.license.EnsureCanStartBusiness(c.Context()); err != nil {
+			return response.Forbidden(c, err.Error())
+		}
 	}
 	result, err := h.uc.StartWithPackage(c.Context(), req)
 	if err != nil {

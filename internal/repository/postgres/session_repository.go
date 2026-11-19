@@ -209,12 +209,22 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 // Update menggunakan byoneEndSession
 func (r *sessionRepository) Update(ctx context.Context, session *entity.Session) error {
 	// Update hanya dipanggil saat end session
-	tx := r.db.WithContext(ctx).Exec(fmt.Sprintf("SELECT %s(?)", spname.Ident("EndSession")), session.ID)
+	type endResult struct {
+		TimeBankEarnedMinutes int `gorm:"column:time_bank_earned_minutes"`
+	}
+	var res endResult
+	tx := r.db.WithContext(ctx).Raw(
+		"SELECT * FROM "+spname.Ident("EndSession")+"(?)", session.ID,
+	).Scan(&res)
 	if tx.Error != nil {
 		return parseStoredProcError(tx.Error)
 	}
 	// Refresh data sesi setelah update
-	return r.db.WithContext(ctx).First(session, "id = ?", session.ID).Error
+	if err := r.db.WithContext(ctx).First(session, "id = ?", session.ID).Error; err != nil {
+		return err
+	}
+	session.TimeBankEarnedMinutes = res.TimeBankEarnedMinutes
+	return nil
 }
 
 // UpdateStatus menggunakan GORM langsung (fallback untuk cancel)

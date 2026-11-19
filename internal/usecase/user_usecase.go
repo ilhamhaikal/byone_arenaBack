@@ -96,13 +96,16 @@ func (uc *userUseCase) CreateUser(ctx context.Context, req *CreateUserRequest, c
 		IsActive: true,
 	}
 
-	// Set permissions: dari request, atau default sesuai role
-	if len(req.Permissions) > 0 {
-		p, _ := json.Marshal(req.Permissions)
-		user.Permissions = string(p)
-	} else {
-		user.Permissions = defaultPermissionsForRole(entity.UserRole(req.Role))
+	// Set permissions: dari request, atau default sesuai role.
+	// Izin sensitif (harga member/harian) hanya boleh diberikan superadmin.
+	permissions := entity.FilterGrantablePermissions(req.Permissions)
+	if currentUserRole != entity.UserRoleSuperAdmin {
+		permissions = entity.WithoutSensitivePermissions(permissions)
 	}
+	if len(permissions) == 0 {
+		permissions = defaultPermissionsForRole(targetRole, currentUserRole)
+	}
+	user.Permissions = marshalPermissions(permissions)
 
 	if err := uc.userRepo.Create(ctx, user); err != nil {
 		return nil, err
@@ -154,14 +157,39 @@ func (uc *userUseCase) UpdateUser(ctx context.Context, id uuid.UUID, req *Update
 		if isSelfEdit && currentUserRole == entity.UserRoleAdmin {
 			return nil, errors.New("admin tidak dapat mengubah hak akses sendiri, hanya superadmin yang dapat melakukannya")
 		}
-		// Superadmin boleh ubah siapa saja termasuk diri sendiri
-		// Admin hanya bisa ubah kasir (sudah dicek di canManageRole)
+
+		oldRole := user.Role
 		if req.Role != nil {
-			user.Role = entity.UserRole(*req.Role)
+			newRole := entity.UserRole(*req.Role)
+			// Validasi role TUJUAN, bukan hanya role user saat ini. Tanpa ini
+			// admin bisa menaikkan kasir menjadi admin/superadmin.
+			if !canManageRole(currentUserRole, newRole) {
+				return nil, errors.New("anda tidak memiliki izin untuk memberikan role tersebut")
+			}
+			user.Role = newRole
 		}
-		if req.Permissions != nil {
-			p, _ := json.Marshal(req.Permissions)
-			user.Permissions = string(p)
+
+		existingPermissions := unmarshalPermissions(user.Permissions)
+		switch {
+		case req.Permissions != nil:
+			permissions := entity.FilterGrantablePermissions(req.Permissions)
+			if currentUserRole != entity.UserRoleSuperAdmin {
+				// Admin tidak boleh menambah/menghapus izin sensitif yang sudah
+				// diberikan superadmin; izin lama dipertahankan.
+				permissions = entity.WithoutSensitivePermissions(permissions)
+				permissions = append(permissions, entity.SensitivePermissionsFrom(existingPermissions)...)
+				permissions = entity.FilterGrantablePermissions(permissions)
+			}
+			if len(permissions) == 0 {
+				permissions = defaultPermissionsForRole(user.Role, currentUserRole)
+			}
+			user.Permissions = marshalPermissions(permissions)
+		case user.Role != oldRole:
+			// Role berubah tanpa daftar izin eksplisit: ikutkan default role
+			// baru supaya menu yang baru ditambahkan tidak hilang.
+			user.Permissions = marshalPermissions(
+				defaultPermissionsForRole(user.Role, currentUserRole),
+			)
 		}
 	}
 
@@ -239,14 +267,37 @@ func canManageRole(currentRole, targetRole entity.UserRole) bool {
 		return false // kasir tidak bisa kelola siapa pun
 	}
 }
-func defaultPermissionsForRole(role entity.UserRole) string {
-	allMenus := `["dashboard","rental","console","tv_log","member","discount","voucher","menu","food_order","notif","report","booking","rental_harian","user_management"]`
-	kasirMenus := `["dashboard","rental","console","member","discount","voucher","menu","food_order"]`
 
-	switch role {
-	case entity.UserRoleSuperAdmin, entity.UserRoleAdmin:
-		return allMenus
-	default:
-		return kasirMenus
+// defaultPermissionsForRole mengembalikan izin default untuk role tujuan.
+// Jika yang mengatur bukan superadmin, izin sensitif tidak ikut diberikan.
+func defaultPermissionsForRole(role, actorRole entity.UserRole) []string {
+	permissions := entity.DefaultPermissionsForRole(role)
+	if actorRole != entity.UserRoleSuperAdmin {
+		permissions = entity.WithoutSensitivePermissions(permissions)
 	}
+	return permissions
+}
+
+// marshalPermissions menyimpan daftar izin sebagai JSON array.
+func marshalPermissions(permissions []string) string {
+	if permissions == nil {
+		permissions = []string{}
+	}
+	b, err := json.Marshal(permissions)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+// unmarshalPermissions membaca users.permissions (JSONB) yang berbentuk array.
+func unmarshalPermissions(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var permissions []string
+	if err := json.Unmarshal([]byte(raw), &permissions); err != nil {
+		return nil
+	}
+	return permissions
 }

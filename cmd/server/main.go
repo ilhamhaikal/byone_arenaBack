@@ -21,9 +21,11 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata" // zona waktu tetap tersedia saat build Windows tanpa tzdata sistem
@@ -34,10 +36,12 @@ import (
 	"byone-arena/internal/discovery"
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/janitor"
+	"byone-arena/internal/license"
 	pgRepo "byone-arena/internal/repository/postgres"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/config"
 	"byone-arena/pkg/database"
+	"byone-arena/pkg/licensekey"
 	"byone-arena/pkg/logger"
 	"byone-arena/pkg/spname"
 	appValidator "byone-arena/pkg/validator"
@@ -91,6 +95,11 @@ func main() {
 	}
 	defer log.Sync()
 
+	log.Info("JWT secret siap", zap.String("source", cfg.JWTSecretSource))
+	if cfg.JWTSecretSource == "ephemeral" {
+		log.Warn("JWT secret tidak dapat disimpan ke disk; sesi login akan hilang saat server restart")
+	}
+
 	// Tolak kombinasi environment yang berbahaya (dev memakai DB produksi,
 	// atau production dijalankan dari workspace development).
 	if err := cfg.ValidateRuntime(); err != nil {
@@ -121,6 +130,28 @@ func main() {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 	log.Info("Koneksi database berhasil")
+
+	// ── Lisensi offline ───────────────────────────────────────────────────
+	// Public key DITANAM di binary (pkg/licensekey). ENV hanya untuk override
+	// (white-label/rotasi). Private key TIDAK ada di server.
+	encodedPub := strings.TrimSpace(cfg.LicensePublicKey)
+	pubFromEnv := encodedPub != ""
+	if !pubFromEnv {
+		encodedPub = licensekey.DefaultPublicKeyB64
+	}
+	var licensePub ed25519.PublicKey
+	if pub, pubErr := licensekey.ParsePublicKey(encodedPub); pubErr != nil {
+		log.Error("Public key lisensi tidak valid — aktivasi lisensi tidak akan berfungsi", zap.Error(pubErr))
+	} else {
+		licensePub = pub
+		if pubFromEnv {
+			log.Info("Lisensi: public key dari ENV (override)")
+		} else {
+			log.Info("Lisensi: public key bawaan (embedded)")
+		}
+	}
+	licenseSvc := license.NewService(db, licensePub,
+		cfg.LicenseTrialDays, cfg.LicenseTrialUnits, cfg.LicenseGraceDays)
 
 	// Cleanup stale notifikasi saat startup
 	cleanupStaleNotifications(db, log)
@@ -182,7 +213,7 @@ func main() {
 	handlers := &router.Handlers{
 		Auth:          handler.NewAuthHandler(authUC, validate, db),
 		Console:       handler.NewConsoleHandler(consoleUC, validate, db),
-		Session:       handler.NewSessionHandler(sessionUC, validate, hub, db),
+		Session:       handler.NewSessionHandler(sessionUC, validate, hub, db, licenseSvc),
 		Customer:      handler.NewCustomerHandler(customerUC, validate, db),
 		Payment:       handler.NewPaymentHandler(paymentUC, validate, hub, db),
 		Shift:         handler.NewShiftHandler(shiftUC, db),
@@ -190,19 +221,20 @@ func main() {
 		Discount:      handler.NewDiscountHandler(discountRuleUC, validate),
 		Menu:          handler.NewMenuItemHandler(menuUC, validate),
 		Ingredient:    handler.NewIngredientHandler(ingredientUC, validate),
-		FoodOrder:     handler.NewFoodOrderHandler(foodOrderUC, validate, db, hub),
+		FoodOrder:     handler.NewFoodOrderHandler(foodOrderUC, validate, db, hub, licenseSvc),
 		Capital:       handler.NewCapitalHandler(capitalUC, validate),
-		RentalPackage: handler.NewRentalPackageHandler(rentalPackageUC, validate),
+		RentalPackage: handler.NewRentalPackageHandler(rentalPackageUC, validate, licenseSvc),
 		Dashboard:     handler.NewDashboardHandler(paymentRepo, db),
 		Report:        handler.NewReportHandler(paymentRepo),
 		Notify:        handler.NewNotificationHandler(db, hub, consoleUC, validate),
-		Rental:        handler.NewRentalHandler(db, validate),
+		Rental:        handler.NewRentalHandler(db, validate, licenseSvc),
 		Settings:      handler.NewSettingsHandler(db, validate),
 		Activity:      handler.NewActivityHandler(db),
 		User:          handler.NewUserHandler(userUC, validate, db),
-		Device:        handler.NewDeviceHandler(db),
+		Device:        handler.NewDeviceHandler(db, licenseSvc),
 		Audit:         handler.NewAuditHandler(db),
 		Promo:         handler.NewPromoHandler(db, validate),
+		License:       handler.NewLicenseHandler(licenseSvc, validate),
 		Hub:           hub,
 	}
 

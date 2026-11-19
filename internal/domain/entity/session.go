@@ -51,6 +51,10 @@ type Session struct {
 	// Relasi (join data)
 	Console  *Console  `json:"console,omitempty"  gorm:"foreignKey:ConsoleID"`
 	Customer *Customer `json:"customer,omitempty" gorm:"foreignKey:CustomerID"`
+
+	// Transient (bukan kolom DB): jumlah menit yang baru disimpan ke bank waktu
+	// saat sesi diakhiri. Dipakai UI untuk menampilkan info ke kasir/member.
+	TimeBankEarnedMinutes int `json:"timeBankEarnedMinutes,omitempty" gorm:"-"`
 }
 
 func (Session) TableName() string { return "sessions" }

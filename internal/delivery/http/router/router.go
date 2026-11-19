@@ -46,6 +46,7 @@ type Handlers struct {
 	Device        *handler.DeviceHandler
 	Audit         *handler.AuditHandler
 	Promo         *handler.PromoHandler
+	License       *handler.LicenseHandler
 	Hub           *wsHandler.Hub
 }
 
@@ -147,6 +148,11 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	api.Get("/notifications", h.Notify.GetAllNotifications)
 	api.Get("/notifications/loop/status", h.Notify.LoopStatus)
 
+	// Settings publik (dibaca tanpa login) — HARUS sebelum protected group,
+	// kalau tidak akan ikut terkena middleware auth (401) dan harga terbaca 0.
+	api.Get("/settings/membership", h.Settings.GetMembershipPrice)
+	api.Get("/settings/daily-price", h.Settings.GetDailyPrice)
+
 	// Protected routes (memerlukan JWT)
 	protected := api.Group("", middleware.AuthMiddleware(cfg, db))
 
@@ -160,8 +166,8 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	protected.Get("/dashboard/summary", h.Dashboard.GetSummary)
 	protected.Get("/dashboard/revenue-chart", h.Dashboard.GetRevenueChart)
 
-	// Report routes — admin & superadmin only
-	reports := protected.Group("/reports", middleware.AdminOnly())
+	// Report routes — butuh akses menu Laporan
+	reports := protected.Group("/reports", middleware.RequirePermission("report"))
 	reports.Get("/summary", h.Report.GetSummary)
 	reports.Get("/promo-bonus", h.Promo.PromoReport)
 
@@ -172,200 +178,215 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	capital.Delete("/:id", h.Capital.DeleteEntry)
 	capital.Get("/monthly", h.Capital.MonthlyReport)
 
-	// Rental Package routes (paket begadang dll) — admin & superadmin only
-	packages := protected.Group("/rental-packages", middleware.AdminOnly())
+	// Rental Package routes (paket begadang dll) — lihat butuh menu Rental,
+	// kelola butuh izin rental.write / rental.delete.
+	packages := protected.Group("/rental-packages", middleware.RequirePermission("rental"))
 	packages.Get("/", h.RentalPackage.List)
-	packages.Post("/", h.RentalPackage.Save)
-	packages.Delete("/:id", h.RentalPackage.Delete)
-	// Mulai sesi dengan paket (semua role terautentikasi)
-	protected.Post("/sessions/start-package", h.RentalPackage.Start)
+	packages.Post("/", middleware.RequireWrite("rental"), h.RentalPackage.Save)
+	packages.Delete("/:id", middleware.RequireDelete("rental"), h.RentalPackage.Delete)
+	// Mulai sesi dengan paket
+	protected.Post("/sessions/start-package",
+		middleware.RequireWrite("rental"), h.RentalPackage.Start)
 
 	// Activity routes — realtime activity feed
 	activities := protected.Group("/activities")
 	activities.Get("/recent", h.Activity.GetRecentActivities)
 
-	// Notification routes — semua role terautentikasi bisa kelola
+	// Notification routes — lihat publik, kelola butuh izin notif.write/delete
 	notifications := protected.Group("/notifications")
-	notifications.Post("/", h.Notify.CreateNotification)
-	notifications.Put("/:id", h.Notify.UpdateNotification)
-	notifications.Delete("/:id", h.Notify.DeleteNotification)
-	notifications.Patch("/:id/toggle", h.Notify.ToggleNotification)
-	notifications.Post("/loop/start", h.Notify.StartLoop)
-	notifications.Post("/loop/stop", h.Notify.StopLoop)
+	notifications.Post("/", middleware.RequireWrite("notif"), h.Notify.CreateNotification)
+	notifications.Put("/:id", middleware.RequireWrite("notif"), h.Notify.UpdateNotification)
+	notifications.Delete("/:id", middleware.RequireDelete("notif"), h.Notify.DeleteNotification)
+	notifications.Patch("/:id/toggle", middleware.RequireWrite("notif"), h.Notify.ToggleNotification)
+	notifications.Post("/loop/start", middleware.RequireWrite("notif"), h.Notify.StartLoop)
+	notifications.Post("/loop/stop", middleware.RequireWrite("notif"), h.Notify.StopLoop)
 
 	// GET notifications + loop/status HARUS publik — daftar langsung di app, bypass group
 	app.Get("/api/v1/notifications", h.Notify.GetAllNotifications)
 	app.Get("/api/v1/notifications/loop/status", h.Notify.LoopStatus)
 
 	// Daily Rental routes
-	dailyRentals := protected.Group("/daily-rentals")
+	dailyRentals := protected.Group("/daily-rentals", middleware.RequirePermission("rental_harian"))
 	dailyRentals.Get("/", h.Rental.GetAllDailyRentals)
-	dailyRentals.Post("/", h.Rental.CreateDailyRental)
-	dailyRentals.Post("/:id/return", h.Rental.ReturnDailyRental)
+	dailyRentals.Post("/", middleware.RequireWrite("rental_harian"), h.Rental.CreateDailyRental)
+	dailyRentals.Post("/:id/return", middleware.RequireWrite("rental_harian"), h.Rental.ReturnDailyRental)
 
 	// Booking routes
-	bookings := protected.Group("/bookings")
+	bookings := protected.Group("/bookings", middleware.RequirePermission("booking"))
 	bookings.Get("/", h.Rental.GetAllBookings)
-	bookings.Post("/", h.Rental.CreateBooking)
-	bookings.Patch("/:id/status", h.Rental.UpdateBookingStatus)
+	bookings.Post("/", middleware.RequireWrite("booking"), h.Rental.CreateBooking)
+	bookings.Patch("/:id/status", middleware.RequireWrite("booking"), h.Rental.UpdateBookingStatus)
 
-	// Settings routes — GET publik, PUT admin
-	api.Get("/settings/membership", h.Settings.GetMembershipPrice)
-	protected.Put("/settings/membership", middleware.AdminOnly(), h.Settings.UpdateMembershipPrice)
+	// Settings routes — GET publik didaftarkan di atas (sebelum protected).
+	// PUT hanya untuk superadmin atau user dengan izin khusus.
+	protected.Put("/settings/membership",
+		middleware.RequirePermission("member_price"), h.Settings.UpdateMembershipPrice)
+	protected.Put("/settings/daily-price",
+		middleware.RequirePermission("daily_price"), h.Settings.UpdateDailyPrice)
 
-	// Console routes — create & edit semua role, delete admin only
-	consoles := protected.Group("/consoles")
+	// Console routes — lihat butuh menu Konsol, ubah butuh console.write.
+	consoles := protected.Group("/consoles", middleware.RequirePermission("console"))
 	consoles.Get("/", h.Console.GetAll)
 	consoles.Get("/available", h.Console.GetAvailable)
 	consoles.Get("/overview", h.Console.GetOverview)
 	consoles.Get("/:id", h.Console.GetByID)
-	consoles.Post("/", h.Console.Create)
-	// Harga & tarif konsol hanya boleh diubah admin: mencegah kasir menurunkan
-	// harga sebelum memulai sesi.
-	consoles.Put("/:id", middleware.AdminOnly(), h.Console.Update)
-	consoles.Delete("/:id", middleware.AdminOnly(), h.Console.Delete)
+	consoles.Post("/", middleware.RequireWrite("console"), h.Console.Create)
+	// Harga & tarif konsol hanya boleh diubah user dengan izin console.write:
+	// mencegah kasir menurunkan harga sebelum memulai sesi.
+	consoles.Put("/:id", middleware.RequireWrite("console"), h.Console.Update)
+	consoles.Delete("/:id", middleware.RequireDelete("console"), h.Console.Delete)
 	consoles.Get("/:id/price", h.Console.PreviewPrice)
-	// TV Control — admin only
-	consoles.Post("/:id/wake", middleware.AdminOnly(), h.Notify.WakeConsole)
-	consoles.Post("/:id/sleep", middleware.AdminOnly(), h.Notify.SleepConsole)
-	consoles.Post("/:id/screensaver", middleware.AdminOnly(), h.Notify.ScreensaverConsole)
+	// TV Control
+	consoles.Post("/:id/wake", middleware.RequireWrite("console"), h.Notify.WakeConsole)
+	consoles.Post("/:id/sleep", middleware.RequireWrite("console"), h.Notify.SleepConsole)
+	consoles.Post("/:id/screensaver", middleware.RequireWrite("console"), h.Notify.ScreensaverConsole)
 	consoles.Get("/:id/tv-logs", h.Console.GetTvLogs) // log aktivitas TV
 
-	// Pairing perangkat TV — admin/superadmin
-	devices := protected.Group("/devices", middleware.AdminOnly())
+	// Pairing perangkat TV — butuh izin console.write
+	devices := protected.Group("/devices", middleware.RequireWrite("console"))
 	devices.Get("/pending", h.Device.Pending)
+	devices.Post("/resolve-code", h.Device.ResolveByCode)
+	devices.Post("/bind-by-code", h.Device.BindByCode)
+	devices.Delete("/console/:console_id", h.Device.UnbindConsole)
 	devices.Post("/:id/bind", h.Device.Bind)
 	devices.Delete("/:id", h.Device.Dismiss)
 
-	// Promo bonus waktu: baca aturan aktif untuk semua role, kelola hanya admin.
-	promoRules := protected.Group("/promo-bonuses")
-	promoRules.Get("/", middleware.AdminOnly(), h.Promo.List)
-	promoRules.Post("/", middleware.AdminOnly(), h.Promo.Create)
-	promoRules.Put("/:id", middleware.AdminOnly(), h.Promo.Update)
-	promoRules.Delete("/:id", middleware.AdminOnly(), h.Promo.Delete)
+	// Lisensi offline: status boleh dibaca semua user terautentikasi (untuk
+	// banner), tetapi aktivasi & riwayat HANYA superadmin/owner.
+	protected.Get("/license/status", h.License.Status)
+	protected.Get("/license/history", middleware.SuperAdminOnly(), h.License.History)
+	protected.Post("/license/activate", middleware.SuperAdminOnly(), h.License.Activate)
 
-	// Session routes
-	sessions := protected.Group("/sessions")
+	// Promo bonus waktu: lihat butuh menu Bonus Waktu, kelola butuh write/delete.
+	promoRules := protected.Group("/promo-bonuses", middleware.RequirePermission("promo_bonus"))
+	promoRules.Get("/", h.Promo.List)
+	promoRules.Post("/", middleware.RequireWrite("promo_bonus"), h.Promo.Create)
+	promoRules.Put("/:id", middleware.RequireWrite("promo_bonus"), h.Promo.Update)
+	promoRules.Delete("/:id", middleware.RequireDelete("promo_bonus"), h.Promo.Delete)
+
+	// Session routes — lihat butuh menu Rental, aksi butuh rental.write.
+	sessions := protected.Group("/sessions", middleware.RequirePermission("rental"))
 	sessions.Get("/", h.Session.GetAll)
 	sessions.Get("/active", h.Session.GetActive)
 	sessions.Get("/:id", h.Session.GetByID)
-	sessions.Post("/start", h.Session.Start)
-	sessions.Patch("/:id/end", h.Session.End)
-	sessions.Patch("/:id/cancel", h.Session.Cancel)
-	sessions.Post("/:id/extend", h.Session.Extend)            // tambah waktu sewa
-	sessions.Post("/:id/promo-bonus", h.Promo.ApplyToSession) // pakai bonus waktu promo
+	sessions.Post("/start", middleware.RequireWrite("rental"), h.Session.Start)
+	sessions.Patch("/:id/end", middleware.RequireWrite("rental"), h.Session.End)
+	sessions.Patch("/:id/cancel", middleware.RequireWrite("rental"), h.Session.Cancel)
+	sessions.Post("/:id/extend", middleware.RequireWrite("rental"), h.Session.Extend)            // tambah waktu sewa
+	sessions.Post("/:id/promo-bonus", middleware.RequireWrite("rental"), h.Promo.ApplyToSession) // pakai bonus waktu promo
 	sessions.Get("/:session_id/payment", h.Payment.GetBySession)
-	sessions.Get("/:session_id/payments", h.Payment.GetAllBySession)                        // SEMUA payment sesi (base + tiap extend) + ringkasan total
-	sessions.Post("/:session_id/payments/confirm-pending", h.Payment.ConfirmSessionPending) // lunasi semua payment pending sesi ini sekaligus + hitung kembalian gabungan
+	sessions.Get("/:session_id/payments", h.Payment.GetAllBySession)                                                           // SEMUA payment sesi (base + tiap extend) + ringkasan total
+	sessions.Post("/:session_id/payments/confirm-pending", middleware.RequireWrite("rental"), h.Payment.ConfirmSessionPending) // lunasi semua payment pending sesi ini sekaligus + hitung kembalian gabungan
 
-	// Customer routes — create & edit semua role, delete admin only
-	customers := protected.Group("/customers")
+	// Customer routes — lihat butuh menu Member, ubah/hapus sesuai izin.
+	customers := protected.Group("/customers", middleware.RequirePermission("member"))
 	customers.Get("/", h.Customer.GetAll)
 	customers.Get("/:id", h.Customer.GetByID)
-	customers.Post("/", h.Customer.Create)
-	customers.Put("/:id", h.Customer.Update)
-	customers.Delete("/:id", middleware.AdminOnly(), h.Customer.Delete)
-	customers.Post("/:id/membership", h.Customer.SellMembership)
+	customers.Post("/", middleware.RequireWrite("member"), h.Customer.Create)
+	customers.Put("/:id", middleware.RequireWrite("member"), h.Customer.Update)
+	customers.Delete("/:id", middleware.RequireDelete("member"), h.Customer.Delete)
+	customers.Post("/:id/membership", middleware.RequireWrite("member"), h.Customer.SellMembership)
 	customers.Get("/:id/loyalty", h.Customer.GetLoyalty)
 
 	// Payment routes
 	payments := protected.Group("/payments")
 	payments.Get("/pending", h.Payment.GetPendingExtensions) // list pending extend payments — HARUS sebelum /:id
 	payments.Get("/:id", h.Payment.GetByID)
-	payments.Post("/", h.Payment.Create)
-	payments.Patch("/:id/refund", middleware.AdminOnly(), h.Payment.Refund)
-	payments.Post("/:id/confirm", h.Payment.Confirm) // admin konfirmasi pembayaran extend
+	payments.Post("/", middleware.RequireWrite("rental"), h.Payment.Create)
+	payments.Patch("/:id/refund", middleware.RequireWrite("rental"), h.Payment.Refund)
+	payments.Post("/:id/confirm", middleware.RequireWrite("rental"), h.Payment.Confirm)
 
-	// Shift routes (admin & superadmin only)
-	shifts := protected.Group("/shifts", middleware.AdminOnly())
+	// Shift routes — bagian dari Manajemen User.
+	shifts := protected.Group("/shifts", middleware.RequirePermission("user_management"))
 	shifts.Get("/", h.Shift.GetAll)
 	shifts.Get("/:id", h.Shift.GetByID)
-	// Jadwal shift menentukan validasi jam kerja kasir: hanya admin yang boleh
-	// membuat/mengubah/menghapus, agar kasir tidak bisa memberi shift 24 jam
-	// untuk dirinya sendiri atau menghapus riwayat jam kerjanya.
-	shifts.Post("/", middleware.AdminOnly(), h.Shift.Create)
-	shifts.Put("/:id", middleware.AdminOnly(), h.Shift.Update)
-	shifts.Delete("/:id", middleware.AdminOnly(), h.Shift.Delete)
+	// Jadwal shift menentukan validasi jam kerja kasir: hanya user dengan izin
+	// user_management.write yang boleh mengubah, agar kasir tidak bisa memberi
+	// shift 24 jam untuk dirinya sendiri.
+	shifts.Post("/", middleware.RequireWrite("user_management"), h.Shift.Create)
+	shifts.Put("/:id", middleware.RequireWrite("user_management"), h.Shift.Update)
+	shifts.Delete("/:id", middleware.RequireDelete("user_management"), h.Shift.Delete)
 
 	// Shifts by user
-	protected.Get("/users/:user_id/shifts", middleware.AdminOnly(), h.Shift.GetByUser)
+	protected.Get("/users/:user_id/shifts",
+		middleware.RequirePermission("user_management"), h.Shift.GetByUser)
 
 	// User management routes
 	// Change password — semua user terautentikasi bisa (HARUS sebelum /:id)
 	protected.Patch("/users/change-password", h.User.ChangePassword)
 
-	users := protected.Group("/users", middleware.AdminOnly())
+	users := protected.Group("/users", middleware.RequirePermission("user_management"))
 	users.Get("/", h.User.GetAll)
 	users.Get("/:id", h.User.GetByID)
-	users.Post("/", h.User.Create)
-	users.Put("/:id", h.User.Update)
-	users.Delete("/:id", h.User.Delete)
-	// Change password — semua user terautentikasi bisa
-	protected.Patch("/users/change-password", h.User.ChangePassword)
+	users.Post("/", middleware.RequireWrite("user_management"), h.User.Create)
+	users.Put("/:id", middleware.RequireWrite("user_management"), h.User.Update)
+	users.Delete("/:id", middleware.RequireDelete("user_management"), h.User.Delete)
 
 	// Voucher routes — kode boleh dicek semua role (pelanggan menyerahkan kode),
 	// tetapi daftar seluruh voucher hanya admin agar kasir tidak bisa memanen kode
 	// diskon yang tidak seharusnya dipakai.
-	vouchers := protected.Group("/vouchers")
-	vouchers.Get("/", middleware.AdminOnly(), h.Voucher.GetAll)
-	vouchers.Get("/code/:code", h.Voucher.GetByCode)
-	vouchers.Get("/:id", middleware.AdminOnly(), h.Voucher.GetByID)
-	// Write operations: admin only
-	protected.Post("/vouchers", middleware.AdminOnly(), h.Voucher.Create)
-	protected.Put("/vouchers/:id", middleware.AdminOnly(), h.Voucher.Update)
-	protected.Patch("/vouchers/:id/toggle", middleware.AdminOnly(), h.Voucher.Toggle)
-	protected.Delete("/vouchers/:id", middleware.AdminOnly(), h.Voucher.Delete)
+	// Cek kode tetap terbuka untuk semua user terautentikasi (dipakai saat
+	// pelanggan menyerahkan kode), tanpa perlu akses menu Voucher. HARUS
+	// didaftarkan SEBELUM group /vouchers karena middleware group berlaku
+	// untuk seluruh path berprefix sama.
+	protected.Get("/vouchers/code/:code", h.Voucher.GetByCode)
 
-	// Discount rule routes — lihat boleh semua role, edit hanya admin
-	discounts := protected.Group("/discounts")
+	vouchers := protected.Group("/vouchers", middleware.RequirePermission("voucher"))
+	vouchers.Get("/", h.Voucher.GetAll)
+	vouchers.Get("/:id", h.Voucher.GetByID)
+	vouchers.Post("/", middleware.RequireWrite("voucher"), h.Voucher.Create)
+	vouchers.Put("/:id", middleware.RequireWrite("voucher"), h.Voucher.Update)
+	vouchers.Patch("/:id/toggle", middleware.RequireWrite("voucher"), h.Voucher.Toggle)
+	vouchers.Delete("/:id", middleware.RequireDelete("voucher"), h.Voucher.Delete)
+
+	// Discount rule routes — lihat butuh menu Diskon, ubah/hapus sesuai izin.
+	discounts := protected.Group("/discounts", middleware.RequirePermission("discount"))
 	discounts.Get("/", h.Discount.GetAll)
 	discounts.Get("/active", h.Discount.GetActive)
 	discounts.Get("/:id", h.Discount.GetByID)
-	// Write operations: admin only
-	protected.Post("/discounts", middleware.AdminOnly(), h.Discount.Create)
-	protected.Put("/discounts/:id", middleware.AdminOnly(), h.Discount.Update)
-	protected.Patch("/discounts/:id/toggle", middleware.AdminOnly(), h.Discount.Toggle)
-	protected.Delete("/discounts/:id", middleware.AdminOnly(), h.Discount.Delete)
+	discounts.Post("/", middleware.RequireWrite("discount"), h.Discount.Create)
+	discounts.Put("/:id", middleware.RequireWrite("discount"), h.Discount.Update)
+	discounts.Patch("/:id/toggle", middleware.RequireWrite("discount"), h.Discount.Toggle)
+	discounts.Delete("/:id", middleware.RequireDelete("discount"), h.Discount.Delete)
 
-	// Menu routes — semua role bisa kelola (create, edit, delete)
-	menus := protected.Group("/menus")
+	// Menu routes — lihat butuh menu Menu, ubah/hapus sesuai izin.
+	menus := protected.Group("/menus", middleware.RequirePermission("menu"))
 	menus.Get("/", h.Menu.GetAll)
 	menus.Get("/available", h.Menu.GetAvailable)
 	menus.Get("/category/:category", h.Menu.GetByCategory)
 	menus.Get("/:id", h.Menu.GetByID)
-	// Harga menu memengaruhi pendapatan makanan: hanya admin yang boleh
-	// membuat/mengubah/menghapus menu dan resepnya.
-	menus.Post("/", middleware.AdminOnly(), h.Menu.Create)
-	menus.Put("/:id", middleware.AdminOnly(), h.Menu.Update)
-	menus.Patch("/:id/toggle", middleware.AdminOnly(), h.Menu.Toggle)
-	menus.Delete("/:id", middleware.AdminOnly(), h.Menu.Delete)
-	menus.Put("/:id/ingredients", middleware.AdminOnly(), h.Ingredient.SetMenuIngredients)
+	// Harga menu memengaruhi pendapatan makanan: butuh izin menu.write/delete.
+	menus.Post("/", middleware.RequireWrite("menu"), h.Menu.Create)
+	menus.Put("/:id", middleware.RequireWrite("menu"), h.Menu.Update)
+	menus.Patch("/:id/toggle", middleware.RequireWrite("menu"), h.Menu.Toggle)
+	menus.Delete("/:id", middleware.RequireDelete("menu"), h.Menu.Delete)
+	menus.Put("/:id/ingredients", middleware.RequireWrite("menu"), h.Ingredient.SetMenuIngredients)
 	menus.Get("/:id/ingredients", h.Ingredient.ListMenuIngredients)
 
-	// Ingredient routes — bahan, resep, batch stok
-	ingredients := protected.Group("/ingredients")
+	// Ingredient routes — bahan, resep, batch stok (di bawah izin menu).
+	ingredients := protected.Group("/ingredients", middleware.RequirePermission("menu"))
 	ingredients.Get("/", h.Ingredient.GetAll)
 	ingredients.Get("/expired", h.Ingredient.GetExpired)    // HARUS sebelum /:id
 	ingredients.Get("/stock-log", h.Ingredient.GetStockLog) // HARUS sebelum /:id
-	ingredients.Post("/", middleware.AdminOnly(), h.Ingredient.Create)
+	ingredients.Post("/", middleware.RequireWrite("menu"), h.Ingredient.Create)
 	ingredients.Get("/:id", h.Ingredient.GetByID)
-	ingredients.Put("/:id", middleware.AdminOnly(), h.Ingredient.Update)
-	ingredients.Delete("/:id", middleware.AdminOnly(), h.Ingredient.Delete)
-	ingredients.Post("/:id/stock", middleware.AdminOnly(), h.Ingredient.AddStock)
+	ingredients.Put("/:id", middleware.RequireWrite("menu"), h.Ingredient.Update)
+	ingredients.Delete("/:id", middleware.RequireDelete("menu"), h.Ingredient.Delete)
+	ingredients.Post("/:id/stock", middleware.RequireWrite("menu"), h.Ingredient.AddStock)
 	ingredients.Get("/:id/stock", h.Ingredient.ListBatches)
-	ingredients.Put("/:id/components", middleware.AdminOnly(), h.Ingredient.SetComponents)
+	ingredients.Put("/:id/components", middleware.RequireWrite("menu"), h.Ingredient.SetComponents)
 	ingredients.Get("/:id/components", h.Ingredient.ListComponents)
 
-	// Food order routes — semua role bisa buat, lihat, update status & cancel; delete admin only
-	foodOrders := protected.Group("/food-orders")
+	// Food order routes — lihat butuh menu Pesanan, aksi sesuai izin.
+	foodOrders := protected.Group("/food-orders", middleware.RequirePermission("food_order"))
 	foodOrders.Get("/", h.FoodOrder.GetAll)
 	foodOrders.Get("/status", h.FoodOrder.GetByStatus)
 	foodOrders.Get("/:id", h.FoodOrder.GetByID)
-	foodOrders.Post("/", h.FoodOrder.Create)
-	foodOrders.Post("/price-preview", h.FoodOrder.GetPricePreview)
-	foodOrders.Patch("/:id/status", h.FoodOrder.UpdateStatus)
-	foodOrders.Patch("/:id/cancel", h.FoodOrder.Cancel)
-	foodOrders.Delete("/:id", middleware.AdminOnly(), h.FoodOrder.Delete)
+	foodOrders.Post("/", middleware.RequireWrite("food_order"), h.FoodOrder.Create)
+	foodOrders.Post("/price-preview", middleware.RequireWrite("food_order"), h.FoodOrder.GetPricePreview)
+	foodOrders.Patch("/:id/status", middleware.RequireWrite("food_order"), h.FoodOrder.UpdateStatus)
+	foodOrders.Patch("/:id/cancel", middleware.RequireWrite("food_order"), h.FoodOrder.Cancel)
+	foodOrders.Delete("/:id", middleware.RequireDelete("food_order"), h.FoodOrder.Delete)
 
 	// Food orders terhubung ke sesi PS
 	sessions.Get("/:session_id/food-orders", h.FoodOrder.GetBySession)

@@ -2,6 +2,7 @@ package handler
 
 import (
 	wsHandler "byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/license"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
@@ -18,11 +19,12 @@ type FoodOrderHandler struct {
 	validator *validator.Validator
 	db        *gorm.DB
 	hub       *wsHandler.Hub
+	license   *license.Service
 }
 
 // NewFoodOrderHandler membuat instance baru FoodOrderHandler
-func NewFoodOrderHandler(orderUC usecase.FoodOrderUseCase, v *validator.Validator, db *gorm.DB, hub *wsHandler.Hub) *FoodOrderHandler {
-	return &FoodOrderHandler{orderUC: orderUC, validator: v, db: db, hub: hub}
+func NewFoodOrderHandler(orderUC usecase.FoodOrderUseCase, v *validator.Validator, db *gorm.DB, hub *wsHandler.Hub, licenseSvc *license.Service) *FoodOrderHandler {
+	return &FoodOrderHandler{orderUC: orderUC, validator: v, db: db, hub: hub, license: licenseSvc}
 }
 
 // GetAll godoc
@@ -128,6 +130,13 @@ func (h *FoodOrderHandler) Create(c *fiber.Ctx) error {
 	}
 	if err := h.validator.ValidateStruct(req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
+	}
+
+	// Lisensi: blokir pesanan baru bila lisensi sudah berakhir.
+	if h.license != nil {
+		if err := h.license.EnsureCanStartBusiness(c.Context()); err != nil {
+			return response.Forbidden(c, err.Error())
+		}
 	}
 
 	order, err := h.orderUC.CreateOrder(c.Context(), req)

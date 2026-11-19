@@ -147,14 +147,17 @@ func (uc *authUseCase) RegisterUser(ctx context.Context, req *RegisterRequest) (
 
 	now := time.Now()
 	user := &entity.User{
-		ID:        uuid.New(),
-		Username:  req.Username,
-		Password:  string(hashedPassword),
-		FullName:  req.FullName,
-		Role:      req.Role,
-		IsActive:  true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:       uuid.New(),
+		Username: req.Username,
+		Password: string(hashedPassword),
+		FullName: req.FullName,
+		Role:     req.Role,
+		IsActive: true,
+		// Simpan default hak akses secara eksplisit, bukan mengandalkan
+		// fallback frontend / default kolom '[]'.
+		Permissions: marshalPermissions(entity.DefaultPermissionsForRole(req.Role)),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	if err := uc.userRepo.Create(ctx, user); err != nil {
@@ -162,4 +165,3 @@ func (uc *authUseCase) RegisterUser(ctx context.Context, req *RegisterRequest) (
 	}
 	return user, nil
 }
-

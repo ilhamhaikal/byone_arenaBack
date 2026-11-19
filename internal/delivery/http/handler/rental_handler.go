@@ -2,6 +2,7 @@ package handler
 
 import (
 	"byone-arena/internal/domain/entity"
+	"byone-arena/internal/license"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
@@ -16,10 +17,11 @@ import (
 type RentalHandler struct {
 	db        *gorm.DB
 	validator *validator.Validator
+	license   *license.Service
 }
 
-func NewRentalHandler(db *gorm.DB, v *validator.Validator) *RentalHandler {
-	return &RentalHandler{db: db, validator: v}
+func NewRentalHandler(db *gorm.DB, v *validator.Validator, licenseSvc *license.Service) *RentalHandler {
+	return &RentalHandler{db: db, validator: v, license: licenseSvc}
 }
 
 // ============== DAILY RENTAL ==============
@@ -49,6 +51,13 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 	}
 	if err := h.validator.ValidateStruct(&req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
+	}
+
+	// Lisensi: blokir rental harian baru bila lisensi sudah berakhir.
+	if h.license != nil {
+		if err := h.license.EnsureCanStartBusiness(c.Context()); err != nil {
+			return response.Forbidden(c, err.Error())
+		}
 	}
 
 	// Auto-fill dailyPrice dari console jika tidak diisi
@@ -165,6 +174,13 @@ func (h *RentalHandler) CreateBooking(c *fiber.Ctx) error {
 	}
 	if err := h.validator.ValidateStruct(&req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
+	}
+
+	// Lisensi: blokir booking baru bila lisensi sudah berakhir.
+	if h.license != nil {
+		if err := h.license.EnsureCanStartBusiness(c.Context()); err != nil {
+			return response.Forbidden(c, err.Error())
+		}
 	}
 
 	type spResult struct {

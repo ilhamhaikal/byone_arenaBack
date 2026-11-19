@@ -22,7 +22,13 @@ func (c *Config) ValidateRuntime() error {
 				"APP_ENV=production tidak diizinkan dari workspace development (%s). "+
 					"Gunakan APP_ENV=development (lihat scripts/run-dev.sh)", cwd)
 		}
-		if !strings.HasSuffix(c.DBName, "_prod") {
+		// Aturan nama database _prod hanya untuk deployment vendor
+		// (/opt/byone-arena) atau bila ENFORCE_PROD_DB=1. Instalasi klien
+		// (mis. C:\Program Files\...) boleh memakai nama database apa pun.
+		enforceProdDB := strings.HasPrefix(cwd, "/opt/byone-arena") ||
+			strings.EqualFold(os.Getenv("ENFORCE_PROD_DB"), "1") ||
+			strings.EqualFold(os.Getenv("ENFORCE_PROD_DB"), "true")
+		if enforceProdDB && !strings.HasSuffix(c.DBName, "_prod") {
 			return fmt.Errorf(
 				"APP_ENV=production tetapi DB_NAME=%q tidak berakhiran _prod", c.DBName)
 		}

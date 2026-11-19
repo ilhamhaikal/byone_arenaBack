@@ -2,6 +2,7 @@ package handler
 
 import (
 	"byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/license"
 	"byone-arena/internal/promo"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/audit"
@@ -33,11 +34,12 @@ type SessionHandler struct {
 	validator *validator.Validator
 	hub       *websocket.Hub
 	db        *gorm.DB
+	license   *license.Service
 }
 
 // NewSessionHandler membuat instance baru SessionHandler
-func NewSessionHandler(sessionUC usecase.SessionUseCase, v *validator.Validator, hub *websocket.Hub, db *gorm.DB) *SessionHandler {
-	return &SessionHandler{sessionUC: sessionUC, validator: v, hub: hub, db: db}
+func NewSessionHandler(sessionUC usecase.SessionUseCase, v *validator.Validator, hub *websocket.Hub, db *gorm.DB, licenseSvc *license.Service) *SessionHandler {
+	return &SessionHandler{sessionUC: sessionUC, validator: v, hub: hub, db: db, license: licenseSvc}
 }
 
 // GetAll godoc
@@ -121,6 +123,13 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 	}
 	if err := h.validator.ValidateStruct(req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
+	}
+
+	// Lisensi: blokir sesi baru bila sudah lewat masa tenggang.
+	if h.license != nil {
+		if err := h.license.EnsureCanStartBusiness(c.Context()); err != nil {
+			return response.Forbidden(c, err.Error())
+		}
 	}
 
 	// Validasi awal promo agar pengguna mendapat pesan jelas sebelum sesi dibuat.
