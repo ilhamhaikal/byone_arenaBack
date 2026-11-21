@@ -250,7 +250,7 @@ func (h *Hub) StartNotificationLoop() {
 					continue
 				}
 				var notifications []entity.TvNotification
-				h.db.Where("loop_enabled = ? AND is_active = ?", true, true).Find(&notifications)
+				h.db.Where("loop_enabled = ? AND is_active = ? AND auto_show = ?", true, true, true).Find(&notifications)
 				for _, n := range notifications {
 					last, exists := lastSent[n.ID]
 					interval := time.Duration(n.LoopInterval) * time.Second
@@ -263,6 +263,11 @@ func (h *Hub) StartNotificationLoop() {
 							"imageUrl": n.ImageURL, "priority": n.Priority,
 							"targetAll": n.TargetAll, "targetConsoleIds": n.TargetConsoleIDs,
 							"activeSessionsOnly": n.ActiveSessionsOnly,
+							"autoShow":           n.AutoShow,
+							"loopEnabled":        n.LoopEnabled,
+							"loopInterval":       n.LoopInterval,
+							"lastTriggeredAt":    n.LastTriggeredAt,
+							"targetConsoleType":  n.TargetConsoleType,
 						})
 						if !n.TargetAll {
 							for _, raw := range n.TargetConsoleIDs {

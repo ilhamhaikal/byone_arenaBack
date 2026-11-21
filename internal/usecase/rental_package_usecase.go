@@ -43,6 +43,7 @@ type StartWithPackageRequest struct {
 	PackageID    uuid.UUID  `json:"packageId"    validate:"required"`
 	CashReceived float64    `json:"cashReceived" validate:"omitempty,min=0"`
 	Notes        string     `json:"notes"`
+	CreatedBy    *uuid.UUID `json:"-"`
 }
 
 type rentalPackageUseCase struct {
@@ -104,7 +105,7 @@ func (uc *rentalPackageUseCase) Delete(ctx context.Context, id uuid.UUID) error 
 
 func (uc *rentalPackageUseCase) StartWithPackage(ctx context.Context, req *StartWithPackageRequest) (*StartSessionResponse, error) {
 	session, payment, err := uc.repo.StartSessionWithPackage(
-		ctx, req.ConsoleID, req.CustomerID, req.PackageID, req.CashReceived, req.Notes)
+		ctx, req.ConsoleID, req.CustomerID, req.PackageID, req.CashReceived, req.Notes, req.CreatedBy)
 	if err != nil {
 		return nil, err
 	}

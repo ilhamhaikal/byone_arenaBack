@@ -111,10 +111,18 @@ func (r *foodOrderRepository) Create(ctx context.Context, order *entity.FoodOrde
 			return parseStoredProcError(err)
 		}
 		// Metode pembayaran disimpan dalam transaksi yang sama dengan order.
-		return tx.Exec(
+		if err := tx.Exec(
 			"SELECT "+spname.Ident("SetFoodOrderPaymentMethod")+"(?::uuid, ?::varchar)",
 			result.OrderID, paymentmethod.Normalize(order.PaymentMethod),
-		).Error
+		).Error; err != nil {
+			return err
+		}
+		if order.CreatedBy != nil {
+			return tx.Model(&entity.FoodOrder{}).
+				Where("id = ?", result.OrderID).
+				Update("created_by", *order.CreatedBy).Error
+		}
+		return nil
 	})
 	if err != nil {
 		return err

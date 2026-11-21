@@ -32,9 +32,11 @@ type DailyRental struct {
 	Status         DailyRentalStatus `json:"status"        gorm:"not null;default:'active';size:20"`
 	Notes          string            `json:"notes,omitempty" gorm:"type:text"`
 	PaymentMethod  string            `json:"paymentMethod" gorm:"size:20;not null;default:'cash'"`
-	ReturnedAt     *time.Time        `json:"returnedAt,omitempty"`
-	CreatedAt      time.Time         `json:"createdAt"     gorm:"autoCreateTime"`
-	UpdatedAt      time.Time         `json:"updatedAt"     gorm:"autoUpdateTime"`
+	// CreatedBy = petugas yang membuat rental harian.
+	CreatedBy  *uuid.UUID `json:"createdBy,omitempty" gorm:"type:uuid;index"`
+	ReturnedAt *time.Time `json:"returnedAt,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"     gorm:"autoCreateTime"`
+	UpdatedAt  time.Time  `json:"updatedAt"     gorm:"autoUpdateTime"`
 
 	Console  *Console  `json:"console,omitempty"  gorm:"foreignKey:ConsoleID"`
 	Customer *Customer `json:"customer,omitempty" gorm:"foreignKey:CustomerID"`

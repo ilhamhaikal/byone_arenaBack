@@ -1,6 +1,10 @@
 package entity
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // ReportSummary adalah laporan komprehensif untuk periode tertentu
 type ReportSummary struct {
@@ -116,4 +120,77 @@ type ReportPaymentMethod struct {
 	Method string  `json:"method"`
 	Total  float64 `json:"total"`
 	Trx    int     `json:"trx"`
+}
+
+// StaffRevenueTotals ringkasan pendapatan per sumber untuk satu petugas/hari.
+type StaffRevenueTotals struct {
+	Rental      float64 `json:"rental"`
+	Food        float64 `json:"food"`
+	DailyRental float64 `json:"dailyRental"`
+	Membership  float64 `json:"membership"`
+	Game        float64 `json:"game"`
+	Total       float64 `json:"total"`
+
+	RentalTrx      int `json:"rentalTrx"`
+	FoodTrx        int `json:"foodTrx"`
+	DailyRentalTrx int `json:"dailyRentalTrx"`
+	MembershipTrx  int `json:"membershipTrx"`
+	GameTrx        int `json:"gameTrx"`
+	TotalTrx       int `json:"totalTrx"`
+}
+
+// StaffLoginSession satu sesi login–logout petugas.
+type StaffLoginSession struct {
+	LoginAt         time.Time  `json:"loginAt"`
+	LogoutAt        *time.Time `json:"logoutAt,omitempty"`
+	DurationMinutes int        `json:"durationMinutes"`
+	StillLoggedIn   bool       `json:"stillLoggedIn"`
+}
+
+// StaffReportDay laporan satu petugas pada satu tanggal.
+type StaffReportDay struct {
+	Date     string              `json:"date"`
+	Sessions []StaffLoginSession `json:"sessions"`
+	Revenue  StaffRevenueTotals  `json:"revenue"`
+}
+
+// StaffReportUser laporan lengkap satu petugas.
+type StaffReportUser struct {
+	UserID   *uuid.UUID         `json:"userId,omitempty"`
+	Username string             `json:"username"`
+	FullName string             `json:"fullName"`
+	Role     string             `json:"role"`
+	Days     []StaffReportDay   `json:"days"`
+	Totals   StaffRevenueTotals `json:"totals"`
+}
+
+// StaffReport laporan per petugas pada satu periode.
+type StaffReport struct {
+	Period      ReportPeriod      `json:"period"`
+	Staff       []StaffReportUser `json:"staff"`
+	Unknown     *StaffReportUser  `json:"unknown,omitempty"`
+	GeneratedAt time.Time         `json:"generatedAt"`
+}
+
+// StaffDailyRevenueRow baris mentah dari SP StaffDailyRevenue.
+type StaffDailyRevenueRow struct {
+	UserID             *uuid.UUID `gorm:"column:user_id"`
+	ReportDate         time.Time  `gorm:"column:report_date"`
+	RentalRevenue      float64    `gorm:"column:rental_revenue"`
+	FoodRevenue        float64    `gorm:"column:food_revenue"`
+	DailyRentalRevenue float64    `gorm:"column:daily_rental_revenue"`
+	MembershipRevenue  float64    `gorm:"column:membership_revenue"`
+	RentalTrx          int        `gorm:"column:rental_trx"`
+	FoodTrx            int        `gorm:"column:food_trx"`
+	DailyRentalTrx     int        `gorm:"column:daily_rental_trx"`
+	MembershipTrx      int        `gorm:"column:membership_trx"`
+}
+
+// StaffLoginRow baris mentah dari SP StaffLoginSessions.
+type StaffLoginRow struct {
+	UserID          uuid.UUID  `gorm:"column:user_id"`
+	LoginAt         time.Time  `gorm:"column:login_at"`
+	LogoutAt        *time.Time `gorm:"column:logout_at"`
+	DurationMinutes int        `gorm:"column:duration_minutes"`
+	StillLoggedIn   bool       `gorm:"column:still_logged_in"`
 }

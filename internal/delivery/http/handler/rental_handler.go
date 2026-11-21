@@ -95,6 +95,10 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 	}
 	var result spResult
 	method := normalizePaymentMethod(req.PaymentMethod)
+	var createdBy *uuid.UUID
+	if uid, ok := c.Locals("userID").(uuid.UUID); ok {
+		createdBy = &uid
+	}
 	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Raw(
 			fmt.Sprintf(`SELECT * FROM %s(?, ?, ?::DATE, ?::DATE, ?, ?, ?)`, spname.Ident("CreateDailyRental")),
@@ -103,10 +107,18 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 		).Scan(&result).Error; err != nil {
 			return err
 		}
-		return tx.Exec(
+		if err := tx.Exec(
 			"SELECT "+spname.Ident("SetDailyRentalPaymentMethod")+"(?::uuid, ?::varchar)",
 			result.RentalID, method,
-		).Error
+		).Error; err != nil {
+			return err
+		}
+		if createdBy != nil {
+			return tx.Model(&entity.DailyRental{}).
+				Where("id = ?", result.RentalID).
+				Update("created_by", *createdBy).Error
+		}
+		return nil
 	})
 	if err != nil {
 		return response.BadRequest(c, err.Error())

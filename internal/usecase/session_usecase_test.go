@@ -23,7 +23,7 @@ func (f *fakeSessionRepo) FindActiveByConsoleID(context.Context, uuid.UUID) (*en
 }
 
 func (f *fakeSessionRepo) CreateWithPayment(
-	_ context.Context, s *entity.Session, _ float64, _ string, _ int, _ int, _ string,
+	_ context.Context, s *entity.Session, _ float64, _ string, _ int, _ int, _ string, _ *uuid.UUID,
 ) (*entity.Payment, error) {
 	start := time.Date(2026, 11, 21, 7, 0, 0, 0, time.UTC)
 	end := start.Add(time.Duration(s.BookedDurationMinutes) * time.Minute)

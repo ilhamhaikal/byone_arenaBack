@@ -115,6 +115,10 @@ func (h *CustomerHandler) Create(c *fiber.Ctx) error {
 		if isCashless(req.PaymentMethod) {
 			cashValue = fmt.Sprintf("%.0f", paymentMethodSentinel)
 		}
+		var createdBy *uuid.UUID
+		if uid, ok := c.Locals("userID").(uuid.UUID); ok {
+			createdBy = &uid
+		}
 		// Gunakan fmt.Sprintf untuk inject numeric value langsung (hindari GORM encode issue)
 		err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
 			if err := tx.Raw(
@@ -123,7 +127,15 @@ func (h *CustomerHandler) Create(c *fiber.Ctx) error {
 			).Scan(&sp).Error; err != nil {
 				return err
 			}
-			return finalizePaymentMethod(tx, sp.PaymentID, req.PaymentMethod)
+			if err := finalizePaymentMethod(tx, sp.PaymentID, req.PaymentMethod); err != nil {
+				return err
+			}
+			if createdBy != nil {
+				return tx.Model(&entity.Payment{}).
+					Where("id = ?", sp.PaymentID).
+					Update("created_by", *createdBy).Error
+			}
+			return nil
 		})
 		if err != nil {
 			return response.InternalServerError(c,
@@ -258,6 +270,10 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 	}
 
 	var result spResult
+	var createdBy *uuid.UUID
+	if uid, ok := c.Locals("userID").(uuid.UUID); ok {
+		createdBy = &uid
+	}
 	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Raw(
 			fmt.Sprintf(`SELECT * FROM %s('%s'::UUID, %s::NUMERIC)`, spname.Ident("SellMembership"),
@@ -265,7 +281,15 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 		).Scan(&result).Error; err != nil {
 			return err
 		}
-		return finalizePaymentMethod(tx, result.PaymentID, req.PaymentMethod)
+		if err := finalizePaymentMethod(tx, result.PaymentID, req.PaymentMethod); err != nil {
+			return err
+		}
+		if createdBy != nil {
+			return tx.Model(&entity.Payment{}).
+				Where("id = ?", result.PaymentID).
+				Update("created_by", *createdBy).Error
+		}
+		return nil
 	})
 	if err != nil {
 		return response.BadRequest(c, err.Error())

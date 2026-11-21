@@ -39,8 +39,10 @@ type Payment struct {
 	AutoDiscountAmount float64       `json:"autoDiscountAmount" gorm:"not null;default:0;type:numeric(10,2)"`  // diskon otomatis (happy hour, member, dll)
 	TotalPayment       float64       `json:"totalPayment"       gorm:"not null;default:0;type:numeric(10,2)"`  // jumlah final dibayar = amount - discount - auto_discount
 	Notes              string        `json:"notes,omitempty"    gorm:"type:text"`
-	CreatedAt          time.Time     `json:"createdAt"       gorm:"autoCreateTime"`
-	UpdatedAt          time.Time     `json:"updatedAt"       gorm:"autoUpdateTime"`
+	// CreatedBy = petugas yang membuat/mencatat pembayaran.
+	CreatedBy *uuid.UUID `json:"createdBy,omitempty" gorm:"type:uuid;index"`
+	CreatedAt time.Time  `json:"createdAt"       gorm:"autoCreateTime"`
+	UpdatedAt time.Time  `json:"updatedAt"       gorm:"autoUpdateTime"`
 
 	// Relasi
 	Session *Session `json:"session,omitempty"  gorm:"foreignKey:SessionID"`

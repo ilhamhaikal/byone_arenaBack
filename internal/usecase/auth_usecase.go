@@ -46,6 +46,8 @@ type LoginResponse struct {
 	Token     string       `json:"token"`
 	ExpiresAt time.Time    `json:"expiresAt"`
 	User      *entity.User `json:"user"`
+	// JTI tidak dikirim ke client; dipakai handler untuk mencatat auth_sessions.
+	JTI string `json:"-"`
 }
 
 // RegisterRequest payload untuk mendaftarkan pengguna baru
@@ -87,14 +89,17 @@ func (uc *authUseCase) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 		}
 	}
 
-	expiresAt := time.Now().Add(time.Duration(uc.cfg.JWTExpireHours) * time.Hour)
+	now := time.Now()
+	expiresAt := now.Add(time.Duration(uc.cfg.JWTExpireHours) * time.Hour)
+	jti := uuid.NewString()
 	claims := &JWTClaims{
 		UserID:   user.ID,
 		Username: user.Username,
 		Role:     user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti,
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
 
@@ -108,6 +113,7 @@ func (uc *authUseCase) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 		Token:     tokenString,
 		ExpiresAt: expiresAt,
 		User:      user,
+		JTI:       jti,
 	}, nil
 }
 

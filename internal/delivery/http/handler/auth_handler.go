@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"time"
+
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/response"
@@ -71,7 +73,46 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Unauthorized(c, err.Error())
 	}
+
+	ua := c.Get("User-Agent")
+	if len(ua) > 255 {
+		ua = ua[:255]
+	}
+	session := &entity.AuthSession{
+		UserID:    result.User.ID,
+		JTI:       result.JTI,
+		LoginAt:   time.Now(),
+		ExpiresAt: &result.ExpiresAt,
+		IP:        c.IP(),
+		UserAgent: ua,
+	}
+	if err := h.db.WithContext(c.Context()).Create(session).Error; err != nil {
+		return response.InternalServerError(c, "Gagal mencatat sesi login")
+	}
+
 	return response.OK(c, "Login berhasil", result)
+}
+
+// Logout godoc
+// @Summary      Logout pengguna
+// @Description  Menutup auth session milik token yang sedang dipakai.
+// @Tags         Autentikasi
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  response.Response
+// @Router       /api/v1/auth/logout [post]
+func (h *AuthHandler) Logout(c *fiber.Ctx) error {
+	jti, _ := c.Locals("jti").(string)
+	if jti != "" {
+		now := time.Now()
+		h.db.WithContext(c.Context()).Model(&entity.AuthSession{}).
+			Where("jti = ? AND logout_at IS NULL", jti).
+			Updates(map[string]interface{}{
+				"logout_at":  now,
+				"updated_at": now,
+			})
+	}
+	return response.OK(c, "Logout berhasil", nil)
 }
 
 // Register godoc

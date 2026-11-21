@@ -56,11 +56,22 @@ func AuthMiddleware(cfg *config.Config, db *gorm.DB) fiber.Handler {
 			if !user.IsActive {
 				return response.Unauthorized(c, "Akun tidak aktif, hubungi administrator")
 			}
+			// Token yang sudah logout tidak boleh dipakai lagi. Token lama
+			// tanpa baris auth_sessions tetap diizinkan untuk kompatibilitas.
+			if claims.ID != "" {
+				var session entity.AuthSession
+				if err := db.WithContext(c.Context()).
+					Select("logout_at").Where("jti = ?", claims.ID).
+					First(&session).Error; err == nil && session.LogoutAt != nil {
+					return response.Unauthorized(c, "Sesi sudah logout, silakan login ulang")
+				}
+			}
 			// Gunakan data terbaru dari DB, bukan klaim token (role bisa berubah).
 			c.Locals("userID", user.ID)
 			c.Locals("username", user.Username)
 			c.Locals("role", user.Role)
 			c.Locals("mustChangePassword", user.MustChangePassword)
+			c.Locals("jti", claims.ID)
 
 			var perms []string
 			if strings.TrimSpace(user.Permissions) != "" {
@@ -92,7 +103,7 @@ func RequirePasswordChanged() fiber.Handler {
 			return c.Next()
 		}
 		switch c.Path() {
-		case "/api/v1/auth/me", "/api/v1/users/change-password":
+		case "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/users/change-password":
 			return c.Next()
 		default:
 			return response.ForbiddenCode(c, "PASSWORD_CHANGE_REQUIRED",

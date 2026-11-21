@@ -17,7 +17,7 @@ type fakeRentalPackageRepo struct {
 }
 
 func (f *fakeRentalPackageRepo) StartSessionWithPackage(
-	_ context.Context, consoleID uuid.UUID, customerID *uuid.UUID, _ uuid.UUID, _ float64, _ string,
+	_ context.Context, consoleID uuid.UUID, customerID *uuid.UUID, _ uuid.UUID, _ float64, _ string, _ *uuid.UUID,
 ) (*entity.Session, *entity.Payment, error) {
 	start := time.Date(2026, 11, 21, 8, 0, 0, 0, time.UTC)
 	end := start.Add(120 * time.Minute)

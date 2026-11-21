@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strings"
 	"time"
 
 	"byone-arena/internal/delivery/websocket"
@@ -14,6 +15,58 @@ import (
 	"gorm.io/gorm"
 )
 
+// notificationIsLoopEligible menentukan notifikasi yang boleh ikut loop
+// otomatis. Notifikasi manual (autoShow=false) tidak pernah ikut loop karena
+// hanya boleh tampil saat admin menekan "Tampilkan".
+func notificationIsLoopEligible(n *entity.TvNotification) bool {
+	return n != nil && n.IsActive && n.AutoShow && n.LoopEnabled
+}
+
+// normalizeNotificationRequest menyelaraskan input form dengan aturan bisnis.
+// Dipakai oleh create DAN update agar keduanya tidak pernah menyimpan nilai
+// yang tidak valid (mis. priority kosong atau interval 0).
+func normalizeNotificationRequest(req *usecase.CreateNotificationRequest) {
+	req.Title = strings.TrimSpace(req.Title)
+	req.Message = strings.TrimSpace(req.Message)
+	if req.ImageURL != nil {
+		trimmed := strings.TrimSpace(*req.ImageURL)
+		if trimmed == "" {
+			req.ImageURL = nil
+		} else {
+			req.ImageURL = &trimmed
+		}
+	}
+	switch req.Priority {
+	case entity.NotificationPriorityLow,
+		entity.NotificationPriorityNormal,
+		entity.NotificationPriorityHigh:
+		// sudah valid
+	default:
+		req.Priority = entity.NotificationPriorityNormal
+	}
+	if req.LoopInterval < 5 || req.LoopInterval > 3600 {
+		req.LoopInterval = 30
+	}
+	// Notifikasi manual tidak boleh looping: hanya tampil lewat tombol
+	// "Tampilkan", sehingga loop-nya tidak akan pernah terlihat.
+	if !req.AutoShow {
+		req.LoopEnabled = false
+	}
+}
+
+// validateNotificationTarget memastikan notifikasi bertarget selalu punya
+// minimal satu konsol. Tanpa ini, notifikasi bisa tersimpan tetapi tidak
+// pernah terkirim ke TV mana pun.
+func validateNotificationTarget(req *usecase.CreateNotificationRequest) string {
+	if req.TargetAll {
+		return ""
+	}
+	if len(req.ConsoleIDs) == 0 {
+		return "Pilih minimal satu konsol atau aktifkan 'Semua Konsol'"
+	}
+	return ""
+}
+
 // NotificationHandler menangani notifikasi TV dan kontrol TV
 type NotificationHandler struct {
 	db        *gorm.DB
@@ -25,6 +78,32 @@ type NotificationHandler struct {
 // NewNotificationHandler membuat instance baru
 func NewNotificationHandler(db *gorm.DB, hub *websocket.Hub, consoleUC usecase.ConsoleUseCase, v *validator.Validator) *NotificationHandler {
 	return &NotificationHandler{db: db, hub: hub, consoleUC: consoleUC, validator: v}
+}
+
+// reconcileNotificationLoop menjaga status loop tetap konsisten dengan data:
+// mulai saat ada notifikasi loop pertama yang aktif, dan berhenti otomatis
+// ketika tidak ada lagi notifikasi loop yang eligible. Loop yang sengaja
+// dihentikan admin TIDAK dinyalakan ulang oleh edit biasa.
+func (h *NotificationHandler) reconcileNotificationLoop(wasEligible, nowEligible bool) {
+	if nowEligible && !wasEligible {
+		h.hub.StartNotificationLoop()
+		return
+	}
+	if wasEligible && !nowEligible {
+		h.stopLoopIfNoEligibleNotification()
+	}
+}
+
+// stopLoopIfNoEligibleNotification menghentikan loop hanya jika benar-benar
+// tidak ada notifikasi loop aktif yang tersisa.
+func (h *NotificationHandler) stopLoopIfNoEligibleNotification() {
+	var count int64
+	h.db.Model(&entity.TvNotification{}).
+		Where("loop_enabled = ? AND is_active = ? AND auto_show = ?", true, true, true).
+		Count(&count)
+	if count == 0 {
+		h.hub.StopNotificationLoop()
+	}
 }
 
 // --- NOTIFICATION CRUD ---
@@ -43,7 +122,9 @@ func (h *NotificationHandler) GetAllNotifications(c *fiber.Ctx) error {
 	if c.Query("active") == "true" {
 		query = query.Where("is_active = ?", true)
 	}
-	query.Find(&list)
+	if err := query.Find(&list).Error; err != nil {
+		return response.InternalServerError(c, "Gagal mengambil data notifikasi")
+	}
 	return response.OK(c, "Data notifikasi berhasil diambil", list)
 }
 
@@ -61,10 +142,19 @@ func (h *NotificationHandler) CreateNotification(c *fiber.Ctx) error {
 	if err := c.BodyParser(req); err != nil {
 		return response.BadRequest(c, "Format request tidak valid")
 	}
+	normalizeNotificationRequest(req)
 	if err := h.validator.ValidateStruct(req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
+	if msg := validateNotificationTarget(req); msg != "" {
+		return response.BadRequest(c, msg)
+	}
 
+	targetConsoleIDs := req.ConsoleIDs
+	if req.TargetAll {
+		// Notifikasi global tidak perlu menyimpan target lama.
+		targetConsoleIDs = []string{}
+	}
 	n := &entity.TvNotification{
 		ID:                 uuid.New(),
 		Title:              req.Title,
@@ -74,21 +164,25 @@ func (h *NotificationHandler) CreateNotification(c *fiber.Ctx) error {
 		LoopEnabled:        req.LoopEnabled,
 		LoopInterval:       req.LoopInterval,
 		TargetAll:          req.TargetAll,
-		TargetConsoleIDs:   req.ConsoleIDs,
+		TargetConsoleIDs:   targetConsoleIDs,
 		ActiveSessionsOnly: req.ActiveSessionsOnly,
 		AutoShow:           req.AutoShow,
+		// Eksplisit true supaya response create tidak bergantung pada
+		// default kolom DB (sebelumnya response bisa tampil "Nonaktif").
+		IsActive: true,
 	}
 
 	if err := h.db.Create(n).Error; err != nil {
 		return response.InternalServerError(c, "Gagal membuat notifikasi")
 	}
-	// Notifikasi manual (autoShow=false) TIDAK dikirim saat dibuat. Admin
-	// menampilkannya lewat tombol "Tampilkan" (POST /notifications/:id/show).
-	if req.AutoShow && !req.LoopEnabled {
+	// Notifikasi otomatis non-loop langsung dikirim sekali. Notifikasi loop
+	// akan dikirim oleh loop (maksimal 1 detik kemudian), sehingga tidak
+	// dikirim dua kali berturut-turut saat dibuat.
+	if n.AutoShow && !n.LoopEnabled {
 		h.hub.BroadcastTVNotification(n)
 	}
-	// Jika loopEnabled, notification loop akan otomatis mengirimkannya
-	if req.LoopEnabled && !h.hub.IsNotificationRunning() {
+	// Loop hanya dimulai untuk notifikasi yang benar-benar eligible.
+	if notificationIsLoopEligible(n) && !h.hub.IsNotificationRunning() {
 		h.hub.StartNotificationLoop()
 	}
 	return response.Created(c, "Notifikasi berhasil dibuat", n)
@@ -118,6 +212,15 @@ func (h *NotificationHandler) UpdateNotification(c *fiber.Ctx) error {
 	if err := c.BodyParser(req); err != nil {
 		return response.BadRequest(c, "Format request tidak valid")
 	}
+	normalizeNotificationRequest(req)
+	if err := h.validator.ValidateStruct(req); err != nil {
+		return response.BadRequest(c, validator.FormatError(err))
+	}
+	if msg := validateNotificationTarget(req); msg != "" {
+		return response.BadRequest(c, msg)
+	}
+
+	wasLoopEligible := notificationIsLoopEligible(&n)
 
 	n.Title = req.Title
 	n.Message = req.Message
@@ -126,18 +229,37 @@ func (h *NotificationHandler) UpdateNotification(c *fiber.Ctx) error {
 	n.LoopEnabled = req.LoopEnabled
 	n.LoopInterval = req.LoopInterval
 	n.TargetAll = req.TargetAll
-	n.TargetConsoleIDs = req.ConsoleIDs
 	n.ActiveSessionsOnly = req.ActiveSessionsOnly
 	n.AutoShow = req.AutoShow
+	n.UpdatedAt = time.Now()
+	if req.TargetAll {
+		n.TargetConsoleIDs = entity.JSONBArray{}
+	} else {
+		n.TargetConsoleIDs = req.ConsoleIDs
+	}
 
-	if err := h.db.Save(&n).Error; err != nil {
+	// Jangan pernah menulis is_active dari form edit. Status aktif hanya
+	// diubah lewat endpoint toggle / tombol Tampilkan.
+	updates := map[string]interface{}{
+		"title":                n.Title,
+		"message":              n.Message,
+		"image_url":            n.ImageURL,
+		"priority":             n.Priority,
+		"loop_enabled":         n.LoopEnabled,
+		"loop_interval":        n.LoopInterval,
+		"target_all":           n.TargetAll,
+		"target_console_ids":   n.TargetConsoleIDs,
+		"active_sessions_only": n.ActiveSessionsOnly,
+		"auto_show":            n.AutoShow,
+		"updated_at":           n.UpdatedAt,
+	}
+	if err := h.db.Model(&entity.TvNotification{}).
+		Where("id = ?", id).
+		Updates(updates).Error; err != nil {
 		return response.InternalServerError(c, "Gagal update notifikasi")
 	}
 
-	// Auto-start loop jika di-enable
-	if n.LoopEnabled && n.IsActive && !h.hub.IsNotificationRunning() {
-		h.hub.StartNotificationLoop()
-	}
+	h.reconcileNotificationLoop(wasLoopEligible, notificationIsLoopEligible(&n))
 	return response.OK(c, "Notifikasi berhasil diupdate", n)
 }
 
@@ -154,8 +276,23 @@ func (h *NotificationHandler) DeleteNotification(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, "Format ID tidak valid")
 	}
-	if err := h.db.Delete(&entity.TvNotification{}, "id = ?", id).Error; err != nil {
+	var n entity.TvNotification
+	if result := h.db.First(&n, "id = ?", id); result.Error != nil {
+		return response.NotFound(c, "Notifikasi tidak ditemukan")
+	}
+	wasLoopEligible := notificationIsLoopEligible(&n)
+
+	result := h.db.Delete(&entity.TvNotification{}, "id = ?", id)
+	if result.Error != nil {
 		return response.InternalServerError(c, "Gagal menghapus notifikasi")
+	}
+	if result.RowsAffected == 0 {
+		return response.NotFound(c, "Notifikasi tidak ditemukan")
+	}
+	// Jika yang dihapus adalah satu-satunya notifikasi loop, hentikan loop
+	// supaya UI tidak menampilkan "Looping berjalan" tanpa isi.
+	if wasLoopEligible {
+		h.stopLoopIfNoEligibleNotification()
 	}
 	return response.OK(c, "Notifikasi berhasil dihapus", nil)
 }
@@ -177,15 +314,28 @@ func (h *NotificationHandler) ToggleNotification(c *fiber.Ctx) error {
 	if result := h.db.First(&n, "id = ?", id); result.Error != nil {
 		return response.NotFound(c, "Notifikasi tidak ditemukan")
 	}
+	wasLoopEligible := notificationIsLoopEligible(&n)
+
+	now := time.Now()
 	n.IsActive = !n.IsActive
-	h.db.Save(&n)
+	n.UpdatedAt = now
+	if err := h.db.Model(&entity.TvNotification{}).
+		Where("id = ?", n.ID).
+		Updates(map[string]interface{}{
+			"is_active":  n.IsActive,
+			"updated_at": now,
+		}).Error; err != nil {
+		return response.InternalServerError(c, "Gagal mengubah status notifikasi")
+	}
+	h.reconcileNotificationLoop(wasLoopEligible, notificationIsLoopEligible(&n))
 	return response.OK(c, "Status notifikasi diubah", n)
 }
 
 // ShowNotification godoc
 // @Summary      Tampilkan notifikasi sekarang (manual)
 // @Description  Memicu notifikasi manual agar muncul sekali di TV sesuai target.
-// Klien menyimpan waktu trigger ini sehingga pesan tidak muncul berulang.
+// Hanya berlaku untuk notifikasi yang sedang aktif. Klien menyimpan waktu
+// trigger ini sehingga pesan tidak muncul berulang.
 // @Tags         Notifikasi TV
 // @Produce      json
 // @Security     BearerAuth
@@ -201,11 +351,24 @@ func (h *NotificationHandler) ShowNotification(c *fiber.Ctx) error {
 	if result := h.db.First(&n, "id = ?", id); result.Error != nil {
 		return response.NotFound(c, "Notifikasi tidak ditemukan")
 	}
+	if !n.IsActive {
+		return response.BadRequest(c,
+			"Notifikasi sedang nonaktif. Aktifkan notifikasi terlebih dahulu untuk menampilkannya")
+	}
+	if !n.TargetAll && len(n.TargetConsoleIDs) == 0 {
+		return response.BadRequest(c,
+			"Notifikasi tidak memiliki target konsol. Edit dan pilih konsol tujuan terlebih dahulu")
+	}
 
 	now := time.Now()
-	n.IsActive = true
 	n.LastTriggeredAt = &now
-	if err := h.db.Save(&n).Error; err != nil {
+	n.UpdatedAt = now
+	if err := h.db.Model(&entity.TvNotification{}).
+		Where("id = ?", n.ID).
+		Updates(map[string]interface{}{
+			"last_triggered_at": now,
+			"updated_at":        now,
+		}).Error; err != nil {
 		return response.InternalServerError(c, "Gagal menampilkan notifikasi")
 	}
 
@@ -250,7 +413,9 @@ func (h *NotificationHandler) StopLoop(c *fiber.Ctx) error {
 func (h *NotificationHandler) LoopStatus(c *fiber.Ctx) error {
 	running := h.hub.IsNotificationRunning()
 	var activeCount int64
-	h.db.Model(&entity.TvNotification{}).Where("loop_enabled = ? AND is_active = ?", true, true).Count(&activeCount)
+	h.db.Model(&entity.TvNotification{}).
+		Where("loop_enabled = ? AND is_active = ? AND auto_show = ?", true, true, true).
+		Count(&activeCount)
 	return response.OK(c, "Status loop notifikasi", fiber.Map{
 		"running":                 running,
 		"activeLoopNotifications": activeCount,

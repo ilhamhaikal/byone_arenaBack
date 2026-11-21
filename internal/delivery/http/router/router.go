@@ -203,6 +203,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 
 	// Profil pemilik token — dipakai frontend untuk memvalidasi sesi.
 	protected.Get("/auth/me", h.Auth.Me)
+	protected.Post("/auth/logout", h.Auth.Logout)
 
 	// Audit trail aksi sensitif — admin & superadmin.
 	protected.Get("/audit-logs", middleware.AdminOnly(), h.Audit.List)
@@ -214,6 +215,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	// Report routes — butuh akses menu Laporan
 	reports := protected.Group("/reports", middleware.RequirePermission("report"))
 	reports.Get("/summary", h.Report.GetSummary)
+	reports.Get("/staff", middleware.AdminOnly(), h.Report.GetStaffReport)
 	reports.Get("/promo-bonus", h.Promo.PromoReport)
 
 	// Capital routes (pembukuan modal awal) — admin & superadmin only

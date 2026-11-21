@@ -20,7 +20,7 @@ type SessionRepository interface {
 	// CreateWithPayment membuat sesi + pembayaran pre-pay dalam satu transaksi atomik.
 	// useTimeBankMinutes & redeemPointUnits opsional (0 = tidak dipakai) — hanya berlaku untuk member.
 	// Mengembalikan entitas Payment yang sudah terisi (amount, diskon, kembalian, dll).
-	CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string, useTimeBankMinutes int, redeemPointUnits int, paymentMethod string) (*entity.Payment, error)
+	CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string, useTimeBankMinutes int, redeemPointUnits int, paymentMethod string, createdBy *uuid.UUID) (*entity.Payment, error)
 	// AddSetupGrace menggeser start_time dan end_scheduled_at untuk memberi
 	// waktu persiapan konsol di awal sesi, tanpa mengubah menit berbayar/harga.
 	AddSetupGrace(ctx context.Context, id uuid.UUID, minutes int) (*entity.Session, error)

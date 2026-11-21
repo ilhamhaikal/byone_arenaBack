@@ -102,14 +102,29 @@ type packageSessionRow struct {
 	PackageName      string     `gorm:"column:package_name"`
 }
 
-func (r *rentalPackageRepository) StartSessionWithPackage(ctx context.Context, consoleID uuid.UUID, customerID *uuid.UUID, packageID uuid.UUID, cashReceived float64, notes string) (*entity.Session, *entity.Payment, error) {
+func (r *rentalPackageRepository) StartSessionWithPackage(ctx context.Context, consoleID uuid.UUID, customerID *uuid.UUID, packageID uuid.UUID, cashReceived float64, notes string, createdBy *uuid.UUID) (*entity.Session, *entity.Payment, error) {
 	var res packageSessionRow
-	tx := r.db.WithContext(ctx).Raw(
-		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?, ?)", spname.Ident("StartSessionWithPackage")),
-		consoleID, customerID, packageID, cashReceived, notes,
-	).Scan(&res)
-	if tx.Error != nil {
-		return nil, nil, parseStoredProcError(tx.Error)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?, ?)", spname.Ident("StartSessionWithPackage")),
+			consoleID, customerID, packageID, cashReceived, notes,
+		).Scan(&res).Error; err != nil {
+			return parseStoredProcError(err)
+		}
+		if createdBy != nil {
+			if err := tx.Model(&entity.Session{}).
+				Where("id = ?", res.SessionID).
+				Update("created_by", *createdBy).Error; err != nil {
+				return err
+			}
+			return tx.Model(&entity.Payment{}).
+				Where("id = ?", res.PaymentID).
+				Update("created_by", *createdBy).Error
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 
 	var startTime time.Time

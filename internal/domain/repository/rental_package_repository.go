@@ -19,5 +19,5 @@ type RentalPackageRepository interface {
 	List(ctx context.Context, includeInactive bool) ([]*entity.RentalPackage, error)
 	Save(ctx context.Context, pkg *entity.RentalPackage, items []RentalPackageItemInput) (uuid.UUID, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	StartSessionWithPackage(ctx context.Context, consoleID uuid.UUID, customerID *uuid.UUID, packageID uuid.UUID, cashReceived float64, notes string) (*entity.Session, *entity.Payment, error)
+	StartSessionWithPackage(ctx context.Context, consoleID uuid.UUID, customerID *uuid.UUID, packageID uuid.UUID, cashReceived float64, notes string, createdBy *uuid.UUID) (*entity.Session, *entity.Payment, error)
 }

@@ -27,8 +27,10 @@ type FoodOrder struct {
 	DiscountAmount float64     `json:"discountAmount" gorm:"not null;default:0;type:numeric(10,2)"`
 	Notes          string      `json:"notes,omitempty" gorm:"type:text"`
 	PaymentMethod  string      `json:"paymentMethod" gorm:"size:20;not null;default:'cash'"`
-	CreatedAt      time.Time   `json:"createdAt"   gorm:"autoCreateTime"`
-	UpdatedAt      time.Time   `json:"updatedAt"   gorm:"autoUpdateTime"`
+	// CreatedBy = petugas yang membuat pesanan (untuk laporan per petugas).
+	CreatedBy *uuid.UUID `json:"createdBy,omitempty" gorm:"type:uuid;index"`
+	CreatedAt time.Time  `json:"createdAt"   gorm:"autoCreateTime"`
+	UpdatedAt time.Time  `json:"updatedAt"   gorm:"autoUpdateTime"`
 
 	// Relasi
 	Session  *Session         `json:"session,omitempty"  gorm:"foreignKey:SessionID"`

@@ -88,7 +88,15 @@ func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment)
 		).Scan(&result).Error; err != nil {
 			return parseStoredProcError(err)
 		}
-		return paymentmethod.Finalize(tx, result.PaymentID, string(payment.PaymentMethod))
+		if err := paymentmethod.Finalize(tx, result.PaymentID, string(payment.PaymentMethod)); err != nil {
+			return err
+		}
+		if payment.CreatedBy != nil {
+			return tx.Model(&entity.Payment{}).
+				Where("id = ?", result.PaymentID).
+				Update("created_by", *payment.CreatedBy).Error
+		}
+		return nil
 	})
 	if err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // RentalPackageHandler menangani HTTP request untuk paket rental.
@@ -15,11 +16,12 @@ type RentalPackageHandler struct {
 	uc        usecase.RentalPackageUseCase
 	validator *validator.Validator
 	license   *license.Service
+	db        *gorm.DB
 }
 
 // NewRentalPackageHandler membuat instance baru RentalPackageHandler
-func NewRentalPackageHandler(uc usecase.RentalPackageUseCase, v *validator.Validator, licenseSvc *license.Service) *RentalPackageHandler {
-	return &RentalPackageHandler{uc: uc, validator: v, license: licenseSvc}
+func NewRentalPackageHandler(uc usecase.RentalPackageUseCase, v *validator.Validator, licenseSvc *license.Service, db *gorm.DB) *RentalPackageHandler {
+	return &RentalPackageHandler{uc: uc, validator: v, license: licenseSvc, db: db}
 }
 
 // List godoc
@@ -97,6 +99,9 @@ func (h *RentalPackageHandler) Start(c *fiber.Ctx) error {
 	if err := h.validator.ValidateStruct(req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
+	if uid, ok := c.Locals("userID").(uuid.UUID); ok {
+		req.CreatedBy = &uid
+	}
 	if h.license != nil {
 		if err := h.license.EnsureCanStartBusiness(c.Context()); err != nil {
 			return response.Forbidden(c, err.Error())
@@ -106,5 +111,10 @@ func (h *RentalPackageHandler) Start(c *fiber.Ctx) error {
 	if err != nil {
 		return response.BadRequest(c, err.Error())
 	}
+
+	// Sesi paket adalah sesi baru: bersihkan notifikasi sistem dari sesi
+	// sebelumnya agar tidak muncul kembali.
+	deactivateSessionTvNotifications(h.db.WithContext(c.Context()), req.ConsoleID)
+
 	return response.Created(c, "Sesi paket berhasil dimulai", result)
 }

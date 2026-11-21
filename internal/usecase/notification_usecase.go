@@ -9,10 +9,10 @@ type CreateNotificationRequest struct {
 	ImageURL     *string                     `json:"imageUrl"     validate:"omitempty,url" example:"https://example.com/promo.jpg"`
 	Priority     entity.NotificationPriority `json:"priority"     validate:"omitempty,oneof=low normal high" example:"normal"`
 	LoopEnabled  bool                        `json:"loopEnabled"  example:"false"`
-	LoopInterval int                         `json:"loopInterval" validate:"omitempty,gte=5" example:"30"`
+	LoopInterval int                         `json:"loopInterval" validate:"omitempty,gte=5,lte=3600" example:"30"`
 	TargetAll    bool                        `json:"targetAll"    example:"true"`
 	// ConsoleIDs — daftar UUID konsol yang ditarget (jika targetAll=false)
-	ConsoleIDs []string `json:"consoleIds"         example:"[\"bd7edb34-...\",\"b49b20d9-...\"]"`
+	ConsoleIDs []string `json:"consoleIds" validate:"omitempty,dive,uuid" example:"[\"bd7edb34-...\",\"b49b20d9-...\"]"`
 	// ActiveSessionsOnly — hanya kirim ke konsol dengan sesi aktif
 	ActiveSessionsOnly bool `json:"activeSessionsOnly"  example:"false"`
 	// AutoShow — tampil otomatis di TV. Default false untuk notifikasi buatan

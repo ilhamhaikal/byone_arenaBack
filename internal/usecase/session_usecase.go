@@ -58,6 +58,8 @@ type StartSessionRequest struct {
 	UsePromoBonus bool `json:"usePromoBonus" example:"false"`
 	// Metode pembayaran: cash (default), qris, atau transfer.
 	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer" example:"cash"`
+	// CreatedBy diisi server dari token, bukan client.
+	CreatedBy *uuid.UUID `json:"-"`
 }
 
 // StartSessionResponse respons setelah memulai sesi — berisi data sesi dan pembayaran lunas
@@ -121,7 +123,7 @@ func (uc *sessionUseCase) StartSession(ctx context.Context, req *StartSessionReq
 	}
 
 	// Buat sesi + pembayaran di depan dalam satu transaksi atomik
-	payment, err := uc.sessionRepo.CreateWithPayment(ctx, session, req.CashReceived, req.VoucherCode, req.UseTimeBankMinutes, req.RedeemPointUnits, req.PaymentMethod)
+	payment, err := uc.sessionRepo.CreateWithPayment(ctx, session, req.CashReceived, req.VoucherCode, req.UseTimeBankMinutes, req.RedeemPointUnits, req.PaymentMethod, req.CreatedBy)
 	if err != nil {
 		return nil, err
 	}

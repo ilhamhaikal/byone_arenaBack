@@ -135,7 +135,7 @@ func (r *sessionRepository) Create(ctx context.Context, session *entity.Session)
 // CreateWithPayment menggunakan byoneStartSessionWithPayment:
 // membuat sesi + pembayaran di depan dalam satu transaksi atomik.
 // useTimeBankMinutes & redeemPointUnits opsional (0 = tidak dipakai) — hanya berlaku untuk member.
-func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string, useTimeBankMinutes int, redeemPointUnits int, paymentMethod string) (*entity.Payment, error) {
+func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string, useTimeBankMinutes int, redeemPointUnits int, paymentMethod string, createdBy *uuid.UUID) (*entity.Payment, error) {
 	type spResult struct {
 		// sesi
 		SessionID           uuid.UUID  `gorm:"column:session_id"`
@@ -178,7 +178,22 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 		).Scan(&result).Error; err != nil {
 			return parseStoredProcError(err)
 		}
-		return paymentmethod.Finalize(tx, result.PaymentID, paymentMethod)
+		if err := paymentmethod.Finalize(tx, result.PaymentID, paymentMethod); err != nil {
+			return err
+		}
+		if createdBy != nil {
+			if err := tx.Model(&entity.Session{}).
+				Where("id = ?", result.SessionID).
+				Update("created_by", *createdBy).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&entity.Payment{}).
+				Where("id = ?", result.PaymentID).
+				Update("created_by", *createdBy).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err

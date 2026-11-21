@@ -36,6 +36,12 @@ func FormatError(err error) string {
 				return "Field '" + e.Field() + "' harus salah satu dari: " + e.Param()
 			case "gt":
 				return "Field '" + e.Field() + "' harus lebih besar dari " + e.Param()
+			case "gte":
+				return "Field '" + e.Field() + "' minimal " + e.Param()
+			case "lte":
+				return "Field '" + e.Field() + "' maksimal " + e.Param()
+			case "uuid":
+				return "Field '" + e.Field() + "' berisi ID yang tidak valid"
 			}
 		}
 		return err.Error()

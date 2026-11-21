@@ -169,7 +169,7 @@ func main() {
 	go func() {
 		time.Sleep(2 * time.Second) // tunggu DB ready
 		var count int64
-		db.Model(&entity.TvNotification{}).Where("loop_enabled = ? AND is_active = ?", true, true).Count(&count)
+		db.Model(&entity.TvNotification{}).Where("loop_enabled = ? AND is_active = ? AND auto_show = ?", true, true, true).Count(&count)
 		if count > 0 {
 			hub.StartNotificationLoop()
 			log.Info("Notification loop auto-started", zap.Int64("active_notifications", count))
@@ -223,9 +223,9 @@ func main() {
 		Ingredient:    handler.NewIngredientHandler(ingredientUC, validate),
 		FoodOrder:     handler.NewFoodOrderHandler(foodOrderUC, validate, db, hub, licenseSvc),
 		Capital:       handler.NewCapitalHandler(capitalUC, validate),
-		RentalPackage: handler.NewRentalPackageHandler(rentalPackageUC, validate, licenseSvc),
+		RentalPackage: handler.NewRentalPackageHandler(rentalPackageUC, validate, licenseSvc, db),
 		Dashboard:     handler.NewDashboardHandler(paymentRepo, db),
-		Report:        handler.NewReportHandler(paymentRepo),
+		Report:        handler.NewReportHandler(paymentRepo, db),
 		Notify:        handler.NewNotificationHandler(db, hub, consoleUC, validate),
 		Rental:        handler.NewRentalHandler(db, validate, licenseSvc),
 		Settings:      handler.NewSettingsHandler(db, validate),

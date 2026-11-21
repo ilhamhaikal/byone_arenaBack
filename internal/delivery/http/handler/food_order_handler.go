@@ -131,6 +131,9 @@ func (h *FoodOrderHandler) Create(c *fiber.Ctx) error {
 	if err := h.validator.ValidateStruct(req); err != nil {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
+	if uid, ok := c.Locals("userID").(uuid.UUID); ok {
+		req.CreatedBy = &uid
+	}
 
 	// Lisensi: blokir pesanan baru bila lisensi sudah berakhir.
 	if h.license != nil {

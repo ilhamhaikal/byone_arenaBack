@@ -50,6 +50,8 @@ type CreateFoodOrderRequest struct {
 	// Metode pembayaran: cash (default), qris, transfer.
 	PaymentMethod string                 `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 	Items         []FoodOrderItemRequest `json:"items" validate:"required,min=1,dive"`
+	// CreatedBy diisi server dari token, bukan dari client.
+	CreatedBy *uuid.UUID `json:"-"`
 }
 
 // UpdateOrderStatusRequest payload untuk update status pesanan
@@ -107,6 +109,7 @@ func (uc *foodOrderUseCase) CreateOrder(ctx context.Context, req *CreateFoodOrde
 		CustomerID:    req.CustomerID,
 		Notes:         req.Notes,
 		PaymentMethod: req.PaymentMethod,
+		CreatedBy:     req.CreatedBy,
 		// DiscountAmount sengaja tidak diisi dari client; SP CreateFoodOrder
 		// menghitungnya dari aturan diskon aktif.
 	}

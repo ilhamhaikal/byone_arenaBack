@@ -46,6 +46,24 @@ func NewSessionHandler(sessionUC usecase.SessionUseCase, v *validator.Validator,
 	return &SessionHandler{sessionUC: sessionUC, validator: v, hub: hub, db: db, license: licenseSvc}
 }
 
+// deactivateSessionTvNotifications menonaktifkan notifikasi sistem/transient
+// milik satu konsol. Notifikasi tetap tersimpan sebagai riwayat, tetapi tidak
+// akan muncul lagi saat sesi baru dimulai. Notifikasi buatan admin (promo/
+// himbauan) tidak termasuk karena judulnya berbeda.
+//
+// Seluruh logika query berada di stored procedure
+// "__SP__DeactivateSessionTvNotifications" (migrasi 000047). Jangan menambah
+// raw SQL di handler: perbaikan aturan query cukup lewat CREATE OR REPLACE
+// FUNCTION di migrasi baru, tanpa build ulang backend.
+func deactivateSessionTvNotifications(db *gorm.DB, consoleID uuid.UUID) {
+	if db == nil {
+		return
+	}
+	db.Exec(
+		"SELECT "+spname.Ident("DeactivateSessionTvNotifications")+"(?::text)",
+		consoleID.String())
+}
+
 // GetAll godoc
 // @Summary      Ambil semua sesi rental
 // @Description  Mengembalikan daftar seluruh sesi rental (aktif, selesai, dibatalkan)
@@ -154,6 +172,9 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		// QRIS/transfer: uang diterima = total (tidak ada kembalian).
 		req.CashReceived = paymentMethodSentinel
 	}
+	if uid, ok := c.Locals("userID").(uuid.UUID); ok {
+		req.CreatedBy = &uid
+	}
 
 	result, err := h.sessionUC.StartSession(c.Context(), req)
 	if err != nil {
@@ -173,6 +194,10 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		Where("id = ?", req.ConsoleID).
 		Update("manual_live", false)
 
+	// Bersihkan notifikasi sistem dari sesi sebelumnya supaya tidak muncul
+	// lagi di sesi yang baru. Riwayat tetap tersimpan (is_active=false).
+	deactivateSessionTvNotifications(h.db.WithContext(c.Context()), req.ConsoleID)
+
 	promoMessage := ""
 	if req.UsePromoBonus {
 		if updated, rule, applyErr := promo.Apply(h.db.WithContext(c.Context()), result.Session.ID.String()); applyErr == nil {
@@ -186,13 +211,6 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		}
 	}
 
-	// Catat pelaku transaksi (tanpa ini selisih kas tidak bisa ditelusuri).
-	if uid := audit.CurrentUserID(c); uid != nil {
-		h.db.WithContext(c.Context()).Exec(
-			"SELECT "+spname.Ident("SetSessionCreatedBy")+"(?::uuid, ?::uuid)", result.Session.ID, *uid)
-		h.db.WithContext(c.Context()).Exec(
-			"SELECT "+spname.Ident("SetPaymentCreatedBy")+"(?::uuid, ?::uuid)", result.Session.ID, *uid)
-	}
 	audit.Log(h.db, c, "session.start", "session", &result.Session.ID, map[string]any{
 		"consoleId":     result.Session.ConsoleID,
 		"bookedMinutes": result.Session.BookedDurationMinutes,
@@ -247,6 +265,11 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 
 	consoleIDStr := session.ConsoleID.String()
 
+	// Bersihkan notifikasi transient dari sesi yang baru berakhir sebelum
+	// memasang notifikasi baru. Ini mencegah "Pesanan Disiapkan"/"Sesi
+	// Diperpanjang"/"Pembayaran Tertunda" lama tampil lagi di sesi berikutnya.
+	deactivateSessionTvNotifications(h.db.WithContext(c.Context()), session.ConsoleID)
+
 	if unpaidRow.Count > 0 {
 		// Insert notifikasi: ada perpanjangan yg belum dibayar
 		h.db.WithContext(c.Context()).Exec(
@@ -255,11 +278,6 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 			fmt.Sprintf("Unit %s memiliki %d perpanjangan sesi yang belum dibayar. Segera konfirmasi pembayaran.", session.Console.Name, unpaidRow.Count),
 			consoleIDStr, false, "high")
 	}
-
-	// Cleanup notifikasi "Sesi Diperpanjang" — sudah tidak relevan setelah sesi berakhir
-	h.db.WithContext(c.Context()).Exec(
-		"SELECT "+spname.Ident("DeactivateTvNotification")+"(?::text, ?::text)",
-		"Sesi Diperpanjang", consoleIDStr)
 
 	// Broadcast realtime — sesi berakhir + auto-sleep TV (lihat broadcaster.go)
 	h.hub.BroadcastSessionEnded(session, session.ConsoleID)
@@ -301,6 +319,10 @@ func (h *SessionHandler) Cancel(c *fiber.Ctx) error {
 	}
 	h.db.WithContext(c.Context()).Raw(
 		"SELECT * FROM "+spname.Ident("SessionConsoleID")+"(?::uuid)", id).Scan(&consoleRow)
+
+	// Sesi dibatalkan → jangan bawa notifikasi sistem sesi ini ke sesi baru.
+	deactivateSessionTvNotifications(h.db.WithContext(c.Context()), consoleRow.ConsoleID)
+
 	h.hub.BroadcastSessionCancelled(id, consoleRow.ConsoleID)
 
 	return response.OK(c, "Sesi rental berhasil dibatalkan", nil)
@@ -369,6 +391,9 @@ func (h *SessionHandler) Recover(c *fiber.Ctx) error {
 			Notes: fmt.Sprintf("Pemulihan sesi %s (terputus) — sisa %d menit",
 				original.ID, original.RemainingRecoveryMinutes),
 		}
+		if uid, ok := c.Locals("userID").(uuid.UUID); ok {
+			req.CreatedBy = &uid
+		}
 		started, startErr := h.sessionUC.StartSession(c.Context(), req)
 		if startErr != nil {
 			return startErr
@@ -408,6 +433,10 @@ func (h *SessionHandler) Recover(c *fiber.Ctx) error {
 		"remainingMinutes":   original.RemainingRecoveryMinutes,
 		"voucher":            "GRATIS",
 	})
+
+	// Bersihkan notifikasi sistem dari sesi lama; sesi pemulihan adalah sesi
+	// baru sehingga pesan lama tidak boleh ikut muncul.
+	deactivateSessionTvNotifications(h.db.WithContext(c.Context()), original.ConsoleID)
 
 	// TV langsung masuk sesi baru (HDMI + overlay).
 	h.hub.BroadcastSessionStarted(result, original.ConsoleID)
@@ -467,12 +496,23 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 	}
 
 	var result spResult
+	var createdBy *uuid.UUID
+	if uid, ok := c.Locals("userID").(uuid.UUID); ok {
+		createdBy = &uid
+	}
 	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Raw(
 			fmt.Sprintf(`SELECT * FROM %s(?, ?, ?, ?, ?, ?)`, spname.Ident("ExtendSession")),
 			id, req.AdditionalMinutes, req.CashReceived, req.PayNow, req.VoucherCode, req.Notes,
 		).Scan(&result).Error; err != nil {
 			return err
+		}
+		if createdBy != nil {
+			if err := tx.Model(&entity.Payment{}).
+				Where("id = ?", result.PaymentID).
+				Update("created_by", *createdBy).Error; err != nil {
+				return err
+			}
 		}
 		if req.PayNow {
 			return finalizePaymentMethod(tx, result.PaymentID, method)

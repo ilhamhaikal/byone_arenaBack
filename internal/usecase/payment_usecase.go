@@ -41,6 +41,8 @@ type CreateCashPaymentRequest struct {
 	Notes        string    `json:"notes"`
 	// Metode pembayaran: cash (default), qris, atau transfer.
 	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
+	// CreatedBy diisi server dari token, bukan client.
+	CreatedBy *uuid.UUID `json:"-"`
 }
 
 func (uc *paymentUseCase) GetPaymentByID(ctx context.Context, id uuid.UUID) (*entity.Payment, error) {
@@ -78,6 +80,7 @@ func (uc *paymentUseCase) CreateCashPayment(ctx context.Context, req *CreateCash
 		CashReceived:  req.CashReceived,
 		VoucherCode:   req.VoucherCode,
 		Notes:         req.Notes,
+		CreatedBy:     req.CreatedBy,
 	}
 
 	// byoneCreatePayment menangani: validasi sesi, apply voucher, hitung kembalian, set status paid
