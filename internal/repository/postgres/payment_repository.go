@@ -8,6 +8,7 @@ import (
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
+	"byone-arena/pkg/paymentmethod"
 	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
@@ -77,16 +78,20 @@ func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment)
 	}
 
 	var result spResult
-	tx := r.db.WithContext(ctx).Raw(
-		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?)", spname.Ident("CreatePayment")),
-		payment.SessionID,
-		payment.CashReceived,
-		payment.Notes,
-		payment.VoucherCode, // field sementara, tidak di-persist langsung
-	).Scan(&result)
-
-	if tx.Error != nil {
-		return parseStoredProcError(tx.Error)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?)", spname.Ident("CreatePayment")),
+			payment.SessionID,
+			payment.CashReceived,
+			payment.Notes,
+			payment.VoucherCode, // field sementara, tidak di-persist langsung
+		).Scan(&result).Error; err != nil {
+			return parseStoredProcError(err)
+		}
+		return paymentmethod.Finalize(tx, result.PaymentID, string(payment.PaymentMethod))
+	})
+	if err != nil {
+		return err
 	}
 
 	payment.ID = result.PaymentID

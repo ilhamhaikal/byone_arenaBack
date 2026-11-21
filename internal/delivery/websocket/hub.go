@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"byone-arena/internal/domain/entity"
+	"byone-arena/internal/recovery"
 	"byone-arena/pkg/spname"
 
 	"github.com/gofiber/contrib/websocket"
@@ -39,6 +40,11 @@ type Event struct {
 	Type      EventType   `json:"type"`
 	Payload   interface{} `json:"payload"`
 	Timestamp time.Time   `json:"timestamp"`
+	// ConsoleID menandai event hanya untuk satu konsol. nil = global.
+	ConsoleID *uuid.UUID `json:"consoleId,omitempty"`
+	// TargetConsoleIDs dipakai untuk event yang menargetkan beberapa konsol.
+	// Tidak dikirim ke client (hanya untuk routing di server).
+	TargetConsoleIDs []uuid.UUID `json:"-"`
 }
 
 func NewEvent(eventType EventType, payload interface{}) *Event {
@@ -46,15 +52,21 @@ func NewEvent(eventType EventType, payload interface{}) *Event {
 }
 
 type client struct {
-	conn   *websocket.Conn
-	send   chan []byte
-	logger *zap.Logger
+	conn      *websocket.Conn
+	send      chan []byte
+	logger    *zap.Logger
+	consoleID uuid.UUID
+}
+
+type broadcastMessage struct {
+	event *Event
+	data  []byte
 }
 
 type Hub struct {
 	mu            sync.RWMutex
 	clients       map[*client]bool
-	broadcast     chan []byte
+	broadcast     chan broadcastMessage
 	register      chan *client
 	unregister    chan *client
 	logger        *zap.Logger
@@ -66,7 +78,7 @@ type Hub struct {
 func NewHub(logger *zap.Logger) *Hub {
 	return &Hub{
 		clients:    make(map[*client]bool),
-		broadcast:  make(chan []byte, 256),
+		broadcast:  make(chan broadcastMessage, 256),
 		register:   make(chan *client),
 		unregister: make(chan *client),
 		logger:     logger,
@@ -93,8 +105,11 @@ func (h *Hub) Run() {
 		case message := <-h.broadcast:
 			h.mu.RLock()
 			for c := range h.clients {
+				if !canReceive(c, message.event) {
+					continue
+				}
 				select {
-				case c.send <- message:
+				case c.send <- message.data:
 				default:
 					close(c.send)
 					delete(h.clients, c)
@@ -105,16 +120,53 @@ func (h *Hub) Run() {
 	}
 }
 
+// canReceive membatasi event yang boleh diterima satu client TV.
+// Saat ini semua koneksi WS adalah TV, jadi event admin (payment/console)
+// tidak dikirim. Event per konsol hanya sampai ke konsol yang sesuai.
+func canReceive(c *client, event *Event) bool {
+	if !isTVEvent(event.Type) {
+		return false
+	}
+	if event.ConsoleID != nil && c.consoleID != *event.ConsoleID {
+		return false
+	}
+	if len(event.TargetConsoleIDs) > 0 {
+		for _, id := range event.TargetConsoleIDs {
+			if id == c.consoleID {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
+func isTVEvent(t EventType) bool {
+	switch t {
+	case EventSessionStarted, EventSessionEnded, EventSessionCancelled,
+		EventSessionExtended, EventTVWake, EventTVSleep, EventTVScreensaver,
+		EventTVNotification:
+		return true
+	default:
+		return string(t) == "food_order_preparing"
+	}
+}
+
 func (h *Hub) Broadcast(event *Event) {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return
 	}
-	h.broadcast <- data
+	h.broadcast <- broadcastMessage{event: event, data: data}
 }
 
-func (h *Hub) HandleConnection(conn *websocket.Conn) {
-	c := &client{conn: conn, send: make(chan []byte, 256), logger: h.logger}
+func (h *Hub) HandleConnection(conn *websocket.Conn, consoleID uuid.UUID) {
+	c := &client{
+		conn:      conn,
+		send:      make(chan []byte, 256),
+		logger:    h.logger,
+		consoleID: consoleID,
+	}
 	h.register <- c
 
 	// conn.Close() bisa dipicu dari 2 arah (writer goroutine saat write gagal,
@@ -212,6 +264,17 @@ func (h *Hub) StartNotificationLoop() {
 							"targetAll": n.TargetAll, "targetConsoleIds": n.TargetConsoleIDs,
 							"activeSessionsOnly": n.ActiveSessionsOnly,
 						})
+						if !n.TargetAll {
+							for _, raw := range n.TargetConsoleIDs {
+								if id, err := uuid.Parse(raw); err == nil {
+									evt.TargetConsoleIDs = append(evt.TargetConsoleIDs, id)
+								}
+							}
+							if len(evt.TargetConsoleIDs) == 0 {
+								lastSent[n.ID] = tick
+								continue
+							}
+						}
 						h.Broadcast(evt)
 						lastSent[n.ID] = tick
 					}
@@ -237,6 +300,7 @@ func (h *Hub) IsNotificationRunning() bool {
 }
 
 func (h *Hub) BroadcastToConsole(consoleID uuid.UUID, event *Event) {
+	event.ConsoleID = &consoleID
 	h.Broadcast(event)
 }
 
@@ -259,9 +323,42 @@ func (h *Hub) StartAutoStop() {
 				ID        uuid.UUID `gorm:"column:id"`
 				ConsoleID uuid.UUID `gorm:"column:console_id"`
 			}
-			h.db.Raw(fmt.Sprintf("SELECT * FROM %s()", spname.Ident("GetExpiredSessions"))).Scan(&expiredSessions)
+			if err := h.db.Raw(
+				fmt.Sprintf("SELECT * FROM %s()", spname.Ident("GetExpiredSessions")),
+			).Scan(&expiredSessions).Error; err != nil {
+				h.logger.Warn("auto-stop: gagal membaca sesi kedaluwarsa", zap.Error(err))
+				continue
+			}
 			for _, s := range expiredSessions {
-				h.db.Exec(fmt.Sprintf(`SELECT %s(?)`, spname.Ident("EndSession")), s.ID)
+				// Listrik mati / TV offline sebelum jadwal selesai → interrupted,
+				// sisa waktu bisa dipulihkan admin lewat voucher GRATIS.
+				if recovery.ShouldInterrupt(h.db, s.ID) {
+					if _, err := recovery.Interrupt(h.db, s.ID, "power_outage"); err != nil {
+						h.logger.Warn("auto-stop: gagal menandai sesi interrupted",
+							zap.String("session", s.ID.String()), zap.Error(err))
+						continue
+					}
+				} else {
+					if err := h.db.Exec(
+						fmt.Sprintf(`SELECT %s(?)`, spname.Ident("EndSession")), s.ID,
+					).Error; err != nil {
+						h.logger.Warn("auto-stop: gagal mengakhiri sesi",
+							zap.String("session", s.ID.String()), zap.Error(err))
+						continue
+					}
+				}
+
+				// Hanya ubah konsol & broadcast jika penutupan sesi berhasil.
+				if err := h.db.Model(&entity.Console{}).
+					Where("id = ?", s.ConsoleID).
+					Updates(map[string]interface{}{
+						"status":        entity.ConsoleStatusAvailable,
+						"screen_status": entity.ScreenStatusOff,
+						"manual_live":   false,
+					}).Error; err != nil {
+					h.logger.Warn("auto-stop: sesi ditutup tetapi reset konsol gagal",
+						zap.String("session", s.ID.String()), zap.Error(err))
+				}
 				h.BroadcastSessionEnded(map[string]interface{}{
 					"sessionId": s.ID, "consoleId": s.ConsoleID, "reason": "auto_stop",
 				}, s.ConsoleID)

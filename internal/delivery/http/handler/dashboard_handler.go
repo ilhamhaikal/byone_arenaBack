@@ -84,6 +84,17 @@ func (h *DashboardHandler) GetSummary(c *fiber.Ctx) error {
 	// rincian per metode agar total dan rinciannya konsisten.
 	summary.RevenueMethods = subtractPaymentMethods(revenueMethods, foodMethods)
 
+	// Sesi terputus (listrik mati / TV offline) yang bisa dipulihkan admin.
+	// Logika query ada di stored procedure InterruptedSessions.
+	var interrupted []entity.InterruptedSessionSummary
+	_ = h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("InterruptedSessions")+"(?)", 20,
+	).Scan(&interrupted).Error
+	if interrupted == nil {
+		interrupted = []entity.InterruptedSessionSummary{}
+	}
+	summary.InterruptedSessions = interrupted
+
 	return response.OK(c, "Ringkasan dashboard berhasil diambil", summary)
 }
 

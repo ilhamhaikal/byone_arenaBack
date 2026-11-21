@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"time"
+
 	"byone-arena/internal/delivery/websocket"
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
@@ -74,13 +76,15 @@ func (h *NotificationHandler) CreateNotification(c *fiber.Ctx) error {
 		TargetAll:          req.TargetAll,
 		TargetConsoleIDs:   req.ConsoleIDs,
 		ActiveSessionsOnly: req.ActiveSessionsOnly,
+		AutoShow:           req.AutoShow,
 	}
 
 	if err := h.db.Create(n).Error; err != nil {
 		return response.InternalServerError(c, "Gagal membuat notifikasi")
 	}
-	// Kirim langsung ke client jika tidak loop, atau jika loop aktif
-	if !req.LoopEnabled {
+	// Notifikasi manual (autoShow=false) TIDAK dikirim saat dibuat. Admin
+	// menampilkannya lewat tombol "Tampilkan" (POST /notifications/:id/show).
+	if req.AutoShow && !req.LoopEnabled {
 		h.hub.BroadcastTVNotification(n)
 	}
 	// Jika loopEnabled, notification loop akan otomatis mengirimkannya
@@ -124,6 +128,7 @@ func (h *NotificationHandler) UpdateNotification(c *fiber.Ctx) error {
 	n.TargetAll = req.TargetAll
 	n.TargetConsoleIDs = req.ConsoleIDs
 	n.ActiveSessionsOnly = req.ActiveSessionsOnly
+	n.AutoShow = req.AutoShow
 
 	if err := h.db.Save(&n).Error; err != nil {
 		return response.InternalServerError(c, "Gagal update notifikasi")
@@ -177,6 +182,39 @@ func (h *NotificationHandler) ToggleNotification(c *fiber.Ctx) error {
 	return response.OK(c, "Status notifikasi diubah", n)
 }
 
+// ShowNotification godoc
+// @Summary      Tampilkan notifikasi sekarang (manual)
+// @Description  Memicu notifikasi manual agar muncul sekali di TV sesuai target.
+// Klien menyimpan waktu trigger ini sehingga pesan tidak muncul berulang.
+// @Tags         Notifikasi TV
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      string  true  "Notification ID"
+// @Success      200  {object}  response.Response{data=entity.TvNotification}
+// @Router       /api/v1/notifications/{id}/show [post]
+func (h *NotificationHandler) ShowNotification(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+	var n entity.TvNotification
+	if result := h.db.First(&n, "id = ?", id); result.Error != nil {
+		return response.NotFound(c, "Notifikasi tidak ditemukan")
+	}
+
+	now := time.Now()
+	n.IsActive = true
+	n.LastTriggeredAt = &now
+	if err := h.db.Save(&n).Error; err != nil {
+		return response.InternalServerError(c, "Gagal menampilkan notifikasi")
+	}
+
+	// Trigger realtime: client langsung poll dan menampilkan notifikasi ini
+	// sekali, tanpa menunggu interval polling berikutnya.
+	h.hub.BroadcastTVNotification(n)
+	return response.OK(c, "Notifikasi ditampilkan", n)
+}
+
 // --- LOOP CONTROL ---
 
 // StartLoop godoc
@@ -214,7 +252,7 @@ func (h *NotificationHandler) LoopStatus(c *fiber.Ctx) error {
 	var activeCount int64
 	h.db.Model(&entity.TvNotification{}).Where("loop_enabled = ? AND is_active = ?", true, true).Count(&activeCount)
 	return response.OK(c, "Status loop notifikasi", fiber.Map{
-		"running":           running,
+		"running":                 running,
 		"activeLoopNotifications": activeCount,
 	})
 }
@@ -242,8 +280,12 @@ func (h *NotificationHandler) WakeConsole(c *fiber.Ctx) error {
 
 	h.hub.BroadcastTVWake(id, console.IPAddress)
 
-	// Update status layar
-	h.db.Model(&entity.Console{}).Where("id = ?", id).Update("screen_status", entity.ScreenStatusOn)
+	// Update status layar + tandai live manual tanpa sesi. Saat sesi
+	// dimulai, StartSession akan mengembalikan manual_live=false.
+	h.db.Model(&entity.Console{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"screen_status": entity.ScreenStatusOn,
+		"manual_live":   true,
+	})
 
 	return response.OK(c, "Perintah wake dikirim ke TV", nil)
 }
@@ -269,7 +311,10 @@ func (h *NotificationHandler) SleepConsole(c *fiber.Ctx) error {
 
 	h.hub.BroadcastTVSleep(id, console.IPAddress)
 
-	h.db.Model(&entity.Console{}).Where("id = ?", id).Update("screen_status", entity.ScreenStatusOff)
+	h.db.Model(&entity.Console{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"screen_status": entity.ScreenStatusOff,
+		"manual_live":   false,
+	})
 
 	return response.OK(c, "Perintah sleep dikirim ke TV", nil)
 }
@@ -293,6 +338,11 @@ func (h *NotificationHandler) ScreensaverConsole(c *fiber.Ctx) error {
 		return response.NotFound(c, "Konsol tidak ditemukan")
 	}
 
+	// Kembali ke screensaver = keluar dari live manual.
+	h.db.Model(&entity.Console{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"screen_status": entity.ScreenStatusOff,
+		"manual_live":   false,
+	})
 	h.hub.BroadcastTVScreensaver(id)
 
 	return response.OK(c, "Perintah screensaver dikirim ke TV", nil)

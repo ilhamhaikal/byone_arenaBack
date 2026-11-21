@@ -66,7 +66,7 @@ func (uc *paymentUseCase) GetPaymentsBySessionID(ctx context.Context, sessionID 
 // Validasi, diskon voucher, perhitungan kembalian, dan update status dilakukan di SP
 func (uc *paymentUseCase) CreateCashPayment(ctx context.Context, req *CreateCashPaymentRequest) (*entity.Payment, error) {
 	// Metode pembayaran: default cash; qris/transfer tetap dicatat meski uang
-	// tunai tidak dikirim (SP akan dikoreksi oleh handler via finalizePaymentMethod).
+	// tunai tidak dikirim (SP + finalisasi metode berjalan atomik di repository).
 	method := entity.PaymentMethod(req.PaymentMethod)
 	if method != entity.PaymentMethodQRIS && method != entity.PaymentMethodTransfer {
 		method = entity.PaymentMethodCash

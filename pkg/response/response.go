@@ -13,6 +13,7 @@ type Response struct {
 type ErrorResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Code    string `json:"code,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
 
@@ -55,6 +56,16 @@ func Forbidden(c *fiber.Ctx, message string) error {
 	return c.Status(fiber.StatusForbidden).JSON(ErrorResponse{
 		Success: false,
 		Message: message,
+	})
+}
+
+// ForbiddenCode mengirim error 403 dengan kode mesin (mis. untuk memaksa
+// frontend menampilkan layar ganti password).
+func ForbiddenCode(c *fiber.Ctx, code, message string) error {
+	return c.Status(fiber.StatusForbidden).JSON(ErrorResponse{
+		Success: false,
+		Message: message,
+		Code:    code,
 	})
 }
 

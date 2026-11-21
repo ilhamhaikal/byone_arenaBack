@@ -206,7 +206,7 @@ func main() {
 	foodOrderUC := usecase.NewFoodOrderUseCase(foodOrderRepo)
 	ingredientUC := usecase.NewIngredientUseCase(ingredientRepo)
 	capitalUC := usecase.NewCapitalUseCase(capitalRepo)
-	rentalPackageUC := usecase.NewRentalPackageUseCase(rentalPackageRepo)
+	rentalPackageUC := usecase.NewRentalPackageUseCase(rentalPackageRepo, sessionRepo)
 	userUC := usecase.NewUserUseCase(userRepo)
 
 	// Inisialisasi handler (delivery layer)

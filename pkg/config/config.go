@@ -67,6 +67,9 @@ func Load() (*Config, error) {
 	if jwtSecret == "" {
 		return nil, fmt.Errorf("gagal menyiapkan JWT secret")
 	}
+	if isWeakJWTSecret(jwtSecret) {
+		return nil, fmt.Errorf("JWT secret terlalu lemah: minimal 32 karakter dan cukup beragam")
+	}
 
 	cfg := &Config{
 		AppName:  getEnv("APP_NAME", "Byone Arena"),
@@ -133,6 +136,19 @@ func (c *Config) PostgresDSN() string {
 var insecureJWTDefaults = map[string]bool{
 	"change-this-secret-in-production":                                  true,
 	"ganti-dengan-secret-key-yang-sangat-panjang-dan-aman-min-32-chars": true,
+}
+
+// isWeakJWTSecret menolak secret pendek atau terlalu monoton (mis. "aaaa...").
+func isWeakJWTSecret(secret string) bool {
+	secret = strings.TrimSpace(secret)
+	if len(secret) < 32 {
+		return true
+	}
+	unique := make(map[rune]struct{}, len(secret))
+	for _, r := range secret {
+		unique[r] = struct{}{}
+	}
+	return len(unique) < 10
 }
 
 // resolveJWTSecret menentukan JWT secret dengan urutan:

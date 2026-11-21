@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/google/uuid"
 	fiberSwagger "github.com/swaggo/fiber-swagger"
 	"gorm.io/gorm"
 )
@@ -87,10 +88,27 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 		return fiber.ErrUpgradeRequired
 	})
 
-	// WebSocket endpoint - dapat diakses tanpa auth untuk mobile & TV
-	app.Get("/ws", websocket.New(func(conn *websocket.Conn) {
-		h.Hub.HandleConnection(conn)
-	}))
+	// WebSocket endpoint — wajib secret perangkat TV.
+	app.Get("/ws",
+		limiter.New(limiter.Config{
+			Max:        10,
+			Expiration: 1 * time.Minute,
+			KeyGenerator: func(c *fiber.Ctx) string {
+				return c.IP()
+			},
+			LimitReached: func(c *fiber.Ctx) error {
+				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+					"success": false,
+					"message": "Terlalu banyak koneksi WebSocket",
+				})
+			},
+		}),
+		middleware.DeviceWSMiddleware(db),
+		websocket.New(func(conn *websocket.Conn) {
+			consoleID, _ := conn.Locals("consoleID").(uuid.UUID)
+			h.Hub.HandleConnection(conn, consoleID)
+		}),
+	)
 
 	// API v1 routes
 	api := app.Group("/api/v1")
@@ -135,11 +153,35 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	// Console overview — publik, digunakan oleh client Android TV tanpa login
 	api.Get("/consoles/overview", h.Console.GetOverview)
 
-	// Heartbeat — publik, dari TV Android
-	api.Post("/consoles/:id/heartbeat", h.Console.Heartbeat)
+	// Heartbeat — publik tetapi wajib secret perangkat (lihat handler).
+	api.Post("/consoles/:id/heartbeat", limiter.New(limiter.Config{
+		Max:        30,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP() + ":" + c.Params("id")
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"success": false,
+				"message": "Terlalu banyak heartbeat, coba lagi nanti",
+			})
+		},
+	}), h.Console.Heartbeat)
 
 	// Pairing TV: publik, dipanggil aplikasi TV setelah menemukan server.
-	api.Post("/devices/announce", h.Device.Announce)
+	api.Post("/devices/announce", limiter.New(limiter.Config{
+		Max:        30,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"success": false,
+				"message": "Terlalu banyak permintaan pairing, coba lagi nanti",
+			})
+		},
+	}), h.Device.Announce)
 
 	// Promo bonus yang berlaku hari ini — publik (dipakai TV & dialog sesi).
 	api.Get("/promo-bonuses/active", h.Promo.Active)
@@ -154,7 +196,10 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	api.Get("/settings/daily-price", h.Settings.GetDailyPrice)
 
 	// Protected routes (memerlukan JWT)
-	protected := api.Group("", middleware.AuthMiddleware(cfg, db))
+	protected := api.Group("",
+		middleware.AuthMiddleware(cfg, db),
+		middleware.RequirePasswordChanged(),
+	)
 
 	// Profil pemilik token — dipakai frontend untuk memvalidasi sesi.
 	protected.Get("/auth/me", h.Auth.Me)
@@ -200,6 +245,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	notifications.Patch("/:id/toggle", middleware.RequireWrite("notif"), h.Notify.ToggleNotification)
 	notifications.Post("/loop/start", middleware.RequireWrite("notif"), h.Notify.StartLoop)
 	notifications.Post("/loop/stop", middleware.RequireWrite("notif"), h.Notify.StopLoop)
+	notifications.Post("/:id/show", middleware.RequireWrite("notif"), h.Notify.ShowNotification)
 
 	// GET notifications + loop/status HARUS publik — daftar langsung di app, bypass group
 	app.Get("/api/v1/notifications", h.Notify.GetAllNotifications)
@@ -230,7 +276,14 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	consoles.Get("/available", h.Console.GetAvailable)
 	consoles.Get("/overview", h.Console.GetOverview)
 	consoles.Get("/:id", h.Console.GetByID)
-	consoles.Post("/", middleware.RequireWrite("console"), h.Console.Create)
+	// Membuat konsol berarti menentukan harga awal. Selain console.write,
+	// wajib izin sensitif console.price agar kasir tidak bisa membuat konsol
+	// dengan harga sendiri.
+	consoles.Post("/",
+		middleware.RequireWrite("console"),
+		middleware.RequirePermission("console.price"),
+		h.Console.Create,
+	)
 	// Harga & tarif konsol hanya boleh diubah user dengan izin console.write:
 	// mencegah kasir menurunkan harga sebelum memulai sesi.
 	consoles.Put("/:id", middleware.RequireWrite("console"), h.Console.Update)
@@ -273,6 +326,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	sessions.Patch("/:id/end", middleware.RequireWrite("rental"), h.Session.End)
 	sessions.Patch("/:id/cancel", middleware.RequireWrite("rental"), h.Session.Cancel)
 	sessions.Post("/:id/extend", middleware.RequireWrite("rental"), h.Session.Extend)            // tambah waktu sewa
+	sessions.Post("/:id/recover", middleware.AdminOnly(), h.Session.Recover)                     // pulihkan sesi terputus (listrik/offline)
 	sessions.Post("/:id/promo-bonus", middleware.RequireWrite("rental"), h.Promo.ApplyToSession) // pakai bonus waktu promo
 	sessions.Get("/:session_id/payment", h.Payment.GetBySession)
 	sessions.Get("/:session_id/payments", h.Payment.GetAllBySession)                                                           // SEMUA payment sesi (base + tiap extend) + ringkasan total

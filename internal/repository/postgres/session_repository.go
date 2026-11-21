@@ -8,10 +8,12 @@ import (
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
+	"byone-arena/pkg/paymentmethod"
 	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type sessionRepository struct {
@@ -133,7 +135,7 @@ func (r *sessionRepository) Create(ctx context.Context, session *entity.Session)
 // CreateWithPayment menggunakan byoneStartSessionWithPayment:
 // membuat sesi + pembayaran di depan dalam satu transaksi atomik.
 // useTimeBankMinutes & redeemPointUnits opsional (0 = tidak dipakai) — hanya berlaku untuk member.
-func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string, useTimeBankMinutes int, redeemPointUnits int) (*entity.Payment, error) {
+func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *entity.Session, cashReceived float64, voucherCode string, useTimeBankMinutes int, redeemPointUnits int, paymentMethod string) (*entity.Payment, error) {
 	type spResult struct {
 		// sesi
 		SessionID           uuid.UUID  `gorm:"column:session_id"`
@@ -162,20 +164,24 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 	}
 
 	var result spResult
-	tx := r.db.WithContext(ctx).Raw(
-		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?, ?, ?, ?, ?)", spname.Ident("StartSessionWithPayment")),
-		session.ConsoleID,
-		session.CustomerID,
-		session.Notes,
-		session.BookedDurationMinutes,
-		cashReceived,
-		voucherCode,
-		useTimeBankMinutes,
-		redeemPointUnits,
-	).Scan(&result)
-
-	if tx.Error != nil {
-		return nil, parseStoredProcError(tx.Error)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?, ?, ?, ?, ?)", spname.Ident("StartSessionWithPayment")),
+			session.ConsoleID,
+			session.CustomerID,
+			session.Notes,
+			session.BookedDurationMinutes,
+			cashReceived,
+			voucherCode,
+			useTimeBankMinutes,
+			redeemPointUnits,
+		).Scan(&result).Error; err != nil {
+			return parseStoredProcError(err)
+		}
+		return paymentmethod.Finalize(tx, result.PaymentID, paymentMethod)
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Isi balik session
@@ -200,24 +206,75 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 		CashReceived:       result.CashReceived,
 		ChangeAmount:       result.ChangeAmount,
 		VoucherID:          result.VoucherID,
-		PaymentMethod:      entity.PaymentMethodCash,
+		PaymentMethod:      entity.PaymentMethod(paymentmethod.Normalize(paymentMethod)),
 		PaymentStatus:      entity.PaymentStatusPaid,
 	}
 	return payment, nil
 }
 
-// Update menggunakan byoneEndSession
+// AddSetupGrace menggeser waktu MULAI sesi (dan jadwal selesainya) sebesar
+// beberapa menit untuk memberi waktu persiapan konsol. Karena start_time dan
+// end_scheduled_at sama-sama digeser, durasi berbayar tidak berkurang dan
+// harga/menit berbayar (paid_duration_minutes) tidak berubah. Waktu setup
+// berada SEBELUM jam sesi berjalan, bukan tambahan di akhir sesi.
+func (r *sessionRepository) AddSetupGrace(ctx context.Context, id uuid.UUID, minutes int) (*entity.Session, error) {
+	var updated *entity.Session
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Row lock mencegah ExtendSession yang berjalan bersamaan tertimpa
+		// oleh perhitungan start/end yang sudah basi.
+		var session entity.Session
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&session, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if !session.ApplySetupGrace(minutes) {
+			return nil
+		}
+		if err := tx.Model(&entity.Session{}).
+			Where("id = ?", id).
+			Updates(map[string]interface{}{
+				"start_time":       session.StartTime,
+				"end_scheduled_at": *session.EndScheduledAt,
+				"updated_at":       time.Now(),
+			}).Error; err != nil {
+			return err
+		}
+		updated = &session
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return r.FindByID(ctx, id)
+	}
+	return r.FindByID(ctx, id)
+}
+
+// Update menggunakan byoneEndSession. Penutupan sesi dan reset konsol
+// dijalankan dalam satu transaksi agar tidak ada status yang setengah jadi.
 func (r *sessionRepository) Update(ctx context.Context, session *entity.Session) error {
-	// Update hanya dipanggil saat end session
 	type endResult struct {
 		TimeBankEarnedMinutes int `gorm:"column:time_bank_earned_minutes"`
 	}
 	var res endResult
-	tx := r.db.WithContext(ctx).Raw(
-		"SELECT * FROM "+spname.Ident("EndSession")+"(?)", session.ID,
-	).Scan(&res)
-	if tx.Error != nil {
-		return parseStoredProcError(tx.Error)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			"SELECT * FROM "+spname.Ident("EndSession")+"(?)", session.ID,
+		).Scan(&res).Error; err != nil {
+			return parseStoredProcError(err)
+		}
+		return tx.Model(&entity.Console{}).
+			Where("id = ?", session.ConsoleID).
+			Updates(map[string]interface{}{
+				"status":        entity.ConsoleStatusAvailable,
+				"screen_status": entity.ScreenStatusOff,
+				"manual_live":   false,
+				"updated_at":    time.Now(),
+			}).Error
+	})
+	if err != nil {
+		return err
 	}
 	// Refresh data sesi setelah update
 	if err := r.db.WithContext(ctx).First(session, "id = ?", session.ID).Error; err != nil {
@@ -230,9 +287,29 @@ func (r *sessionRepository) Update(ctx context.Context, session *entity.Session)
 // UpdateStatus menggunakan GORM langsung (fallback untuk cancel)
 func (r *sessionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status entity.SessionStatus) error {
 	if status == entity.SessionStatusCancelled {
-		// Gunakan stored procedure untuk membatalkan (atomic dengan update konsol)
-		tx := r.db.WithContext(ctx).Exec(fmt.Sprintf("SELECT %s(?)", spname.Ident("CancelSession")), id)
-		return parseStoredProcError(tx.Error)
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var consoleID uuid.UUID
+			if err := tx.Table("sessions").Select("console_id").
+				Where("id = ?", id).Scan(&consoleID).Error; err != nil {
+				return err
+			}
+			if err := tx.Exec(
+				fmt.Sprintf("SELECT %s(?)", spname.Ident("CancelSession")), id,
+			).Error; err != nil {
+				return parseStoredProcError(err)
+			}
+			if consoleID == uuid.Nil {
+				return nil
+			}
+			return tx.Model(&entity.Console{}).
+				Where("id = ?", consoleID).
+				Updates(map[string]interface{}{
+					"status":        entity.ConsoleStatusAvailable,
+					"screen_status": entity.ScreenStatusOff,
+					"manual_live":   false,
+					"updated_at":    time.Now(),
+				}).Error
+		})
 	}
 	// Fallback GORM untuk status lain
 	return r.db.WithContext(ctx).

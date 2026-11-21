@@ -18,11 +18,14 @@ type PendingDevice struct {
 	// DeviceID adalah identitas tetap perangkat TV (dibuat aplikasi TV dan
 	// disimpan di SharedPreferences). Identitas memakai ID ini, bukan IP,
 	// supaya TV tetap dikenali walau IP-nya berubah (DHCP).
-	DeviceID   *uuid.UUID `json:"deviceId,omitempty" gorm:"type:uuid;index"`
-	IP         string     `json:"ip"         gorm:"not null;size:50"`
-	Name       string     `json:"name"       gorm:"size:100;not null;default:''"`
-	Model      string     `json:"model"      gorm:"size:100;not null;default:''"`
-	AppVersion string     `json:"appVersion" gorm:"size:30;not null;default:''"`
+	DeviceID *uuid.UUID `json:"deviceId,omitempty" gorm:"type:uuid;index"`
+	// DeviceSecretHash = SHA-256 dari secret yang dibuat TV. Jangan pernah
+	// dikirim ke client.
+	DeviceSecretHash string `json:"-" gorm:"size:64"`
+	IP               string `json:"ip"         gorm:"not null;size:50"`
+	Name             string `json:"name"       gorm:"size:100;not null;default:''"`
+	Model            string `json:"model"      gorm:"size:100;not null;default:''"`
+	AppVersion       string `json:"appVersion" gorm:"size:30;not null;default:''"`
 	// PairingCode adalah kode 6 digit yang tampil di layar TV dan diketik admin.
 	PairingCode *string `json:"pairingCode,omitempty" gorm:"size:6;index"`
 	// CodeExpiresAt menentukan masa berlaku kode. Setelah lewat, TV akan

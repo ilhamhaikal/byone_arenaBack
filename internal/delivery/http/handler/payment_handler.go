@@ -157,7 +157,6 @@ func (h *PaymentHandler) Create(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
-	finalizePaymentMethod(h.db, payment.ID, method)
 	payment.PaymentMethod = entity.PaymentMethod(method)
 	if isCashless(method) {
 		payment.CashReceived = payment.TotalPayment
@@ -260,15 +259,18 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 	}
 
 	var result spResult
-	tx := h.db.WithContext(c.Context()).Raw(
-		fmt.Sprintf(`SELECT * FROM %s(?, ?)`, spname.Ident("ConfirmExtendPayment")), id, req.CashReceived,
-	).Scan(&result)
-
-	if tx.Error != nil {
-		return response.BadRequest(c, tx.Error.Error())
+	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			fmt.Sprintf(`SELECT * FROM %s(?, ?)`, spname.Ident("ConfirmExtendPayment")), id, req.CashReceived,
+		).Scan(&result).Error; err != nil {
+			return err
+		}
+		return finalizePaymentMethod(tx, result.PaymentID, method)
+	})
+	if err != nil {
+		return response.BadRequest(c, err.Error())
 	}
 
-	finalizePaymentMethod(h.db, result.PaymentID, method)
 	if isCashless(method) {
 		result.CashReceived = result.TotalPayment
 		result.ChangeAmount = 0
@@ -336,12 +338,6 @@ func (h *PaymentHandler) ConfirmSessionPending(c *fiber.Ctx) error {
 		return response.BadRequest(c, validator.FormatError(err))
 	}
 
-	// Catat dulu payment mana yang masih pending, untuk dikoreksi metodenya.
-	var pendingIDs []uuid.UUID
-	h.db.WithContext(c.Context()).Raw(
-		"SELECT * FROM "+spname.Ident("PendingPaymentIDs")+"(?::uuid)", sessionID,
-	).Scan(&pendingIDs)
-
 	type spResult struct {
 		SessionID      uuid.UUID `gorm:"column:session_id"`
 		ConfirmedCount int       `gorm:"column:confirmed_count"`
@@ -351,17 +347,30 @@ func (h *PaymentHandler) ConfirmSessionPending(c *fiber.Ctx) error {
 	}
 
 	var result spResult
-	tx := h.db.WithContext(c.Context()).Raw(
-		fmt.Sprintf(`SELECT * FROM %s(?, ?)`, spname.Ident("ConfirmSessionPendingPayments")), sessionID, req.CashReceived,
-	).Scan(&result)
-
-	if tx.Error != nil {
-		return response.BadRequest(c, tx.Error.Error())
+	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
+		// Ambil dan koreksi payment dalam transaksi yang sama.
+		var pendingIDs []uuid.UUID
+		if err := tx.Raw(
+			"SELECT * FROM "+spname.Ident("PendingPaymentIDs")+"(?::uuid)", sessionID,
+		).Scan(&pendingIDs).Error; err != nil {
+			return err
+		}
+		if err := tx.Raw(
+			fmt.Sprintf(`SELECT * FROM %s(?, ?)`, spname.Ident("ConfirmSessionPendingPayments")), sessionID, req.CashReceived,
+		).Scan(&result).Error; err != nil {
+			return err
+		}
+		for _, pid := range pendingIDs {
+			if err := finalizePaymentMethod(tx, pid, method); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return response.BadRequest(c, err.Error())
 	}
 
-	for _, pid := range pendingIDs {
-		finalizePaymentMethod(h.db, pid, method)
-	}
 	if isCashless(method) {
 		result.CashReceived = result.TotalPaid
 		result.ChangeAmount = 0

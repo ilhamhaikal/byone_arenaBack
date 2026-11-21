@@ -144,11 +144,7 @@ func (h *FoodOrderHandler) Create(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
-	method := normalizePaymentMethod(req.PaymentMethod)
-	h.db.WithContext(c.Context()).Exec(
-		"SELECT "+spname.Ident("SetFoodOrderPaymentMethod")+"(?::uuid, ?::varchar)",
-		order.ID, method)
-	order.PaymentMethod = method
+	order.PaymentMethod = normalizePaymentMethod(req.PaymentMethod)
 
 	return response.Created(c, "Pesanan berhasil dibuat", order)
 }
@@ -200,12 +196,16 @@ func (h *FoodOrderHandler) UpdateStatus(c *fiber.Ctx) error {
 		}
 
 		// WebSocket broadcast (payload konsisten dengan event lain: consoleId)
-		h.hub.Broadcast(wsHandler.NewEvent("food_order_preparing", fiber.Map{
+		evt := wsHandler.NewEvent("food_order_preparing", fiber.Map{
 			"message":     msg,
 			"orderId":     order.ID,
 			"orderNumber": order.OrderNumber,
 			"consoleId":   consoleIDStr,
-		}))
+		})
+		if cid, err := uuid.Parse(consoleIDStr); err == nil {
+			evt.ConsoleID = &cid
+		}
+		h.hub.Broadcast(evt)
 
 		// Insert ke tv_notifications untuk client HTTP polling.
 		// active_sessions_only=true + target console spesifik → hanya TV
@@ -237,6 +237,7 @@ type FoodPricePreviewItem struct {
 type FoodPricePreviewRequest struct {
 	Items      []FoodPricePreviewItem `json:"items"      validate:"required,min=1"`
 	CustomerID *string                `json:"customerId"`
+	SessionID  *string                `json:"sessionId"`
 }
 
 // FoodPricePreviewResponse hasil kalkulasi harga makanan + auto diskon
@@ -279,14 +280,32 @@ func (h *FoodOrderHandler) GetPricePreview(c *fiber.Ctx) error {
 		return response.BadRequest(c, "Total belanja tidak valid")
 	}
 
-	// Cek apakah customer adalah member
-	var isMember bool
+	// Cek apakah customer adalah member. Jika customer tidak dikirim,
+	// gunakan customer milik sesi agar preview sama dengan perhitungan SP.
+	var customerID *uuid.UUID
 	if req.CustomerID != nil && *req.CustomerID != "" {
+		if parsed, err := uuid.Parse(*req.CustomerID); err == nil {
+			customerID = &parsed
+		}
+	}
+	if customerID == nil && req.SessionID != nil && *req.SessionID != "" {
+		if sessionID, err := uuid.Parse(*req.SessionID); err == nil {
+			var sessionRow struct {
+				CustomerID *uuid.UUID `gorm:"column:customer_id"`
+			}
+			h.db.WithContext(c.Context()).Table("sessions").
+				Select("customer_id").Where("id = ?", sessionID).Scan(&sessionRow)
+			customerID = sessionRow.CustomerID
+		}
+	}
+
+	var isMember bool
+	if customerID != nil {
 		var memberRow struct {
 			IsMember bool `gorm:"column:is_member"`
 		}
 		h.db.WithContext(c.Context()).Raw(
-			"SELECT * FROM "+spname.Ident("CustomerIsMember")+"(?::uuid)", *req.CustomerID,
+			"SELECT * FROM "+spname.Ident("CustomerIsMember")+"(?::uuid)", *customerID,
 		).Scan(&memberRow)
 		isMember = memberRow.IsMember
 	}

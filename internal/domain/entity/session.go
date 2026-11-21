@@ -14,6 +14,11 @@ const (
 	SessionStatusActive    SessionStatus = "active"
 	SessionStatusCompleted SessionStatus = "completed"
 	SessionStatusCancelled SessionStatus = "cancelled"
+	// SessionStatusInterrupted: sesi terputus (mis. listrik mati) dan sisa
+	// waktunya bisa dipulihkan lewat voucher GRATIS.
+	SessionStatusInterrupted SessionStatus = "interrupted"
+	// SessionStatusRecovered: sesi interrupted yang sudah dipulihkan.
+	SessionStatusRecovered SessionStatus = "recovered"
 )
 
 // Session merepresentasikan satu sesi penyewaan konsol / TV Android
@@ -31,6 +36,12 @@ type Session struct {
 	TotalPrice      float64       `json:"totalPrice"             gorm:"not null;default:0;type:numeric(10,2)"`
 	Status          SessionStatus `json:"status"                 gorm:"not null;default:'active';size:20;index"`
 	Notes           string        `json:"notes,omitempty"        gorm:"type:text"`
+	// Pemulihan sesi terputus (listrik mati).
+	InterruptedAt            *time.Time `json:"interruptedAt,omitempty"         gorm:"column:interrupted_at"`
+	RemainingRecoveryMinutes int        `json:"remainingMinutes"                gorm:"column:remaining_minutes;not null;default:0"`
+	InterruptedReason        string     `json:"interruptedReason,omitempty"     gorm:"column:interrupted_reason;type:text"`
+	RecoveredBySessionID     *uuid.UUID `json:"recoveredBySessionId,omitempty"  gorm:"type:uuid"`
+	RecoveredFromSessionID   *uuid.UUID `json:"recoveredFromSessionId,omitempty" gorm:"type:uuid"`
 	// Transparansi Bank Waktu & Poin Loyalitas (khusus member)
 	// PaidDurationMinutes adalah durasi yang benar-benar DIBAYAR (dasar hitung harga & poin).
 	// BookedDurationMinutes (di atas) adalah TOTAL menit bermain termasuk bonus dari bank waktu/poin.
@@ -58,6 +69,24 @@ type Session struct {
 }
 
 func (Session) TableName() string { return "sessions" }
+
+// ApplySetupGrace menggeser jam mulai sesi (dan jadwal selesainya) sebesar
+// beberapa menit. Dipakai untuk memberi waktu persiapan konsol di AWAL sesi:
+// durasi berbayar (end - start) tetap, tetapi jam sesi baru berjalan setelah
+// waktu setup selesai.
+//
+// Mengembalikan false bila sesi tidak punya jadwal selesai (open-ended) atau
+// menit <= 0.
+func (s *Session) ApplySetupGrace(minutes int) bool {
+	if minutes <= 0 || s.EndScheduledAt == nil {
+		return false
+	}
+	shift := time.Duration(minutes) * time.Minute
+	s.StartTime = s.StartTime.Add(shift)
+	end := s.EndScheduledAt.Add(shift)
+	s.EndScheduledAt = &end
+	return true
+}
 
 // CalculateDuration menghitung durasi sesi aktual dalam menit
 func (s *Session) CalculateDuration() int {

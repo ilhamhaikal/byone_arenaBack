@@ -3,9 +3,9 @@ package janitor
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"byone-arena/internal/recovery"
 	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
@@ -34,7 +34,9 @@ func StartStaleSessionWatcher(ctx context.Context, db *gorm.DB, log *zap.Logger)
 					log.Error("janitor panic", zap.Any("panic", r))
 				}
 			}()
-			autoEndExpiredSessions(db, log)
+			// Auto-end sesi expired ditangani satu tempat oleh Hub.StartAutoStop
+			// (termasuk broadcast realtime). Janitor hanya menangani sesi
+			// terlantar yang TV-nya offline.
 			closeStaleSessions(db, log)
 		}
 
@@ -50,29 +52,6 @@ func StartStaleSessionWatcher(ctx context.Context, db *gorm.DB, log *zap.Logger)
 	}()
 }
 
-// autoEndExpiredSessions menutup sesi yang sudah melewati jadwal selesai.
-func autoEndExpiredSessions(db *gorm.DB, log *zap.Logger) {
-	var rows []sessionRow
-	err := db.Raw(
-		"SELECT * FROM "+spname.Ident("ExpiredActiveSessions")+"(?)", 200,
-	).Scan(&rows).Error
-	if err != nil {
-		log.Warn("janitor: gagal membaca sesi kedaluwarsa", zap.Error(err))
-		return
-	}
-
-	for _, r := range rows {
-		sp := fmt.Sprintf("SELECT %s(?)", spname.Ident("AutoEndSession"))
-		if err := db.Exec(sp, r.ID).Error; err != nil {
-			log.Warn("janitor: gagal auto-end sesi",
-				zap.String("session", r.ID.String()), zap.Error(err))
-			continue
-		}
-		log.Info("janitor: sesi diakhiri otomatis (waktu habis)",
-			zap.String("session", r.ID.String()))
-	}
-}
-
 // closeStaleSessions menutup sesi yang terlantar (TV mati / aplikasi tidak
 // berjalan) tanpa tagihan tambahan.
 func closeStaleSessions(db *gorm.DB, log *zap.Logger) {
@@ -86,13 +65,25 @@ func closeStaleSessions(db *gorm.DB, log *zap.Logger) {
 	}
 
 	for _, r := range rows {
-		sp := fmt.Sprintf("SELECT %s(?)", spname.Ident("ForceCloseSession"))
-		if err := db.Exec(sp, r.ID).Error; err != nil {
-			log.Warn("janitor: gagal menutup sesi",
+		// Sesi terlantar = TV sudah offline lama → simpan sisa waktu,
+		// jangan hanguskan. Admin bisa memulihkan dengan voucher GRATIS.
+		if _, err := recovery.Interrupt(db, r.ID, "tv_offline"); err != nil {
+			log.Warn("janitor: gagal menandai sesi terputus",
 				zap.String("session", r.ID.String()), zap.Error(err))
 			continue
 		}
-		log.Info("janitor: sesi ditutup otomatis (tidak ada aktivitas)",
+		markConsoleScreenOff(db, r.ID)
+		log.Info("janitor: sesi ditandai terputus (TV offline)",
 			zap.String("session", r.ID.String()))
 	}
+}
+
+// markConsoleScreenOff memastikan TV kembali ke screensaver dan keluar dari
+// mode live manual setelah sesi ditutup otomatis.
+func markConsoleScreenOff(db *gorm.DB, sessionID uuid.UUID) {
+	db.Exec(
+		"UPDATE consoles SET status='available', screen_status='off', manual_live=false, updated_at=NOW() "+
+			"WHERE id = (SELECT console_id FROM sessions WHERE id = ?)",
+		sessionID,
+	)
 }

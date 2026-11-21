@@ -1,15 +1,18 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/usecase"
 	"byone-arena/pkg/audit"
+	"byone-arena/pkg/deviceauth"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
-	"encoding/json"
-	"fmt"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -103,6 +106,13 @@ func (h *ConsoleHandler) GetByID(c *fiber.Ctx) error {
 // @Failure      500   {object}  response.ErrorResponse
 // @Router       /api/v1/consoles [post]
 func (h *ConsoleHandler) Create(c *fiber.Ctx) error {
+	// Defense in depth: route sudah mewajibkan console.price, tetapi handler
+	// tetap menolak bila dipanggil lewat jalur lain di masa depan.
+	if !canEditConsolePrice(c) {
+		return response.Forbidden(c,
+			"Harga konsol hanya dapat ditentukan user dengan izin Harga Konsol")
+	}
+
 	req := new(usecase.CreateConsoleRequest)
 	if err := c.BodyParser(req); err != nil {
 		return response.BadRequest(c, "Format request tidak valid")
@@ -291,14 +301,57 @@ func (h *ConsoleHandler) PreviewPrice(c *fiber.Ctx) error {
 // @Param        body  body  object  false  "{\"screenStatus\":\"on\"}"  "{\"screenStatus\": \"on\"}"
 // @Success      200   {object}  response.Response{data=object{logId=string,isAuthorized=bool,sessionId=string,durationMin=int}}
 // @Router       /api/v1/consoles/{id}/heartbeat [post]
+// validateDeviceCredentials memastikan secret dan deviceId cocok dengan data
+// konsol. Dipisah agar logika autentikasi perangkat bisa diuji tanpa HTTP/DB.
+func validateDeviceCredentials(console *entity.Console, secret, deviceIDHeader string) bool {
+	if console == nil || console.DeviceSecretHash == "" || console.DeviceID == nil {
+		return false
+	}
+	if strings.TrimSpace(secret) == "" || strings.TrimSpace(deviceIDHeader) == "" {
+		return false
+	}
+	if console.DeviceID.String() != strings.TrimSpace(deviceIDHeader) {
+		return false
+	}
+	return deviceauth.EqualHash(console.DeviceSecretHash, deviceauth.HashSecret(secret))
+}
+
 func (h *ConsoleHandler) Heartbeat(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
 		return response.BadRequest(c, "Format ID tidak valid")
 	}
 
-	// Update last_seen_at
-	h.db.WithContext(c.Context()).Model(&entity.Console{}).Where("id = ?", id).Update("last_seen_at", time.Now())
+	var console entity.Console
+	if err := h.db.WithContext(c.Context()).
+		First(&console, "id = ?", id).Error; err != nil {
+		return response.NotFound(c, "Konsol tidak ditemukan")
+	}
+
+	// Heartbeat wajib membawa secret perangkat + deviceId yang cocok.
+	secret := strings.TrimSpace(c.Get("X-Device-Secret"))
+	deviceIDHeader := strings.TrimSpace(c.Get("X-Device-Id"))
+	if !validateDeviceCredentials(&console, secret, deviceIDHeader) {
+		return response.Unauthorized(c,
+			"Kredensial perangkat tidak valid. Lakukan pairing ulang.")
+	}
+
+	now := time.Now()
+	updates := map[string]interface{}{
+		"last_seen_at": now,
+		"updated_at":   now,
+	}
+	ip := c.IP()
+	if console.IPAddress == nil || *console.IPAddress != ip {
+		audit.Log(h.db, c, "device.ip_changed", "console", &console.ID, map[string]any{
+			"deviceId": deviceIDHeader,
+			"oldIp":    console.IPAddress,
+			"newIp":    ip,
+		})
+		updates["ip_address"] = ip
+	}
+	h.db.WithContext(c.Context()).Model(&entity.Console{}).
+		Where("id = ?", id).Updates(updates)
 
 	// Jika ada screenStatus, log aktivitas TV via SP
 	var body struct {

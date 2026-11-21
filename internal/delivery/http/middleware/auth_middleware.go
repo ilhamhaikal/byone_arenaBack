@@ -49,7 +49,7 @@ func AuthMiddleware(cfg *config.Config, db *gorm.DB) fiber.Handler {
 		if db != nil {
 			var user entity.User
 			if err := db.WithContext(c.Context()).
-				Select("id", "username", "role", "is_active", "permissions").
+				Select("id", "username", "role", "is_active", "permissions", "must_change_password").
 				First(&user, "id = ?", claims.UserID).Error; err != nil {
 				return response.Unauthorized(c, "Sesi tidak valid, silakan login ulang")
 			}
@@ -60,6 +60,7 @@ func AuthMiddleware(cfg *config.Config, db *gorm.DB) fiber.Handler {
 			c.Locals("userID", user.ID)
 			c.Locals("username", user.Username)
 			c.Locals("role", user.Role)
+			c.Locals("mustChangePassword", user.MustChangePassword)
 
 			var perms []string
 			if strings.TrimSpace(user.Permissions) != "" {
@@ -78,6 +79,25 @@ func AuthMiddleware(cfg *config.Config, db *gorm.DB) fiber.Handler {
 		c.Locals("permissions", []string{})
 
 		return c.Next()
+	}
+}
+
+// RequirePasswordChanged memblokir semua endpoint terproteksi sampai user
+// mengganti password default. Hanya /auth/me dan /users/change-password yang
+// diizinkan.
+func RequirePasswordChanged() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		mustChange, _ := c.Locals("mustChangePassword").(bool)
+		if !mustChange {
+			return c.Next()
+		}
+		switch c.Path() {
+		case "/api/v1/auth/me", "/api/v1/users/change-password":
+			return c.Next()
+		default:
+			return response.ForbiddenCode(c, "PASSWORD_CHANGE_REQUIRED",
+				"Wajib mengganti password sebelum melanjutkan")
+		}
 	}
 }
 

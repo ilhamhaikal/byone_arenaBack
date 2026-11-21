@@ -1,17 +1,27 @@
 package handler
 
 import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/license"
+	"byone-arena/pkg/audit"
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
-	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// maxDailyRentalDays membatasi durasi rental harian agar harga & jadwal tidak
+// dibuat terlalu jauh ke depan.
+const maxDailyRentalDays = 30
 
 // RentalHandler menangani daily rental + booking
 type RentalHandler struct {
@@ -32,7 +42,7 @@ func NewRentalHandler(db *gorm.DB, v *validator.Validator, licenseSvc *license.S
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Param        body  body  object  true  "Data rental: consoleId, customerId, startDate, endDate, dailyPrice, voucherCode, notes"
+// @Param        body  body  object  true  "Data rental: consoleId, customerId, startDate, endDate, voucherCode, notes (dailyPrice dari client diabaikan)"
 // @Success      201  {object}  response.Response
 // @Router       /api/v1/daily-rentals [post]
 func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
@@ -41,7 +51,7 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 		CustomerID    *uuid.UUID `json:"customerId"`
 		StartDate     string     `json:"startDate"     validate:"required"`
 		EndDate       string     `json:"endDate"       validate:"required"`
-		DailyPrice    float64    `json:"dailyPrice"` // opsional, auto dari settings jika 0
+		DailyPrice    float64    `json:"dailyPrice"` // diabaikan; harga ditentukan server
 		VoucherCode   string     `json:"voucherCode"`
 		Notes         string     `json:"notes"`
 		PaymentMethod string     `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
@@ -60,20 +70,17 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 		}
 	}
 
-	// Auto-fill dailyPrice dari console jika tidak diisi
-	if req.DailyPrice == 0 {
-		var console struct {
-			DailyPrice float64 `gorm:"column:daily_price"`
-		}
-		h.db.WithContext(c.Context()).Raw(
-			"SELECT * FROM "+spname.Ident("ConsoleDailyPrice")+"(?::uuid)", req.ConsoleID,
-		).Scan(&console)
-		if console.DailyPrice > 0 {
-			req.DailyPrice = console.DailyPrice
-		}
+	// Harga TIDAK diambil dari client. Nilai dari request hanya dipakai untuk
+	// audit bila berbeda (kompatibilitas aplikasi lama).
+	requestedDailyPrice := req.DailyPrice
+	resolvedDailyPrice, err := h.resolveDailyPrice(c, req.ConsoleID)
+	if err != nil {
+		return response.BadRequest(c, err.Error())
 	}
-	if req.DailyPrice <= 0 {
-		return response.BadRequest(c, "Harga per hari belum diatur. Admin: PUT /settings/daily-price")
+	req.DailyPrice = resolvedDailyPrice
+
+	if err := validateDailyRentalDates(req.StartDate, req.EndDate); err != nil {
+		return response.BadRequest(c, err.Error())
 	}
 
 	// --- Daily Rental SP ---
@@ -87,18 +94,34 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 		Status         string    `gorm:"column:status"`
 	}
 	var result spResult
-	tx := h.db.WithContext(c.Context()).Raw(
-		fmt.Sprintf(`SELECT * FROM %s(?, ?, ?::DATE, ?::DATE, ?, ?, ?)`, spname.Ident("CreateDailyRental")),
-		req.ConsoleID, req.CustomerID, req.StartDate, req.EndDate,
-		req.DailyPrice, req.VoucherCode, req.Notes,
-	).Scan(&result)
-	if tx.Error != nil {
-		return response.BadRequest(c, tx.Error.Error())
+	method := normalizePaymentMethod(req.PaymentMethod)
+	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			fmt.Sprintf(`SELECT * FROM %s(?, ?, ?::DATE, ?::DATE, ?, ?, ?)`, spname.Ident("CreateDailyRental")),
+			req.ConsoleID, req.CustomerID, req.StartDate, req.EndDate,
+			req.DailyPrice, req.VoucherCode, req.Notes,
+		).Scan(&result).Error; err != nil {
+			return err
+		}
+		return tx.Exec(
+			"SELECT "+spname.Ident("SetDailyRentalPaymentMethod")+"(?::uuid, ?::varchar)",
+			result.RentalID, method,
+		).Error
+	})
+	if err != nil {
+		return response.BadRequest(c, err.Error())
 	}
 
-	method := normalizePaymentMethod(req.PaymentMethod)
-	h.db.WithContext(c.Context()).Exec(
-		"SELECT "+spname.Ident("SetDailyRentalPaymentMethod")+"(?::uuid, ?::varchar)", result.RentalID, method)
+	audit.Log(h.db, c, "daily_rental.create", "daily_rental", &result.RentalID, map[string]any{
+		"consoleId":           req.ConsoleID,
+		"dailyPrice":          req.DailyPrice,
+		"requestedDailyPrice": requestedDailyPrice, // hanya untuk audit; tidak dipakai
+		"totalDays":           result.TotalDays,
+		"totalAmount":         result.TotalAmount,
+		"finalAmount":         result.FinalAmount,
+	})
+
+	// Metode pembayaran sudah disimpan atomik bersama pembuatan rental.
 
 	// Load full object
 	var rental entity.DailyRental
@@ -106,6 +129,66 @@ func (h *RentalHandler) CreateDailyRental(c *fiber.Ctx) error {
 		First(&rental, "id = ?", result.RentalID)
 
 	return response.Created(c, "Rental harian berhasil dibuat", rental)
+}
+
+// resolveDailyPrice menentukan harga rental harian dari server:
+// harga khusus konsol, lalu setting global. Nilai dari client tidak dipakai.
+func (h *RentalHandler) resolveDailyPrice(c *fiber.Ctx, consoleID uuid.UUID) (float64, error) {
+	var console struct {
+		DailyPrice float64 `gorm:"column:daily_price"`
+	}
+	if err := h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("ConsoleDailyPrice")+"(?::uuid)", consoleID,
+	).Scan(&console).Error; err != nil {
+		return 0, err
+	}
+	if console.DailyPrice > 0 {
+		return selectDailyPrice(console.DailyPrice, 0)
+	}
+
+	var setting struct {
+		Value string `gorm:"column:value"`
+	}
+	if err := h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("AppSettingValue")+"(?::text)", "daily_price",
+	).Scan(&setting).Error; err != nil {
+		return 0, err
+	}
+
+	globalPrice, _ := strconv.ParseFloat(strings.TrimSpace(setting.Value), 64)
+	return selectDailyPrice(0, globalPrice)
+}
+
+// selectDailyPrice menerapkan aturan bisnis: harga khusus konsol menang,
+// lalu fallback ke harga global. Keduanya 0 berarti belum diatur.
+func selectDailyPrice(consolePrice, globalPrice float64) (float64, error) {
+	if consolePrice > 0 {
+		return consolePrice, nil
+	}
+	if globalPrice > 0 {
+		return globalPrice, nil
+	}
+	return 0, errors.New("Harga per hari belum diatur. Admin: PUT /settings/daily-price")
+}
+
+// validateDailyRentalDates memastikan format tanggal, urutan, dan batas durasi
+// rental harian sesuai aturan bisnis.
+func validateDailyRentalDates(startRaw, endRaw string) error {
+	startDate, err := time.Parse("2006-01-02", startRaw)
+	if err != nil {
+		return errors.New("Format tanggal mulai harus YYYY-MM-DD")
+	}
+	endDate, err := time.Parse("2006-01-02", endRaw)
+	if err != nil {
+		return errors.New("Format tanggal selesai harus YYYY-MM-DD")
+	}
+	if !endDate.After(startDate) {
+		return errors.New("Tanggal selesai harus setelah tanggal mulai")
+	}
+	if endDate.Sub(startDate) > maxDailyRentalDays*24*time.Hour {
+		return fmt.Errorf("Rental harian maksimal %d hari", maxDailyRentalDays)
+	}
+	return nil
 }
 
 // GetAllDailyRentals godoc

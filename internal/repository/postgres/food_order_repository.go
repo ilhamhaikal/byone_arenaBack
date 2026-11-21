@@ -7,6 +7,7 @@ import (
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/domain/repository"
+	"byone-arena/pkg/paymentmethod"
 	"byone-arena/pkg/spname"
 
 	"github.com/google/uuid"
@@ -99,30 +100,32 @@ func (r *foodOrderRepository) Create(ctx context.Context, order *entity.FoodOrde
 	}
 
 	var result spResult
-	tx := r.db.WithContext(ctx).Raw(
-		fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?::jsonb)", spname.Ident("CreateFoodOrder")),
-		order.SessionID,
-		order.CustomerID,
-		order.Notes,
-		string(itemsJSON),
-	).Scan(&result)
-
-	if tx.Error != nil {
-		return parseStoredProcError(tx.Error)
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			fmt.Sprintf("SELECT * FROM %s(?, ?, ?, ?::jsonb)", spname.Ident("CreateFoodOrder")),
+			order.SessionID,
+			order.CustomerID,
+			order.Notes,
+			string(itemsJSON),
+		).Scan(&result).Error; err != nil {
+			return parseStoredProcError(err)
+		}
+		// Metode pembayaran disimpan dalam transaksi yang sama dengan order.
+		return tx.Exec(
+			"SELECT "+spname.Ident("SetFoodOrderPaymentMethod")+"(?::uuid, ?::varchar)",
+			result.OrderID, paymentmethod.Normalize(order.PaymentMethod),
+		).Error
+	})
+	if err != nil {
+		return err
 	}
 
 	order.ID = result.OrderID
 	order.OrderNumber = result.OrderNumber
 	order.TotalAmount = result.TotalAmount
 	order.Status = entity.OrderStatusPending
-
-	// Simpan discount_amount (diskon otomatis) jika ada
-	if order.DiscountAmount > 0 {
-		r.db.WithContext(ctx).Exec(
-			"SELECT "+spname.Ident("SetFoodOrderDiscount")+"(?::uuid, ?::numeric)",
-			order.ID, order.DiscountAmount,
-		)
-	}
+	order.PaymentMethod = paymentmethod.Normalize(order.PaymentMethod)
+	// discount_amount sudah dihitung & disimpan oleh stored procedure.
 	return nil
 }
 

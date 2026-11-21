@@ -249,6 +249,7 @@ func (uc *userUseCase) ChangePassword(ctx context.Context, userID uuid.UUID, req
 	}
 
 	user.Password = string(hash)
+	user.MustChangePassword = false
 	return uc.userRepo.Update(ctx, user)
 }
 

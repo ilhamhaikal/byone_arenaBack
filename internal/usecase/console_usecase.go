@@ -155,6 +155,10 @@ func (uc *consoleUseCase) GetConsoleOverview(ctx context.Context) ([]*ConsoleOve
 }
 
 func (uc *consoleUseCase) CreateConsole(ctx context.Context, req *CreateConsoleRequest) (*entity.Console, error) {
+	if err := req.PricingTiers.Validate(); err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 	console := &entity.Console{
 		ID:           uuid.New(),
@@ -216,6 +220,9 @@ func (uc *consoleUseCase) UpdateConsole(ctx context.Context, id uuid.UUID, req *
 		console.DailyPrice = *req.DailyPrice
 	}
 	if req.PricingTiers != nil {
+		if err := req.PricingTiers.Validate(); err != nil {
+			return nil, err
+		}
 		console.PricingTiers = *req.PricingTiers
 	}
 	if req.Description != "" {

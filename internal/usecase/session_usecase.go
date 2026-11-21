@@ -21,6 +21,10 @@ type SessionUseCase interface {
 	CancelSession(ctx context.Context, id uuid.UUID) error
 }
 
+// SetupGraceMinutes adalah waktu persiapan konsol yang diberikan gratis di
+// awal sesi (tidak menambah tagihan dan tidak memicu notifikasi).
+const SetupGraceMinutes = 2
+
 type sessionUseCase struct {
 	sessionRepo repository.SessionRepository
 	consoleRepo repository.ConsoleRepository
@@ -117,12 +121,19 @@ func (uc *sessionUseCase) StartSession(ctx context.Context, req *StartSessionReq
 	}
 
 	// Buat sesi + pembayaran di depan dalam satu transaksi atomik
-	payment, err := uc.sessionRepo.CreateWithPayment(ctx, session, req.CashReceived, req.VoucherCode, req.UseTimeBankMinutes, req.RedeemPointUnits)
+	payment, err := uc.sessionRepo.CreateWithPayment(ctx, session, req.CashReceived, req.VoucherCode, req.UseTimeBankMinutes, req.RedeemPointUnits, req.PaymentMethod)
 	if err != nil {
 		return nil, err
 	}
 
-	session.Console = console
+	// Beri waktu persiapan konsol di AWAL sesi: start_time dan end_scheduled_at
+	// sama-sama digeser, sehingga jam sesi baru berjalan setelah setup selesai.
+	// Menit berbayar & harga tetap, dan tidak ada notifikasi khusus untuk ini.
+	if updated, graceErr := uc.sessionRepo.AddSetupGrace(ctx, session.ID, SetupGraceMinutes); graceErr == nil && updated != nil {
+		session = updated
+	} else {
+		session.Console = console
+	}
 	return &StartSessionResponse{Session: session, Payment: payment}, nil
 }
 
@@ -150,12 +161,8 @@ func (uc *sessionUseCase) EndSession(ctx context.Context, id uuid.UUID) (*entity
 	session.Status = entity.SessionStatusCompleted
 	session.UpdatedAt = now
 
+	// EndSession SP + reset konsol dijalankan atomik oleh repository.
 	if err := uc.sessionRepo.Update(ctx, session); err != nil {
-		return nil, err
-	}
-
-	// Kembalikan status konsol menjadi available
-	if err := uc.consoleRepo.UpdateStatus(ctx, session.ConsoleID, entity.ConsoleStatusAvailable); err != nil {
 		return nil, err
 	}
 
@@ -175,10 +182,6 @@ func (uc *sessionUseCase) CancelSession(ctx context.Context, id uuid.UUID) error
 		return errors.New("hanya sesi aktif yang dapat dibatalkan")
 	}
 
-	if err := uc.sessionRepo.UpdateStatus(ctx, id, entity.SessionStatusCancelled); err != nil {
-		return err
-	}
-
-	// Kembalikan status konsol menjadi available
-	return uc.consoleRepo.UpdateStatus(ctx, session.ConsoleID, entity.ConsoleStatusAvailable)
+	// CancelSession SP + reset konsol dijalankan atomik oleh repository.
+	return uc.sessionRepo.UpdateStatus(ctx, id, entity.SessionStatusCancelled)
 }

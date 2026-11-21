@@ -12,7 +12,11 @@ type CreateNotificationRequest struct {
 	LoopInterval int                         `json:"loopInterval" validate:"omitempty,gte=5" example:"30"`
 	TargetAll    bool                        `json:"targetAll"    example:"true"`
 	// ConsoleIDs — daftar UUID konsol yang ditarget (jika targetAll=false)
-	ConsoleIDs         []string `json:"consoleIds"         example:"[\"bd7edb34-...\",\"b49b20d9-...\"]"`
+	ConsoleIDs []string `json:"consoleIds"         example:"[\"bd7edb34-...\",\"b49b20d9-...\"]"`
 	// ActiveSessionsOnly — hanya kirim ke konsol dengan sesi aktif
-	ActiveSessionsOnly bool     `json:"activeSessionsOnly"  example:"false"`
+	ActiveSessionsOnly bool `json:"activeSessionsOnly"  example:"false"`
+	// AutoShow — tampil otomatis di TV. Default false untuk notifikasi buatan
+	// admin (himbauan/promosi) agar hanya muncul saat tombol "Tampilkan"
+	// ditekan. Notifikasi sistem disisipkan langsung oleh backend dengan true.
+	AutoShow bool `json:"autoShow" example:"false"`
 }

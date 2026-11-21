@@ -10,6 +10,8 @@ import (
 
 	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/license"
+	"byone-arena/pkg/audit"
+	"byone-arena/pkg/deviceauth"
 	"byone-arena/pkg/response"
 
 	"github.com/gofiber/fiber/v2"
@@ -35,10 +37,11 @@ func NewDeviceHandler(db *gorm.DB, licenseSvc *license.Service) *DeviceHandler {
 type announceDeviceRequest struct {
 	// DeviceID dibuat & disimpan aplikasi TV. Opsional untuk kompatibilitas:
 	// bila kosong/tidak valid, server memakai UUID turunan dari IP.
-	DeviceID   string `json:"deviceId"`
-	Name       string `json:"name"`
-	Model      string `json:"model"`
-	AppVersion string `json:"appVersion"`
+	DeviceID         string `json:"deviceId"`
+	DeviceSecretHash string `json:"deviceSecretHash"`
+	Name             string `json:"name"`
+	Model            string `json:"model"`
+	AppVersion       string `json:"appVersion"`
 }
 
 // Announce godoc
@@ -68,10 +71,41 @@ func (h *DeviceHandler) Announce(c *fiber.Ctx) error {
 		deviceID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("byone-device:"+ip))
 	}
 
-	// 1. Sudah terhubung ke konsol? → TV tidak perlu menampilkan kode lagi.
+	secretHash := strings.ToLower(strings.TrimSpace(req.DeviceSecretHash))
+	if !deviceauth.IsValidHash(secretHash) {
+		return response.BadRequest(c, "deviceSecretHash wajib berupa hash SHA-256 yang valid")
+	}
+
+	// 1. Sudah terhubung ke konsol? → verifikasi secret sebelum membocorkan
+	// informasi konsol atau menerima heartbeat.
 	var bound entity.Console
 	if err := h.db.WithContext(c.Context()).
 		Where("device_id = ?", deviceID).First(&bound).Error; err == nil {
+		if bound.DeviceSecretHash == "" ||
+			!deviceauth.EqualHash(bound.DeviceSecretHash, secretHash) {
+			return response.OK(c, "Perangkat perlu dihubungkan ulang", fiber.Map{
+				"deviceId":       deviceID,
+				"bound":          false,
+				"reauthRequired": true,
+			})
+		}
+
+		updates := map[string]interface{}{
+			"ip_address":   ip,
+			"last_seen_at": now,
+			"updated_at":   now,
+		}
+		if bound.IPAddress == nil || *bound.IPAddress != ip {
+			audit.Log(h.db, c, "device.ip_changed", "console", &bound.ID, map[string]any{
+				"deviceId": deviceID,
+				"oldIp":    bound.IPAddress,
+				"newIp":    ip,
+			})
+		}
+		if err := h.db.WithContext(c.Context()).Model(&entity.Console{}).
+			Where("id = ?", bound.ID).Updates(updates).Error; err != nil {
+			return response.InternalServerError(c, err.Error())
+		}
 		h.db.WithContext(c.Context()).
 			Where("device_id = ?", deviceID).Delete(&entity.PendingDevice{})
 		return response.OK(c, "Perangkat sudah terhubung", fiber.Map{
@@ -102,27 +136,36 @@ func (h *DeviceHandler) Announce(c *fiber.Ctx) error {
 		}
 		expires := now.Add(pairingCodeTTL)
 		dev = entity.PendingDevice{
-			DeviceID:      &deviceID,
-			IP:            ip,
-			Name:          req.Name,
-			Model:         req.Model,
-			AppVersion:    req.AppVersion,
-			PairingCode:   &code,
-			CodeExpiresAt: &expires,
-			LastSeen:      now,
+			DeviceID:         &deviceID,
+			DeviceSecretHash: secretHash,
+			IP:               ip,
+			Name:             req.Name,
+			Model:            req.Model,
+			AppVersion:       req.AppVersion,
+			PairingCode:      &code,
+			CodeExpiresAt:    &expires,
+			LastSeen:         now,
 		}
 		if err := h.db.WithContext(c.Context()).Create(&dev).Error; err != nil {
 			return response.InternalServerError(c, err.Error())
 		}
 	} else {
+		// Pending device dengan kredensial berbeda tidak boleh diambil alih.
+		if dev.DeviceSecretHash != "" &&
+			!deviceauth.EqualHash(dev.DeviceSecretHash, secretHash) {
+			return response.Conflict(c,
+				"Perangkat sudah terdaftar dengan kredensial berbeda. Minta admin menghapus perangkat lama.")
+		}
+
 		// 3b. Perangkat sudah dikenal → perbarui info & mungkin kode.
 		updates := map[string]interface{}{
-			"ip":          ip,
-			"name":        req.Name,
-			"model":       req.Model,
-			"app_version": req.AppVersion,
-			"last_seen":   now,
-			"updated_at":  now,
+			"ip":                 ip,
+			"name":               req.Name,
+			"model":              req.Model,
+			"app_version":        req.AppVersion,
+			"device_secret_hash": secretHash,
+			"last_seen":          now,
+			"updated_at":         now,
 		}
 		if codeNeedsRefresh {
 			code, codeErr := h.generatePairingCode(c)
@@ -289,6 +332,11 @@ func (h *DeviceHandler) BindByCode(c *fiber.Ctx) error {
 		return response.NotFound(c, "Konsol tidak ditemukan")
 	}
 
+	if strings.TrimSpace(dev.DeviceSecretHash) == "" {
+		return response.BadRequest(c,
+			"Perangkat belum memiliki kredensial. Minta TV melakukan pairing ulang.")
+	}
+
 	// Konsol sudah dipakai TV lain → tolak agar tidak salah pindah tanpa sadar.
 	if console.DeviceID != nil && (dev.DeviceID == nil || *console.DeviceID != *dev.DeviceID) {
 		return response.Conflict(c,
@@ -318,10 +366,11 @@ func (h *DeviceHandler) BindByCode(c *fiber.Ctx) error {
 	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&entity.Console{}).Where("id = ?", consoleID).
 			Updates(map[string]interface{}{
-				"ip_address":   dev.IP,
-				"device_id":    dev.DeviceID,
-				"last_seen_at": now,
-				"updated_at":   now,
+				"ip_address":         dev.IP,
+				"device_id":          dev.DeviceID,
+				"device_secret_hash": dev.DeviceSecretHash,
+				"last_seen_at":       now,
+				"updated_at":         now,
 			})
 		if res.Error != nil {
 			return res.Error
@@ -388,12 +437,35 @@ func (h *DeviceHandler) Bind(c *fiber.Ctx) error {
 		First(&dev, "id = ?", deviceID).Error; err != nil {
 		return response.NotFound(c, "Perangkat tidak ditemukan")
 	}
+	if strings.TrimSpace(dev.DeviceSecretHash) == "" {
+		return response.BadRequest(c,
+			"Perangkat belum memiliki kredensial. Minta TV melakukan pairing ulang.")
+	}
 
 	var console entity.Console
 	if err := h.db.WithContext(c.Context()).
 		First(&console, "id = ?", consoleID).Error; err != nil {
 		return response.NotFound(c, "Konsol tidak ditemukan")
 	}
+
+	// Konsol sudah dipakai TV lain → tolak.
+	if console.DeviceID != nil &&
+		(dev.DeviceID == nil || *console.DeviceID != *dev.DeviceID) {
+		return response.Conflict(c,
+			"Konsol ini sudah terhubung ke TV lain. Lepaskan dulu TV lama.")
+	}
+	// TV ini sudah terhubung ke konsol lain → tolak.
+	if dev.DeviceID != nil {
+		var other entity.Console
+		if err := h.db.WithContext(c.Context()).
+			Where("device_id = ? AND id <> ?", *dev.DeviceID, consoleID).
+			First(&other).Error; err == nil {
+			return response.Conflict(c, fmt.Sprintf(
+				"TV ini sudah terhubung ke konsol %s. Lepaskan dulu di menu Konsol.",
+				other.Name))
+		}
+	}
+
 	if console.DeviceID == nil && h.license != nil {
 		if err := h.license.EnsureCanBindUnit(c.Context()); err != nil {
 			return response.Forbidden(c, err.Error())
@@ -404,10 +476,11 @@ func (h *DeviceHandler) Bind(c *fiber.Ctx) error {
 	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&entity.Console{}).Where("id = ?", consoleID).
 			Updates(map[string]interface{}{
-				"ip_address":   dev.IP,
-				"device_id":    dev.DeviceID,
-				"last_seen_at": now,
-				"updated_at":   now,
+				"ip_address":         dev.IP,
+				"device_id":          dev.DeviceID,
+				"device_secret_hash": dev.DeviceSecretHash,
+				"last_seen_at":       now,
+				"updated_at":         now,
 			})
 		if res.Error != nil {
 			return res.Error
@@ -447,9 +520,10 @@ func (h *DeviceHandler) UnbindConsole(c *fiber.Ctx) error {
 	res := h.db.WithContext(c.Context()).Model(&entity.Console{}).
 		Where("id = ?", consoleID).
 		Updates(map[string]interface{}{
-			"ip_address": nil,
-			"device_id":  nil,
-			"updated_at": time.Now(),
+			"ip_address":         nil,
+			"device_id":          nil,
+			"device_secret_hash": nil,
+			"updated_at":         time.Now(),
 		})
 	if res.Error != nil {
 		return response.InternalServerError(c, res.Error.Error())

@@ -42,13 +42,18 @@ type Console struct {
 	IPAddress   *string     `json:"ipAddress,omitempty"    gorm:"size:50"`
 	// DeviceID = identitas TV yang terhubung ke konsol ini, diisi saat pairing.
 	// NULL berarti belum ada TV yang dihubungkan.
-	DeviceID     *uuid.UUID    `json:"deviceId,omitempty"     gorm:"type:uuid"`
-	ADBPort      int           `json:"adbPort,omitempty"      gorm:"default:5555"`
-	MACAddress   *string       `json:"macAddress,omitempty"   gorm:"size:20"`
-	Status       ConsoleStatus `json:"status"                 gorm:"not null;default:'available';size:20"`
-	ScreenStatus ScreenStatus  `json:"screenStatus"           gorm:"not null;default:'off';size:20"`
-	PricePerHour float64       `json:"pricePerHour"           gorm:"not null;type:numeric(10,2)"`
-	DailyPrice   float64       `json:"dailyPrice"             gorm:"not null;default:0;type:numeric(10,2)"`
+	DeviceID *uuid.UUID `json:"deviceId,omitempty"     gorm:"type:uuid"`
+	// DeviceSecretHash = SHA-256 secret perangkat. Disembunyikan dari JSON.
+	DeviceSecretHash string        `json:"-" gorm:"size:64"`
+	ADBPort          int           `json:"adbPort,omitempty"      gorm:"default:5555"`
+	MACAddress       *string       `json:"macAddress,omitempty"   gorm:"size:20"`
+	Status           ConsoleStatus `json:"status"                 gorm:"not null;default:'available';size:20"`
+	ScreenStatus     ScreenStatus  `json:"screenStatus"           gorm:"not null;default:'off';size:20"`
+	// ManualLive = TV sengaja dinyalakan admin TANPA sesi (live manual)
+	// untuk mematikan konsol/PS. Client menampilkan HDMI tanpa UI.
+	ManualLive   bool    `json:"manualLive" gorm:"not null;default:false"`
+	PricePerHour float64 `json:"pricePerHour"           gorm:"not null;type:numeric(10,2)"`
+	DailyPrice   float64 `json:"dailyPrice"             gorm:"not null;default:0;type:numeric(10,2)"`
 	// PricingTiers — tarif bertingkat (JSONB). Kosong/null = pakai pricePerHour flat.
 	// Format: [{"startMinute":0,"endMinute":60,"price":9000},{"startMinute":60,"endMinute":null,"price":8000}]
 	// startMinute: menit mulai tier (inklusif). endMinute: menit akhir (eksklusif), null=unlimited.

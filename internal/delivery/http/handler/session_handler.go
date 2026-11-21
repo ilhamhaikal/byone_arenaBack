@@ -1,7 +1,12 @@
 package handler
 
 import (
+	"errors"
+	"fmt"
+	"time"
+
 	"byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/domain/entity"
 	"byone-arena/internal/license"
 	"byone-arena/internal/promo"
 	"byone-arena/internal/usecase"
@@ -9,12 +14,11 @@ import (
 	"byone-arena/pkg/response"
 	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
-	"fmt"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ExtendSessionRequest payload untuk menambah waktu sewa
@@ -156,13 +160,18 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 		return response.BadRequest(c, err.Error())
 	}
 
-	if result.Payment != nil {
-		finalizePaymentMethod(h.db, result.Payment.ID, method)
-		if isCashless(method) {
-			result.Payment.CashReceived = result.Payment.TotalPayment
-			result.Payment.ChangeAmount = 0
-		}
+	if result.Payment != nil && isCashless(method) {
+		// Metode sudah difinalisasi atomik di repository; koreksi nilai
+		// response agar sesuai dengan baris payment yang tersimpan.
+		result.Payment.PaymentMethod = entity.PaymentMethod(method)
+		result.Payment.CashReceived = result.Payment.TotalPayment
+		result.Payment.ChangeAmount = 0
 	}
+
+	// Sesi baru dimulai → live manual tanpa sesi (jika ada) berakhir.
+	h.db.WithContext(c.Context()).Model(&entity.Console{}).
+		Where("id = ?", req.ConsoleID).
+		Update("manual_live", false)
 
 	promoMessage := ""
 	if req.UsePromoBonus {
@@ -287,9 +296,123 @@ func (h *SessionHandler) Cancel(c *fiber.Ctx) error {
 		"note": "dibatalkan tanpa tagihan",
 	})
 
-	h.hub.BroadcastSessionCancelled(id)
+	var consoleRow struct {
+		ConsoleID uuid.UUID `gorm:"column:console_id"`
+	}
+	h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("SessionConsoleID")+"(?::uuid)", id).Scan(&consoleRow)
+	h.hub.BroadcastSessionCancelled(id, consoleRow.ConsoleID)
 
 	return response.OK(c, "Sesi rental berhasil dibatalkan", nil)
+}
+
+// Recover godoc
+// @Summary      Pulihkan sesi yang terputus (listrik mati / TV offline)
+// @Description  Memulai sesi baru dengan sisa waktu dari sesi interrupted dan
+// voucher GRATIS (100%). Ditautkan ke sesi asal dan dicatat di audit log.
+// @Tags         Sesi Rental
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "Session ID (sesi interrupted)"
+// @Success      201 {object} response.Response
+// @Router       /api/v1/sessions/{id}/recover [post]
+func (h *SessionHandler) Recover(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+
+	if h.license != nil {
+		if err := h.license.EnsureCanStartBusiness(c.Context()); err != nil {
+			return response.Forbidden(c, err.Error())
+		}
+	}
+
+	var original entity.Session
+	var result *usecase.StartSessionResponse
+
+	// Row lock pada sesi asal mencegah dua request recover paralel membuat
+	// dua sesi pemulihan. Semua update relasi dilakukan dalam transaksi ini.
+	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&original, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if original.Status != entity.SessionStatusInterrupted {
+			return errors.New("Sesi ini bukan sesi terputus")
+		}
+		if original.RecoveredBySessionID != nil {
+			return errors.New("Sesi ini sudah dipulihkan")
+		}
+		if original.RemainingRecoveryMinutes <= 0 {
+			return errors.New("Tidak ada sisa waktu yang bisa dipulihkan")
+		}
+
+		var activeCount int64
+		if err := tx.Model(&entity.Session{}).
+			Where("console_id = ? AND status = 'active'", original.ConsoleID).
+			Count(&activeCount).Error; err != nil {
+			return err
+		}
+		if activeCount > 0 {
+			return errors.New("Konsol masih dipakai sesi aktif. Akhiri sesi tersebut dulu.")
+		}
+
+		req := &usecase.StartSessionRequest{
+			ConsoleID:             original.ConsoleID,
+			CustomerID:            original.CustomerID,
+			BookedDurationMinutes: original.RemainingRecoveryMinutes,
+			CashReceived:          0,
+			VoucherCode:           "GRATIS",
+			PaymentMethod:         "cash",
+			Notes: fmt.Sprintf("Pemulihan sesi %s (terputus) — sisa %d menit",
+				original.ID, original.RemainingRecoveryMinutes),
+		}
+		started, startErr := h.sessionUC.StartSession(c.Context(), req)
+		if startErr != nil {
+			return startErr
+		}
+		result = started
+
+		if err := tx.Model(&entity.Session{}).
+			Where("id = ?", result.Session.ID).
+			Update("recovered_from_session_id", original.ID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&entity.Session{}).
+			Where("id = ?", original.ID).
+			Updates(map[string]interface{}{
+				"status":                  entity.SessionStatusRecovered,
+				"recovered_by_session_id": result.Session.ID,
+				"updated_at":              time.Now(),
+			}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&entity.Console{}).
+			Where("id = ?", original.ConsoleID).
+			Update("manual_live", false).Error
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return response.NotFound(c, "Sesi tidak ditemukan")
+		}
+		return response.BadRequest(c, err.Error())
+	}
+	if result == nil {
+		return response.InternalServerError(c, "Sesi pemulihan tidak terbentuk")
+	}
+
+	audit.Log(h.db, c, "session.recovery", "session", &original.ID, map[string]any{
+		"recoveredSessionId": result.Session.ID,
+		"remainingMinutes":   original.RemainingRecoveryMinutes,
+		"voucher":            "GRATIS",
+	})
+
+	// TV langsung masuk sesi baru (HDMI + overlay).
+	h.hub.BroadcastSessionStarted(result, original.ConsoleID)
+
+	return response.Created(c, "Sesi berhasil dipulihkan dengan voucher GRATIS", result)
 }
 
 // Extend godoc
@@ -344,21 +467,25 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 	}
 
 	var result spResult
-	tx := h.db.WithContext(c.Context()).Raw(
-		fmt.Sprintf(`SELECT * FROM %s(?, ?, ?, ?, ?, ?)`, spname.Ident("ExtendSession")),
-		id, req.AdditionalMinutes, req.CashReceived, req.PayNow, req.VoucherCode, req.Notes,
-	).Scan(&result)
-
-	if tx.Error != nil {
-		return response.BadRequest(c, tx.Error.Error())
+	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			fmt.Sprintf(`SELECT * FROM %s(?, ?, ?, ?, ?, ?)`, spname.Ident("ExtendSession")),
+			id, req.AdditionalMinutes, req.CashReceived, req.PayNow, req.VoucherCode, req.Notes,
+		).Scan(&result).Error; err != nil {
+			return err
+		}
+		if req.PayNow {
+			return finalizePaymentMethod(tx, result.PaymentID, method)
+		}
+		return nil
+	})
+	if err != nil {
+		return response.BadRequest(c, err.Error())
 	}
 
-	if req.PayNow {
-		finalizePaymentMethod(h.db, result.PaymentID, method)
-		if isCashless(method) {
-			result.PaymentCashReceived = result.PaymentTotal
-			result.PaymentChange = 0
-		}
+	if req.PayNow && isCashless(method) {
+		result.PaymentCashReceived = result.PaymentTotal
+		result.PaymentChange = 0
 	}
 
 	// Broadcast ke TV bahwa waktu ditambah
@@ -389,7 +516,7 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 		"additionalMinutes":  req.AdditionalMinutes,
 		"totalBookedMinutes": result.SessionBookedMinutes,
 		"endScheduledAt":     result.SessionEndScheduled,
-	})
+	}, consoleID)
 
 	// Insert notifikasi untuk client polling
 	consoleIDStr := consoleID.String()

@@ -41,10 +41,12 @@ type FoodOrderItemRequest struct {
 
 // CreateFoodOrderRequest payload untuk membuat pesanan baru
 type CreateFoodOrderRequest struct {
-	SessionID    *uuid.UUID `json:"sessionId"`  // opsional: sesi PS yang sedang berjalan
-	CustomerID   *uuid.UUID `json:"customerId"` // opsional: pelanggan terdaftar
-	Notes        string     `json:"notes"`
-	AutoDiscount float64    `json:"autoDiscount"` // diskon otomatis dari aturan diskon aktif
+	SessionID  *uuid.UUID `json:"sessionId"`  // opsional: sesi PS yang sedang berjalan
+	CustomerID *uuid.UUID `json:"customerId"` // opsional: pelanggan terdaftar
+	Notes      string     `json:"notes"`
+	// AutoDiscount dipertahankan hanya untuk kompatibilitas aplikasi lama.
+	// Nilainya DIABAIKAN: diskon dihitung ulang di stored procedure.
+	AutoDiscount float64 `json:"autoDiscount"`
 	// Metode pembayaran: cash (default), qris, transfer.
 	PaymentMethod string                 `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer"`
 	Items         []FoodOrderItemRequest `json:"items" validate:"required,min=1,dive"`
@@ -101,10 +103,12 @@ func (uc *foodOrderUseCase) CreateOrder(ctx context.Context, req *CreateFoodOrde
 	}
 
 	order := &entity.FoodOrder{
-		SessionID:      req.SessionID,
-		CustomerID:     req.CustomerID,
-		Notes:          req.Notes,
-		DiscountAmount: req.AutoDiscount,
+		SessionID:     req.SessionID,
+		CustomerID:    req.CustomerID,
+		Notes:         req.Notes,
+		PaymentMethod: req.PaymentMethod,
+		// DiscountAmount sengaja tidak diisi dari client; SP CreateFoodOrder
+		// menghitungnya dari aturan diskon aktif.
 	}
 
 	if err := uc.orderRepo.Create(ctx, order, repoItems); err != nil {

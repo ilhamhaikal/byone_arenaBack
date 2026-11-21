@@ -18,20 +18,25 @@ const (
 
 // TvNotification merepresentasikan pesan promosi ke TV Android
 type TvNotification struct {
-	ID                  uuid.UUID            `json:"id"                  gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	Title               string               `json:"title"               gorm:"not null;size:100"`
-	Message             string               `json:"message"             gorm:"not null;type:text"`
-	ImageURL            *string              `json:"imageUrl,omitempty"  gorm:"size:500"`
-	Priority            NotificationPriority `json:"priority"            gorm:"not null;default:'normal';size:20"`
-	LoopEnabled         bool                 `json:"loopEnabled"         gorm:"not null;default:false"`
-	LoopInterval        int                  `json:"loopInterval"        gorm:"not null;default:30"`
-	TargetAll           bool                 `json:"targetAll"           gorm:"not null;default:true"`
-	TargetConsoleIDs    JSONBArray           `json:"targetConsoleIds"    gorm:"type:jsonb;default:'[]'"`  // array of UUID
-	ActiveSessionsOnly  bool                 `json:"activeSessionsOnly"  gorm:"not null;default:false"`   // hanya TV dengan sesi aktif
-	TargetConsoleType   *string              `json:"targetConsoleType,omitempty" gorm:"size:15"`
-	IsActive            bool                 `json:"isActive"            gorm:"not null;default:true;index"`
-	CreatedAt           time.Time            `json:"createdAt"           gorm:"autoCreateTime"`
-	UpdatedAt           time.Time            `json:"updatedAt"           gorm:"autoUpdateTime"`
+	ID                 uuid.UUID            `json:"id"                  gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	Title              string               `json:"title"               gorm:"not null;size:100"`
+	Message            string               `json:"message"             gorm:"not null;type:text"`
+	ImageURL           *string              `json:"imageUrl,omitempty"  gorm:"size:500"`
+	Priority           NotificationPriority `json:"priority"            gorm:"not null;default:'normal';size:20"`
+	LoopEnabled        bool                 `json:"loopEnabled"         gorm:"not null;default:false"`
+	LoopInterval       int                  `json:"loopInterval"        gorm:"not null;default:30"`
+	TargetAll          bool                 `json:"targetAll"           gorm:"not null;default:true"`
+	TargetConsoleIDs   JSONBArray           `json:"targetConsoleIds"    gorm:"type:jsonb;default:'[]'"` // array of UUID
+	ActiveSessionsOnly bool                 `json:"activeSessionsOnly"  gorm:"not null;default:false"`  // hanya TV dengan sesi aktif
+	TargetConsoleType  *string              `json:"targetConsoleType,omitempty" gorm:"size:15"`
+	IsActive           bool                 `json:"isActive"            gorm:"not null;default:true;index"`
+	// AutoShow=true untuk notifikasi sistem (pesanan, perpanjangan, pembayaran
+	// tertunda) yang boleh tampil sendiri. Notifikasi buatan admin (himbauan/
+	// promosi) default false: hanya tampil saat admin menekan "Tampilkan".
+	AutoShow        bool       `json:"autoShow"         gorm:"not null;default:true"`
+	LastTriggeredAt *time.Time `json:"lastTriggeredAt,omitempty" gorm:"column:last_triggered_at"`
+	CreatedAt       time.Time  `json:"createdAt"        gorm:"autoCreateTime"`
+	UpdatedAt       time.Time  `json:"updatedAt"        gorm:"autoUpdateTime"`
 
 	// Field transient — untuk input/output API
 	ConsoleIDs []string `json:"consoleIds,omitempty" gorm:"-"`

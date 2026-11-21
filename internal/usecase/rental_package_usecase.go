@@ -46,12 +46,13 @@ type StartWithPackageRequest struct {
 }
 
 type rentalPackageUseCase struct {
-	repo repository.RentalPackageRepository
+	repo        repository.RentalPackageRepository
+	sessionRepo repository.SessionRepository
 }
 
 // NewRentalPackageUseCase membuat instance baru RentalPackageUseCase
-func NewRentalPackageUseCase(repo repository.RentalPackageRepository) RentalPackageUseCase {
-	return &rentalPackageUseCase{repo: repo}
+func NewRentalPackageUseCase(repo repository.RentalPackageRepository, sessionRepo repository.SessionRepository) RentalPackageUseCase {
+	return &rentalPackageUseCase{repo: repo, sessionRepo: sessionRepo}
 }
 
 func (uc *rentalPackageUseCase) List(ctx context.Context) ([]*entity.RentalPackage, error) {
@@ -106,6 +107,11 @@ func (uc *rentalPackageUseCase) StartWithPackage(ctx context.Context, req *Start
 		ctx, req.ConsoleID, req.CustomerID, req.PackageID, req.CashReceived, req.Notes)
 	if err != nil {
 		return nil, err
+	}
+
+	// Waktu persiapan konsol gratis, sama seperti sesi per jam.
+	if updated, graceErr := uc.sessionRepo.AddSetupGrace(ctx, session.ID, SetupGraceMinutes); graceErr == nil && updated != nil {
+		session = updated
 	}
 	return &StartSessionResponse{Session: session, Payment: payment}, nil
 }

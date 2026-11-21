@@ -111,12 +111,24 @@ func (h *CustomerHandler) Create(c *fiber.Ctx) error {
 			ChangeAmount float64   `gorm:"column:change_amount"`
 			Message      string    `gorm:"column:message"`
 		}
+		cashValue := row.Value
+		if isCashless(req.PaymentMethod) {
+			cashValue = fmt.Sprintf("%.0f", paymentMethodSentinel)
+		}
 		// Gunakan fmt.Sprintf untuk inject numeric value langsung (hindari GORM encode issue)
-		h.db.WithContext(c.Context()).Raw(
-			fmt.Sprintf(`SELECT * FROM %s('%s'::UUID, %s::NUMERIC)`, spname.Ident("SellMembership"),
-				customer.ID, row.Value),
-		).Scan(&sp)
-		finalizePaymentMethod(h.db, sp.PaymentID, req.PaymentMethod)
+		err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Raw(
+				fmt.Sprintf(`SELECT * FROM %s('%s'::UUID, %s::NUMERIC)`, spname.Ident("SellMembership"),
+					customer.ID, cashValue),
+			).Scan(&sp).Error; err != nil {
+				return err
+			}
+			return finalizePaymentMethod(tx, sp.PaymentID, req.PaymentMethod)
+		})
+		if err != nil {
+			return response.InternalServerError(c,
+				"Pelanggan tersimpan tetapi penjualan membership gagal: "+err.Error())
+		}
 		membershipInfo = fiber.Map{
 			"paymentId":    sp.PaymentID,
 			"changeAmount": sp.ChangeAmount,
@@ -233,6 +245,9 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 			cashStr = "0"
 		}
 	}
+	if isCashless(req.PaymentMethod) {
+		cashStr = fmt.Sprintf("%.0f", paymentMethodSentinel)
+	}
 
 	type spResult struct {
 		CustomerID      uuid.UUID `gorm:"column:customer_id"`
@@ -243,15 +258,18 @@ func (h *CustomerHandler) SellMembership(c *fiber.Ctx) error {
 	}
 
 	var result spResult
-	tx := h.db.WithContext(c.Context()).Raw(
-		fmt.Sprintf(`SELECT * FROM %s('%s'::UUID, %s::NUMERIC)`, spname.Ident("SellMembership"),
-			id, cashStr),
-	).Scan(&result)
-	if tx.Error != nil {
-		return response.BadRequest(c, tx.Error.Error())
+	err = h.db.WithContext(c.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(
+			fmt.Sprintf(`SELECT * FROM %s('%s'::UUID, %s::NUMERIC)`, spname.Ident("SellMembership"),
+				id, cashStr),
+		).Scan(&result).Error; err != nil {
+			return err
+		}
+		return finalizePaymentMethod(tx, result.PaymentID, req.PaymentMethod)
+	})
+	if err != nil {
+		return response.BadRequest(c, err.Error())
 	}
-
-	finalizePaymentMethod(h.db, result.PaymentID, req.PaymentMethod)
 
 	// Sertakan data customer terbaru supaya frontend tidak perlu menebak dari
 	// response pembayaran (yang tidak berisi id/nama/status member).
