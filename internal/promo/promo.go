@@ -14,6 +14,7 @@ import (
 
 	"byone-arena/internal/domain/entity"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -36,12 +37,19 @@ var jakarta = func() *time.Location {
 // Now mengembalikan waktu sekarang dalam zona Asia/Jakarta.
 func Now() time.Time { return time.Now().In(jakarta) }
 
-// ParseDays mengubah "6,7" menjadi set hari.
+// ParseDays mengubah "0,6" menjadi set hari.
+// Nilai 7 diterima sebagai alias Minggu karena data lama/docs memakai 6,7.
 func ParseDays(s string) map[int]bool {
 	days := map[int]bool{}
 	for _, part := range strings.Split(s, ",") {
 		v, err := strconv.Atoi(strings.TrimSpace(part))
-		if err == nil && v >= 0 && v <= 6 {
+		if err != nil {
+			continue
+		}
+		if v == 7 {
+			v = 0
+		}
+		if v >= 0 && v <= 6 {
 			days[v] = true
 		}
 	}
@@ -70,20 +78,73 @@ func Eligible(rule *entity.PromoBonusRule, paidMinutes int) bool {
 	return rule.BonusMinutes > 0 && paidMinutes >= rule.MinPaidMinutes
 }
 
-// ActiveRuleToday mengambil aturan aktif pertama yang berlaku hari ini.
-func ActiveRuleToday(db *gorm.DB) (*entity.PromoBonusRule, error) {
+// AudienceForCustomer menentukan audiens promo dari data pelanggan.
+// Tanpa pelanggan / pelanggan non-member memakai aturan umum.
+func AudienceForCustomer(db *gorm.DB, customerID *uuid.UUID) string {
+	if customerID == nil {
+		return entity.PromoAudienceGeneral
+	}
+
+	var row struct {
+		IsMember bool `gorm:"column:is_member"`
+	}
+	if err := db.Model(&entity.Customer{}).
+		Select("COALESCE(is_member, FALSE) AS is_member").
+		Where("id = ?", *customerID).
+		Scan(&row).Error; err == nil && row.IsMember {
+		return entity.PromoAudienceMember
+	}
+	return entity.PromoAudienceGeneral
+}
+
+func firstMatchingRule(rules []entity.PromoBonusRule, at time.Time) *entity.PromoBonusRule {
+	for i := range rules {
+		if MatchesDay(&rules[i], at) && WithinValidity(&rules[i], at) {
+			return &rules[i]
+		}
+	}
+	return nil
+}
+
+func firstEligibleRule(rules []entity.PromoBonusRule, at time.Time, paidMinutes int) *entity.PromoBonusRule {
+	for i := range rules {
+		if MatchesDay(&rules[i], at) &&
+			WithinValidity(&rules[i], at) &&
+			Eligible(&rules[i], paidMinutes) {
+			return &rules[i]
+		}
+	}
+	return nil
+}
+
+// ActiveRuleForAudience mengambil aturan aktif pertama untuk audiens tertentu.
+func ActiveRuleForAudience(db *gorm.DB, audience string) (*entity.PromoBonusRule, error) {
+	if audience != entity.PromoAudienceMember {
+		audience = entity.PromoAudienceGeneral
+	}
+
 	var rules []entity.PromoBonusRule
-	if err := db.Where("is_active = TRUE").Order("min_paid_minutes ASC, bonus_minutes DESC").
+	if err := db.Where("is_active = TRUE AND audience = ?", audience).
+		Order("min_paid_minutes ASC, bonus_minutes DESC").
 		Find(&rules).Error; err != nil {
 		return nil, err
 	}
-	now := Now()
-	for i := range rules {
-		if MatchesDay(&rules[i], now) && WithinValidity(&rules[i], now) {
-			return &rules[i], nil
-		}
+
+	if rule := firstMatchingRule(rules, Now()); rule != nil {
+		return rule, nil
 	}
 	return nil, ErrNoActiveRule
+}
+
+// ActiveRuleForCustomer mengambil aturan sesuai status member pelanggan.
+func ActiveRuleForCustomer(db *gorm.DB, customerID *uuid.UUID) (*entity.PromoBonusRule, error) {
+	return ActiveRuleForAudience(db, AudienceForCustomer(db, customerID))
+}
+
+// ActiveRuleToday dipertahankan untuk kompatibilitas; sekarang berarti
+// aturan umum yang berlaku hari ini.
+func ActiveRuleToday(db *gorm.DB) (*entity.PromoBonusRule, error) {
+	return ActiveRuleForAudience(db, entity.PromoAudienceGeneral)
 }
 
 // PaidMinutes mengembalikan menit yang dibayar untuk sebuah sesi.
@@ -112,24 +173,21 @@ func Apply(db *gorm.DB, sessionID string) (*entity.Session, *entity.PromoBonusRu
 
 		paid := PaidMinutes(&s)
 
+		// Audiens ditentukan dari pelanggan sesi: member hanya memakai aturan
+		// member; tanpa pelanggan / non-member memakai aturan umum.
+		audience := AudienceForCustomer(tx, s.CustomerID)
+
 		// Kandidat aturan: yang berlaku pada TANGGAL MULAI sesi, agar sesi yang
 		// dimulai Sabtu tetap bisa memakai bonus walau baru diaktifkan lewat
 		// tengah malam.
 		var rules []entity.PromoBonusRule
-		if err := tx.Where("is_active = TRUE").Order("min_paid_minutes ASC, bonus_minutes DESC").
+		if err := tx.Where("is_active = TRUE AND audience = ?", audience).
+			Order("min_paid_minutes ASC, bonus_minutes DESC").
 			Find(&rules).Error; err != nil {
 			return err
 		}
 
-		var rule *entity.PromoBonusRule
-		for i := range rules {
-			if MatchesDay(&rules[i], s.StartTime) &&
-				WithinValidity(&rules[i], s.StartTime) &&
-				Eligible(&rules[i], paid) {
-				rule = &rules[i]
-				break
-			}
-		}
+		rule := firstEligibleRule(rules, s.StartTime, paid)
 		if rule == nil {
 			return ErrNotEligible
 		}

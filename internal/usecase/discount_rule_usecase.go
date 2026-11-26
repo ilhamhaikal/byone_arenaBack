@@ -44,6 +44,7 @@ type CreateDiscountRuleRequest struct {
 	EndHour       *int                 `json:"endHour"`   // wajib jika rule_type=happy_hour (0-23)
 	DaysOfWeek    string               `json:"daysOfWeek"` // wajib jika rule_type=day_of_week, format "0,1,2"
 	Priority      int                  `json:"priority"   validate:"gte=0"`
+	Scope         string               `json:"scope"      validate:"omitempty,oneof=rental food both"`
 }
 
 // UpdateDiscountRuleRequest payload untuk mengubah aturan diskon
@@ -58,6 +59,7 @@ type UpdateDiscountRuleRequest struct {
 	EndHour       *int                 `json:"endHour"`
 	DaysOfWeek    *string              `json:"daysOfWeek"`
 	Priority      *int                 `json:"priority"      validate:"omitempty,gte=0"`
+	Scope         string               `json:"scope"         validate:"omitempty,oneof=rental food both"`
 	IsActive      *bool                `json:"isActive"`
 }
 
@@ -88,6 +90,10 @@ func (uc *discountRuleUseCase) CreateRule(ctx context.Context, req *CreateDiscou
 	if err := validateRuleTypeFields(req.RuleType, req.StartHour, req.EndHour, req.DaysOfWeek); err != nil {
 		return nil, err
 	}
+	scope := req.Scope
+	if scope == "" {
+		scope = "both"
+	}
 
 	rule := &entity.DiscountRule{
 		Name:          req.Name,
@@ -100,6 +106,7 @@ func (uc *discountRuleUseCase) CreateRule(ctx context.Context, req *CreateDiscou
 		EndHour:       req.EndHour,
 		DaysOfWeek:    normalizeDaysOfWeek(req.DaysOfWeek),
 		Priority:      req.Priority,
+		Scope:         scope,
 		IsActive:      true,
 	}
 
@@ -150,6 +157,9 @@ func (uc *discountRuleUseCase) UpdateRule(ctx context.Context, id uuid.UUID, req
 	}
 	if req.Priority != nil {
 		rule.Priority = *req.Priority
+	}
+	if req.Scope != "" {
+		rule.Scope = req.Scope
 	}
 	if req.IsActive != nil {
 		rule.IsActive = *req.IsActive

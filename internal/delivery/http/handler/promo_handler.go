@@ -32,6 +32,7 @@ type promoRuleRequest struct {
 	MinPaidMinutes int     `json:"minPaidMinutes" validate:"required,min=1"`
 	BonusMinutes   int     `json:"bonusMinutes"   validate:"required,min=1"`
 	MaxPerSession  int     `json:"maxPerSession"  validate:"min=0"`
+	Audience       string  `json:"audience"       validate:"omitempty,oneof=general member"`
 	ValidFrom      *string `json:"validFrom"`
 	ValidTo        *string `json:"validTo"`
 	IsActive       *bool   `json:"isActive"`
@@ -68,7 +69,8 @@ func (h *PromoHandler) List(c *fiber.Ctx) error {
 // @Security     BearerAuth
 // @Router       /api/v1/promo-bonuses/active [get]
 func (h *PromoHandler) Active(c *fiber.Ctx) error {
-	rule, err := promo.ActiveRuleToday(h.db.WithContext(c.Context()))
+	audience := c.Query("audience", entity.PromoAudienceGeneral)
+	rule, err := promo.ActiveRuleForAudience(h.db.WithContext(c.Context()), audience)
 	if err != nil {
 		return response.OK(c, "Tidak ada promo bonus hari ini", nil)
 	}
@@ -101,6 +103,10 @@ func (h *PromoHandler) Create(c *fiber.Ctx) error {
 	if req.IsActive != nil {
 		active = *req.IsActive
 	}
+	audience := req.Audience
+	if audience == "" {
+		audience = entity.PromoAudienceGeneral
+	}
 
 	rule := entity.PromoBonusRule{
 		Name:           req.Name,
@@ -108,6 +114,7 @@ func (h *PromoHandler) Create(c *fiber.Ctx) error {
 		MinPaidMinutes: req.MinPaidMinutes,
 		BonusMinutes:   req.BonusMinutes,
 		MaxPerSession:  req.MaxPerSession,
+		Audience:       audience,
 		ValidFrom:      from,
 		ValidTo:        to,
 		IsActive:       active,
@@ -118,6 +125,7 @@ func (h *PromoHandler) Create(c *fiber.Ctx) error {
 	audit.Log(h.db, c, "promo.create", "promo_bonus_rule", nil, map[string]any{
 		"name": rule.Name, "daysOfWeek": rule.DaysOfWeek,
 		"minPaidMinutes": rule.MinPaidMinutes, "bonusMinutes": rule.BonusMinutes,
+		"audience": rule.Audience,
 	})
 	return response.Created(c, "Aturan promo dibuat", rule)
 }
@@ -158,6 +166,9 @@ func (h *PromoHandler) Update(c *fiber.Ctx) error {
 		"valid_to":         to,
 		"updated_at":       promo.Now(),
 	}
+	if req.Audience != "" {
+		updates["audience"] = req.Audience
+	}
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive
 	}
@@ -176,6 +187,7 @@ func (h *PromoHandler) Update(c *fiber.Ctx) error {
 	audit.Log(h.db, c, "promo.update", "promo_bonus_rule", &id, map[string]any{
 		"name": req.Name, "daysOfWeek": req.DaysOfWeek,
 		"minPaidMinutes": req.MinPaidMinutes, "bonusMinutes": req.BonusMinutes,
+		"audience": req.Audience,
 	})
 	return response.OK(c, "Aturan promo diperbarui", rule)
 }

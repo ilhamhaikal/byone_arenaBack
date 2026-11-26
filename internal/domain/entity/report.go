@@ -107,12 +107,15 @@ type ReportFoodSales struct {
 
 // ReportFoodItem adalah rincian item menu terlaris dalam periode laporan
 type ReportFoodItem struct {
-	ItemName     string  `json:"itemName"`
-	Category     string  `json:"category"`
-	QuantitySold int     `json:"quantitySold"`
-	Revenue      float64 `json:"revenue"`
-	Hpp          float64 `json:"hpp"`
-	NetRevenue   float64 `json:"netRevenue"`
+	ItemName       string  `json:"itemName"`
+	Category       string  `json:"category"`
+	QuantitySold   int     `json:"quantitySold"`
+	Revenue        float64 `json:"revenue"`
+	Hpp            float64 `json:"hpp"`
+	NetRevenue     float64 `json:"netRevenue"`
+	RevenuePerUnit float64 `json:"revenuePerUnit"`
+	HppPerUnit     float64 `json:"hppPerUnit"`
+	ProfitPerUnit  float64 `json:"profitPerUnit"`
 }
 
 // ReportPaymentMethod ringkasan pendapatan per metode pembayaran.

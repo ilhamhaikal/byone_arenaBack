@@ -128,15 +128,16 @@ func subtractPaymentMethods(all, minus []entity.ReportPaymentMethod) []entity.Re
 }
 
 // RevenueChartItem satu titik data grafik pendapatan.
-// rentalRevenue = sewa konsol (sesi) + rental harian (+ membership) — digabung.
-// foodRevenue   = penjualan makanan/minuman — seri terpisah.
-// Keduanya digambar sebagai dua seri berbeda dalam SATU grafik.
+// rentalRevenue     = sewa konsol (sesi) + rental harian.
+// membershipRevenue = penjualan membership.
+// foodRevenue       = penjualan makanan/minuman.
 type RevenueChartItem struct {
-	Date          string  `json:"date"          gorm:"column:date"`
-	RentalRevenue float64 `json:"rentalRevenue" gorm:"column:rental_revenue"`
-	FoodRevenue   float64 `json:"foodRevenue"   gorm:"column:food_revenue"`
-	Revenue       float64 `json:"revenue"       gorm:"column:revenue"`
-	Sessions      int     `json:"sessions"      gorm:"column:sessions"`
+	Date              string  `json:"date"              gorm:"column:date"`
+	RentalRevenue     float64 `json:"rentalRevenue"     gorm:"column:rental_revenue"`
+	MembershipRevenue float64 `json:"membershipRevenue" gorm:"column:membership_revenue"`
+	FoodRevenue       float64 `json:"foodRevenue"       gorm:"column:food_revenue"`
+	Revenue           float64 `json:"revenue"           gorm:"column:revenue"`
+	Sessions          int     `json:"sessions"          gorm:"column:sessions"`
 }
 
 // GetRevenueChart godoc

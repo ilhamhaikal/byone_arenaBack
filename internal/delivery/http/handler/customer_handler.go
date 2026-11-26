@@ -112,6 +112,9 @@ func (h *CustomerHandler) Create(c *fiber.Ctx) error {
 			Message      string    `gorm:"column:message"`
 		}
 		cashValue := row.Value
+		if cashValue == "" {
+			cashValue = "0"
+		}
 		if isCashless(req.PaymentMethod) {
 			cashValue = fmt.Sprintf("%.0f", paymentMethodSentinel)
 		}

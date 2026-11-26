@@ -232,7 +232,8 @@ func (h *SessionHandler) Start(c *fiber.Ctx) error {
 
 	// Validasi awal promo agar pengguna mendapat pesan jelas sebelum sesi dibuat.
 	if req.UsePromoBonus {
-		rule, ruleErr := promo.ActiveRuleToday(h.db.WithContext(c.Context()))
+		rule, ruleErr := promo.ActiveRuleForCustomer(
+			h.db.WithContext(c.Context()), req.CustomerID)
 		if ruleErr != nil {
 			return response.BadRequest(c, "Tidak ada promo bonus waktu yang berlaku hari ini")
 		}

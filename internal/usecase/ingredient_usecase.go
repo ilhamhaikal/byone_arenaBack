@@ -42,13 +42,17 @@ func NewIngredientUseCase(ingredientRepo repository.IngredientRepository) Ingred
 }
 
 type CreateIngredientRequest struct {
-	Name string `json:"name" validate:"required,min=2,max=150"`
-	Unit string `json:"unit" validate:"omitempty,max=20"`
+	Name        string  `json:"name"        validate:"required,min=2,max=150"`
+	Unit        string  `json:"unit"        validate:"omitempty,max=20"`
+	Category    string  `json:"category"    validate:"omitempty,oneof=food drink spice"`
+	CostPerUnit float64 `json:"costPerUnit" validate:"gte=0"`
 }
 
 type UpdateIngredientRequest struct {
-	Name string `json:"name" validate:"omitempty,min=2,max=150"`
-	Unit string `json:"unit" validate:"omitempty,max=20"`
+	Name        string   `json:"name"        validate:"omitempty,min=2,max=150"`
+	Unit        string   `json:"unit"        validate:"omitempty,max=20"`
+	Category    string   `json:"category"    validate:"omitempty,oneof=food drink spice"`
+	CostPerUnit *float64 `json:"costPerUnit" validate:"omitempty,gte=0"`
 }
 
 // AddStockRequest payload penambahan batch stok (qty + tanggal kadaluarsa).
@@ -102,7 +106,16 @@ func (uc *ingredientUseCase) CreateIngredient(ctx context.Context, req *CreateIn
 	if unit == "" {
 		unit = "pcs"
 	}
-	item := &entity.Ingredient{Name: req.Name, Unit: unit}
+	category := req.Category
+	if category == "" {
+		category = "food"
+	}
+	item := &entity.Ingredient{
+		Name:        req.Name,
+		Unit:        unit,
+		Category:    category,
+		CostPerUnit: req.CostPerUnit,
+	}
 	if err := uc.ingredientRepo.Create(ctx, item); err != nil {
 		return nil, err
 	}
@@ -122,6 +135,12 @@ func (uc *ingredientUseCase) UpdateIngredient(ctx context.Context, id uuid.UUID,
 	}
 	if req.Unit != "" {
 		item.Unit = req.Unit
+	}
+	if req.Category != "" {
+		item.Category = req.Category
+	}
+	if req.CostPerUnit != nil {
+		item.CostPerUnit = *req.CostPerUnit
 	}
 	if err := uc.ingredientRepo.Update(ctx, item); err != nil {
 		return nil, err

@@ -31,6 +31,8 @@ type DiscountRule struct {
 	// Day of week: comma-separated "0,1,2" (0=Minggu, 1=Senin, ..., 6=Sabtu)
 	DaysOfWeek   string `json:"daysOfWeek,omitempty"  gorm:"size:20"`
 	Priority     int    `json:"priority"              gorm:"not null;default:0"` // lebih besar = lebih dulu dievaluasi
+	// Scope: rental (sesi rental), food (penjualan makanan), both (keduanya).
+	Scope        string `json:"scope"                 gorm:"not null;size:20;default:'both'"`
 	IsActive     bool   `json:"isActive"              gorm:"not null;default:true"`
 	CreatedAt    time.Time `json:"createdAt"         gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `json:"updatedAt"         gorm:"autoUpdateTime"`

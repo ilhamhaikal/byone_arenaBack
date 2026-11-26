@@ -12,6 +12,8 @@ type Ingredient struct {
 	ID            uuid.UUID  `json:"id"            gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
 	Name          string     `json:"name"          gorm:"not null;size:150"`
 	Unit          string     `json:"unit"          gorm:"not null;size:20;default:'pcs'"`
+	Category      string     `json:"category"      gorm:"not null;size:20;default:'food'"` // food | drink | spice
+	CostPerUnit   float64    `json:"costPerUnit"   gorm:"not null;default:0;type:numeric(10,4)"` // HPP per satuan bahan
 	Stock         float64    `json:"stock"         gorm:"-"` // usable stock dari batch (bukan kolom DB)
 	NearestExpiry *time.Time `json:"nearestExpiry" gorm:"-"` // kadaluarsa terdekat batch usable
 	CreatedAt     time.Time  `json:"createdAt"     gorm:"autoCreateTime"`
