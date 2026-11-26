@@ -40,8 +40,11 @@ type Session struct {
 	InterruptedAt            *time.Time `json:"interruptedAt,omitempty"         gorm:"column:interrupted_at"`
 	RemainingRecoveryMinutes int        `json:"remainingMinutes"                gorm:"column:remaining_minutes;not null;default:0"`
 	InterruptedReason        string     `json:"interruptedReason,omitempty"     gorm:"column:interrupted_reason;type:text"`
-	RecoveredBySessionID     *uuid.UUID `json:"recoveredBySessionId,omitempty"  gorm:"type:uuid"`
-	RecoveredFromSessionID   *uuid.UUID `json:"recoveredFromSessionId,omitempty" gorm:"type:uuid"`
+	// SavedTimeExpiresAt: batas pemulihan sisa waktu non-member (24 jam).
+	// NULL = tanpa kedaluwarsa (mis. sesi member / bank waktu).
+	SavedTimeExpiresAt     *time.Time `json:"savedTimeExpiresAt,omitempty"     gorm:"column:saved_time_expires_at"`
+	RecoveredBySessionID   *uuid.UUID `json:"recoveredBySessionId,omitempty"  gorm:"type:uuid"`
+	RecoveredFromSessionID *uuid.UUID `json:"recoveredFromSessionId,omitempty" gorm:"type:uuid"`
 	// Transparansi Bank Waktu & Poin Loyalitas (khusus member)
 	// PaidDurationMinutes adalah durasi yang benar-benar DIBAYAR (dasar hitung harga & poin).
 	// BookedDurationMinutes (di atas) adalah TOTAL menit bermain termasuk bonus dari bank waktu/poin.
@@ -52,12 +55,15 @@ type Session struct {
 	PointsEarned           int `json:"pointsEarned"            gorm:"not null;default:0"` // poin yang didapat dari sesi ini
 	// Bonus waktu gratis dari promo (mis. weekend 30 menit). Tidak menambah
 	// tagihan; hanya menambah total menit bermain (booked_duration_minutes).
-	PromoBonusMinutes int        `json:"promoBonusMinutes" gorm:"not null;default:0"`
-	PromoApplyCount   int        `json:"promoApplyCount"   gorm:"not null;default:0"`
-	PromoRuleID       *uuid.UUID `json:"promoRuleId,omitempty" gorm:"type:uuid"`
-	PromoAppliedAt    *time.Time `json:"promoAppliedAt,omitempty"`
-	CreatedAt         time.Time  `json:"createdAt"              gorm:"autoCreateTime"`
-	UpdatedAt         time.Time  `json:"updatedAt"              gorm:"autoUpdateTime"`
+	PromoBonusMinutes int `json:"promoBonusMinutes" gorm:"not null;default:0"`
+	PromoApplyCount   int `json:"promoApplyCount"   gorm:"not null;default:0"`
+	// IsPackage menandai sesi dari paket rental (mis. begadang 21:00-06:00).
+	// Sesi paket tidak boleh di-extend; waktunya mengikuti jadwal paket.
+	IsPackage      bool       `json:"isPackage"         gorm:"not null;default:false;index"`
+	PromoRuleID    *uuid.UUID `json:"promoRuleId,omitempty" gorm:"type:uuid"`
+	PromoAppliedAt *time.Time `json:"promoAppliedAt,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"              gorm:"autoCreateTime"`
+	UpdatedAt      time.Time  `json:"updatedAt"              gorm:"autoUpdateTime"`
 
 	// Relasi (join data)
 	Console  *Console  `json:"console,omitempty"  gorm:"foreignKey:ConsoleID"`

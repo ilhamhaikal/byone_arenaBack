@@ -58,3 +58,6 @@ tmp/
 
 # Secret JWT otomatis (dibuat server)
 jwt.secret
+
+# Baseline setup 2 file (tidak untuk GitHub)
+/migrations_baseline/

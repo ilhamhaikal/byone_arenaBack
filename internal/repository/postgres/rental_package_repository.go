@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"byone-arena/internal/domain/entity"
@@ -111,6 +112,13 @@ func (r *rentalPackageRepository) StartSessionWithPackage(ctx context.Context, c
 		).Scan(&res).Error; err != nil {
 			return parseStoredProcError(err)
 		}
+		// Tandai sesi sebagai paket. ExtendSession menolak sesi paket, dan UI
+		// menyembunyikan tombol Tambah berdasarkan flag ini.
+		if err := tx.Model(&entity.Session{}).
+			Where("id = ?", res.SessionID).
+			Update("is_package", true).Error; err != nil {
+			return err
+		}
 		if createdBy != nil {
 			if err := tx.Model(&entity.Session{}).
 				Where("id = ?", res.SessionID).
@@ -131,16 +139,25 @@ func (r *rentalPackageRepository) StartSessionWithPackage(ctx context.Context, c
 	if res.SessionStartTime != nil {
 		startTime = *res.SessionStartTime
 	}
+	// SP menyimpan package name di notes bila notes kosong; response harus
+	// konsisten dengan data DB agar UI tidak menampilkan notes kosong.
+	if strings.TrimSpace(notes) == "" {
+		notes = res.PackageName
+	}
 	session := &entity.Session{
 		ID:                    res.SessionID,
 		ConsoleID:             consoleID,
 		CustomerID:            customerID,
 		StartTime:             startTime,
 		BookedDurationMinutes: res.SessionBookedMin,
+		PaidDurationMinutes:   res.SessionBookedMin,
 		EndScheduledAt:        res.SessionEndSched,
 		TotalPrice:            res.TotalPayment,
 		Status:                entity.SessionStatus(res.SessionStatus),
 		Notes:                 notes,
+		IsPackage:             true,
+		CreatedAt:             startTime,
+		UpdatedAt:             startTime,
 	}
 	payment := &entity.Payment{
 		ID:            res.PaymentID,

@@ -60,6 +60,8 @@ type StartSessionRequest struct {
 	PaymentMethod string `json:"paymentMethod" validate:"omitempty,oneof=cash qris transfer" example:"cash"`
 	// CreatedBy diisi server dari token, bukan client.
 	CreatedBy *uuid.UUID `json:"-"`
+	// IsPackage menandai sesi hasil pemulihan sesi paket agar tetap paket.
+	IsPackage bool `json:"-"`
 }
 
 // StartSessionResponse respons setelah memulai sesi — berisi data sesi dan pembayaran lunas
@@ -118,6 +120,7 @@ func (uc *sessionUseCase) StartSession(ctx context.Context, req *StartSessionReq
 		BookedDurationMinutes: req.BookedDurationMinutes,
 		Status:                entity.SessionStatusActive,
 		Notes:                 req.Notes,
+		IsPackage:             req.IsPackage,
 		CreatedAt:             now,
 		UpdatedAt:             now,
 	}

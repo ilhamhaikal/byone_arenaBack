@@ -107,6 +107,11 @@ func (h *RentalPackageHandler) Start(c *fiber.Ctx) error {
 			return response.Forbidden(c, err.Error())
 		}
 	}
+	// Paket hanya tersedia Sabtu/Minggu (WIB).
+	if !isWeekendWIB() {
+		return response.BadRequest(c,
+			"Paket hanya bisa dimulai pada Sabtu atau Minggu.")
+	}
 	result, err := h.uc.StartWithPackage(c.Context(), req)
 	if err != nil {
 		return response.BadRequest(c, err.Error())

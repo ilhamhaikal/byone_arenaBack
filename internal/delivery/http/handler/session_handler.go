@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"byone-arena/internal/delivery/websocket"
@@ -62,6 +63,81 @@ func deactivateSessionTvNotifications(db *gorm.DB, consoleID uuid.UUID) {
 	db.Exec(
 		"SELECT "+spname.Ident("DeactivateSessionTvNotifications")+"(?::text)",
 		consoleID.String())
+}
+
+// wibLocation mengembalikan zona Asia/Jakarta (fallback UTC+7).
+func wibLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err == nil {
+		return loc
+	}
+	return time.FixedZone("WIB", 7*60*60)
+}
+
+// isWeekendWIBAt true bila tanggal t (dalam WIB) jatuh pada Sabtu/Minggu.
+func isWeekendWIBAt(t time.Time) bool {
+	t = t.In(wibLocation())
+	return t.Weekday() == time.Saturday || t.Weekday() == time.Sunday
+}
+
+// isWeekendWIB true bila hari ini Sabtu/Minggu menurut zona Asia/Jakarta.
+func isWeekendWIB() bool {
+	return isWeekendWIBAt(time.Now())
+}
+
+// isPackageRecoveryWindowWIBAt true bila t adalah Sabtu/Minggu pukul 21:00 WIB.
+func isPackageRecoveryWindowWIBAt(t time.Time) bool {
+	t = t.In(wibLocation())
+	return isWeekendWIBAt(t) && t.Hour() == 21
+}
+
+// isPackageRecoveryWindowWIB true bila sekarang Sabtu/Minggu pukul 21:00 WIB.
+func isPackageRecoveryWindowWIB() bool {
+	return isPackageRecoveryWindowWIBAt(time.Now())
+}
+
+// saveTimeResult adalah hasil stored procedure SaveNonMemberTime.
+type saveTimeResult struct {
+	Saved            bool       `gorm:"column:saved"`
+	Reason           string     `gorm:"column:reason"`
+	SessionID        *uuid.UUID `gorm:"column:session_id"`
+	ConsoleID        *uuid.UUID `gorm:"column:console_id"`
+	RemainingMinutes int        `gorm:"column:remaining_minutes"`
+	ExpiresAt        *time.Time `gorm:"column:expires_at"`
+}
+
+// saveNonMemberTime menjalankan SP simpan waktu. Semua aturan (member,
+// pembayaran pending, sisa waktu, expiry 24 jam) ada di stored procedure.
+func (h *SessionHandler) saveNonMemberTime(c *fiber.Ctx, id uuid.UUID, reason string) (*saveTimeResult, error) {
+	var res saveTimeResult
+	err := h.db.WithContext(c.Context()).Raw(
+		"SELECT * FROM "+spname.Ident("SaveNonMemberTime")+"(?::uuid, ?::text)",
+		id, reason,
+	).Scan(&res).Error
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// saveTimeReasonMessage menerjemahkan alasan penolakan SP menjadi pesan UI.
+func saveTimeReasonMessage(reason string) string {
+	switch reason {
+	case "member":
+		return "Sesi member memakai Bank Waktu. Tombol Simpan Waktu hanya untuk non-member."
+	case "pending":
+		return "Masih ada pembayaran tertunda. Lunasi pembayaran terlebih dahulu."
+	case "unpaid":
+		return "Sesi gratis tidak memiliki waktu berbayar untuk disimpan."
+	case "no_remaining":
+		return "Tidak ada sisa waktu yang bisa disimpan."
+	case "not_active":
+		return "Sesi sudah tidak aktif."
+	case "not_found":
+		return "Sesi tidak ditemukan."
+	default:
+		return "Sisa waktu tidak dapat disimpan."
+	}
 }
 
 // GetAll godoc
@@ -240,6 +316,37 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 		return response.BadRequest(c, "Format ID tidak valid")
 	}
 
+	// Non-member: "Akhiri" otomatis menyimpan sisa waktu berbayar 24 jam.
+	// Member tetap memakai jalur EndSession (bank waktu tanpa kedaluwarsa).
+	saved, saveErr := h.saveNonMemberTime(c, id, "ended_saved")
+	if saveErr == nil && saved != nil && !saved.Saved && saved.Reason == "pending" {
+		// Jangan akhiri sesi non-member yang masih punya tagihan pending:
+		// sisa waktunya tidak boleh hilang. UI EndSessionDialog sudah
+		// melunasi pending sebelum memanggil endpoint ini.
+		return response.BadRequest(c, saveTimeReasonMessage("pending"))
+	}
+	if saveErr == nil && saved != nil && saved.Saved {
+		var session entity.Session
+		if err := h.db.WithContext(c.Context()).
+			Preload("Console").First(&session, "id = ?", id).Error; err != nil {
+			return response.InternalServerError(c, "Sesi tersimpan tetapi gagal dibaca ulang")
+		}
+		audit.Log(h.db, c, "session.end", "session", &id, map[string]any{
+			"durationMinutes": session.DurationMinutes,
+			"totalPrice":      session.TotalPrice,
+			"savedMinutes":    saved.RemainingMinutes,
+			"expiresAt":       saved.ExpiresAt,
+		})
+		if uid := audit.CurrentUserID(c); uid != nil {
+			h.db.WithContext(c.Context()).Exec(
+				"SELECT "+spname.Ident("SetSessionEndedBy")+"(?::uuid, ?::uuid)", id, *uid)
+		}
+		deactivateSessionTvNotifications(h.db.WithContext(c.Context()), session.ConsoleID)
+		h.hub.BroadcastSessionEnded(&session, session.ConsoleID)
+		return response.OK(c, fmt.Sprintf(
+			"Sesi diakhiri. Sisa %d menit disimpan.", saved.RemainingMinutes), session)
+	}
+
 	session, err := h.sessionUC.EndSession(c.Context(), id)
 	if err != nil {
 		return response.BadRequest(c, err.Error())
@@ -283,6 +390,54 @@ func (h *SessionHandler) End(c *fiber.Ctx) error {
 	h.hub.BroadcastSessionEnded(session, session.ConsoleID)
 
 	return response.OK(c, "Sesi rental berhasil diakhiri", session)
+}
+
+// SaveTime godoc
+// @Summary      Simpan sisa waktu sesi non-member
+// @Description  Mengakhiri sesi non-member dan menyimpan sisa waktu berbayar (24 jam reguler, 7 hari paket). Member tetap memakai Bank Waktu.
+// @Tags         Sesi Rental
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "Session ID (UUID)"
+// @Success      200 {object} response.Response{data=entity.Session}
+// @Failure      400 {object} response.ErrorResponse
+// @Router       /api/v1/sessions/{id}/save-time [post]
+func (h *SessionHandler) SaveTime(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return response.BadRequest(c, "Format ID tidak valid")
+	}
+
+	res, err := h.saveNonMemberTime(c, id, "saved_by_admin")
+	if err != nil {
+		return response.InternalServerError(c,
+			"Gagal menyimpan waktu. Coba lagi atau hubungi admin.")
+	}
+	if res == nil || !res.Saved {
+		reason := "unknown"
+		if res != nil {
+			reason = res.Reason
+		}
+		return response.BadRequest(c, saveTimeReasonMessage(reason))
+	}
+
+	var session entity.Session
+	if err := h.db.WithContext(c.Context()).
+		Preload("Console").First(&session, "id = ?", id).Error; err != nil {
+		return response.InternalServerError(c, "Sesi tersimpan tetapi gagal dibaca ulang")
+	}
+	audit.Log(h.db, c, "session.save_time", "session", &id, map[string]any{
+		"remainingMinutes": res.RemainingMinutes,
+		"expiresAt":        res.ExpiresAt,
+	})
+	if uid := audit.CurrentUserID(c); uid != nil {
+		h.db.WithContext(c.Context()).Exec(
+			"SELECT "+spname.Ident("SetSessionEndedBy")+"(?::uuid, ?::uuid)", id, *uid)
+	}
+	deactivateSessionTvNotifications(h.db.WithContext(c.Context()), session.ConsoleID)
+	h.hub.BroadcastSessionEnded(&session, session.ConsoleID)
+	return response.OK(c, fmt.Sprintf(
+		"Sisa %d menit disimpan.", res.RemainingMinutes), session)
 }
 
 // Cancel godoc
@@ -370,6 +525,13 @@ func (h *SessionHandler) Recover(c *fiber.Ctx) error {
 		if original.RemainingRecoveryMinutes <= 0 {
 			return errors.New("Tidak ada sisa waktu yang bisa dipulihkan")
 		}
+		if original.SavedTimeExpiresAt != nil &&
+			!original.SavedTimeExpiresAt.After(time.Now()) {
+			return errors.New("Waktu simpan sudah kedaluwarsa")
+		}
+		if original.IsPackage && !isPackageRecoveryWindowWIB() {
+			return errors.New("Sesi paket hanya bisa dipulihkan pada Sabtu/Minggu pukul 21:00 WIB")
+		}
 
 		var activeCount int64
 		if err := tx.Model(&entity.Session{}).
@@ -388,6 +550,7 @@ func (h *SessionHandler) Recover(c *fiber.Ctx) error {
 			CashReceived:          0,
 			VoucherCode:           "GRATIS",
 			PaymentMethod:         "cash",
+			IsPackage:             original.IsPackage,
 			Notes: fmt.Sprintf("Pemulihan sesi %s (terputus) — sisa %d menit",
 				original.ID, original.RemainingRecoveryMinutes),
 		}
@@ -399,6 +562,28 @@ func (h *SessionHandler) Recover(c *fiber.Ctx) error {
 			return startErr
 		}
 		result = started
+
+		// Sesi paket yang dipulihkan harus mulai pada slot 21:00 WIB, lalu
+		// berjalan selama sisa menit (tidak dipaksa sampai 06:00).
+		if original.IsPackage {
+			nowWIB := time.Now().In(wibLocation())
+			slotStart := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(),
+				21, 0, 0, 0, wibLocation())
+			slotEnd := slotStart.Add(time.Duration(original.RemainingRecoveryMinutes) * time.Minute)
+			if !slotEnd.After(time.Now()) {
+				return errors.New("Sisa waktu paket sudah habis untuk slot 21:00 ini")
+			}
+			if err := tx.Model(&entity.Session{}).
+				Where("id = ?", result.Session.ID).
+				Updates(map[string]interface{}{
+					"start_time":       slotStart,
+					"end_scheduled_at": slotEnd,
+				}).Error; err != nil {
+				return err
+			}
+			result.Session.StartTime = slotStart
+			result.Session.EndScheduledAt = &slotEnd
+		}
 
 		if err := tx.Model(&entity.Session{}).
 			Where("id = ?", result.Session.ID).
@@ -520,6 +705,10 @@ func (h *SessionHandler) Extend(c *fiber.Ctx) error {
 		return nil
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "PACKAGE_NO_EXTEND") {
+			return response.BadRequest(c,
+				"Sesi paket tidak bisa diperpanjang. Waktu paket mengikuti jadwal.")
+		}
 		return response.BadRequest(c, err.Error())
 	}
 

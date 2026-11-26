@@ -181,6 +181,13 @@ func (r *sessionRepository) CreateWithPayment(ctx context.Context, session *enti
 		if err := paymentmethod.Finalize(tx, result.PaymentID, paymentMethod); err != nil {
 			return err
 		}
+		if session.IsPackage {
+			if err := tx.Model(&entity.Session{}).
+				Where("id = ?", result.SessionID).
+				Update("is_package", true).Error; err != nil {
+				return err
+			}
+		}
 		if createdBy != nil {
 			if err := tx.Model(&entity.Session{}).
 				Where("id = ?", result.SessionID).

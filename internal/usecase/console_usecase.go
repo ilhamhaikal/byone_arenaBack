@@ -33,6 +33,8 @@ type ActiveSessionInfo struct {
 	ID                    uuid.UUID  `json:"id"`
 	CustomerID            *uuid.UUID `json:"customerId"`
 	CustomerName          string     `json:"customerName"`
+	IsMember              bool       `json:"isMember"`
+	IsPackage             bool       `json:"isPackage"`
 	StartTime             time.Time  `json:"startTime"`
 	BookedDurationMinutes int        `json:"bookedDurationMinutes"`
 	PaidDurationMinutes   int        `json:"paidDurationMinutes"`
@@ -146,7 +148,9 @@ func (uc *consoleUseCase) GetConsoleOverview(ctx context.Context) ([]*ConsoleOve
 			}
 			if s.Customer != nil {
 				info.CustomerName = s.Customer.Name
+				info.IsMember = s.Customer.IsMember
 			}
+			info.IsPackage = s.IsPackage
 			item.ActiveSession = info
 		}
 		items = append(items, item)

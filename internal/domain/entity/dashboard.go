@@ -59,4 +59,7 @@ type InterruptedSessionSummary struct {
 	InterruptedAt    *time.Time `json:"interruptedAt"    gorm:"column:interrupted_at"`
 	Reason           string     `json:"reason"           gorm:"column:reason"`
 	Notes            string     `json:"notes"            gorm:"column:notes"`
+	// SavedTimeExpiresAt: batas pemulihan (24 jam untuk non-member).
+	SavedTimeExpiresAt *time.Time `json:"savedTimeExpiresAt,omitempty" gorm:"column:saved_time_expires_at"`
+	IsPackage          bool       `json:"isPackage" gorm:"column:is_package"`
 }

@@ -3,12 +3,11 @@
 # Kompatibel: Windows (PowerShell/Git Bash) & Linux/macOS
 # ==========================================
 
-.PHONY: help build run dev docker-up docker-down docker-dev migrate migrate-local tidy test clean
+.PHONY: help build run dev migrate db-shell tidy test test-coverage setup clean lint
 
 # Variabel
 BINARY_NAME=byone-arena
 MAIN_PATH=./cmd/server
-DOCKER_COMPOSE=docker compose
 
 ## help: Tampilkan bantuan perintah
 help:
@@ -18,18 +17,11 @@ help:
 	@echo "Perintah yang tersedia:"
 	@echo ""
 	@echo "  Development:"
-	@echo "    make run        - Jalankan server langsung (tanpa Docker)"
+	@echo "    make run        - Jalankan server langsung"
 	@echo "    make dev        - Jalankan dengan hot-reload (butuh Air)"
 	@echo "    make build      - Build binary"
 	@echo "    make tidy       - Download & rapikan dependencies"
 	@echo "    make test       - Jalankan semua test"
-	@echo ""
-	@echo "  Docker:"
-	@echo "    make docker-up      - Jalankan semua service (production mode)"
-	@echo "    make docker-down    - Hentikan semua service"
-	@echo "    make docker-dev     - Jalankan dalam mode development"
-	@echo "    make docker-build   - Build ulang image Docker"
-	@echo "    make docker-logs    - Lihat log semua container"
 	@echo ""
 	@echo "  Database:"
 	@echo "    make migrate    - Jalankan migration database"
@@ -81,53 +73,15 @@ test-coverage:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo ">> Laporan coverage tersimpan di coverage.html"
 
-## docker-up: Jalankan semua service dengan Docker
-docker-up:
-	@echo ">> Memulai service Docker..."
-	$(DOCKER_COMPOSE) up -d
-	@echo ">> Semua service berjalan."
-	@echo "   API  : http://localhost:$${PORT:-8081}"
-	@echo "   WS   : ws://localhost:$${PORT:-8081}/ws"
-
-## docker-down: Hentikan semua service Docker
-docker-down:
-	@echo ">> Menghentikan service Docker..."
-	$(DOCKER_COMPOSE) down
-
-## docker-dev: Jalankan dalam mode development (dengan pgAdmin)
-docker-dev:
-	@echo ">> Memulai service Docker (mode development)..."
-	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml up -d
-	@echo ">> Service development berjalan."
-	@echo "   API     : http://localhost:$${PORT:-8081}"
-	@echo "   pgAdmin : http://localhost:5050"
-
-## docker-build: Build ulang image Docker
-docker-build:
-	@echo ">> Build ulang image Docker..."
-	$(DOCKER_COMPOSE) build --no-cache
-
-## docker-logs: Tampilkan log semua container
-docker-logs:
-	$(DOCKER_COMPOSE) logs -f
-
-## docker-ps: Tampilkan status container
-docker-ps:
-	$(DOCKER_COMPOSE) ps
-
 ## migrate: Jalankan migration database otomatis (semua .up.sql yang belum dijalankan)
 migrate:
 	@echo ">> Menjalankan migrasi database..."
 	@go run ./cmd/migrate/
 
-## migrate-local: Jalankan migration database (via Docker)
-migrate-docker:
-	@echo ">> Menjalankan migrasi database (Docker)..."
-	@docker compose run --rm app go run ./cmd/migrate/
-
 ## db-shell: Masuk ke shell PostgreSQL
 db-shell:
-	docker exec -it byone-arena-db psql -U $${DB_USER:-postgres} -d $${DB_NAME:-byone_arena}
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	PGPASSWORD="$${DB_PASSWORD}" psql -h "$${DB_HOST:-127.0.0.1}" -U "$${DB_USER:-postgres}" -d "$${DB_NAME:-byone_arena}"
 
 ## clean: Hapus file build
 clean:

@@ -327,6 +327,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	sessions.Post("/start", middleware.RequireWrite("rental"), h.Session.Start)
 	sessions.Patch("/:id/end", middleware.RequireWrite("rental"), h.Session.End)
 	sessions.Patch("/:id/cancel", middleware.RequireWrite("rental"), h.Session.Cancel)
+	sessions.Post("/:id/save-time", middleware.RequireWrite("rental"), h.Session.SaveTime)       // simpan sisa waktu non-member (24 jam)
 	sessions.Post("/:id/extend", middleware.RequireWrite("rental"), h.Session.Extend)            // tambah waktu sewa
 	sessions.Post("/:id/recover", middleware.AdminOnly(), h.Session.Recover)                     // pulihkan sesi terputus (listrik/offline)
 	sessions.Post("/:id/promo-bonus", middleware.RequireWrite("rental"), h.Promo.ApplyToSession) // pakai bonus waktu promo

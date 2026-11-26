@@ -9,12 +9,25 @@ import (
 	"byone-arena/pkg/spname"
 	"byone-arena/pkg/validator"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// paymentConfirmErrorMessage menerjemahkan error SP konfirmasi pembayaran
+// menjadi pesan yang bisa ditampilkan ke kasir.
+func paymentConfirmErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	if strings.Contains(err.Error(), "SESSION_NOT_BILLABLE") {
+		return "Pembayaran tidak bisa dikonfirmasi karena sesi sudah dibatalkan atau disimpan/terputus."
+	}
+	return err.Error()
+}
 
 // PaymentHandler menangani HTTP request untuk manajemen pembayaran
 type PaymentHandler struct {
@@ -271,7 +284,7 @@ func (h *PaymentHandler) Confirm(c *fiber.Ctx) error {
 		return finalizePaymentMethod(tx, result.PaymentID, method)
 	})
 	if err != nil {
-		return response.BadRequest(c, err.Error())
+		return response.BadRequest(c, paymentConfirmErrorMessage(err))
 	}
 
 	if isCashless(method) {
@@ -371,7 +384,7 @@ func (h *PaymentHandler) ConfirmSessionPending(c *fiber.Ctx) error {
 		return nil
 	})
 	if err != nil {
-		return response.BadRequest(c, err.Error())
+		return response.BadRequest(c, paymentConfirmErrorMessage(err))
 	}
 
 	if isCashless(method) {
