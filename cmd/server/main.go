@@ -153,6 +153,20 @@ func main() {
 	licenseSvc := license.NewService(db, licensePub,
 		cfg.LicenseTrialDays, cfg.LicenseTrialUnits, cfg.LicenseGraceDays)
 
+	// Integrasi license server vendor: aktivasi QR + heartbeat/revocation.
+	if cfg.LicenseServerURL != "" {
+		vendorClient := license.NewVendorClient(
+			cfg.LicenseServerURL, cfg.AppVersion,
+			time.Duration(cfg.LicenseHTTPTimeoutSeconds)*time.Second)
+		licenseSvc.ConfigureOnline(vendorClient, cfg.JWTSecret, cfg.AppVersion,
+			time.Duration(cfg.LicenseHeartbeatMinutes)*time.Minute)
+		log.Info("Integrasi license server aktif",
+			zap.String("url", cfg.LicenseServerURL),
+			zap.Int("heartbeatMinutes", cfg.LicenseHeartbeatMinutes))
+	} else {
+		log.Info("Integrasi license server nonaktif: LICENSE_SERVER_URL kosong (mode lisensi manual)")
+	}
+
 	// Cleanup stale notifikasi saat startup
 	cleanupStaleNotifications(db, log)
 
@@ -235,6 +249,7 @@ func main() {
 		Audit:         handler.NewAuditHandler(db),
 		Promo:         handler.NewPromoHandler(db, validate),
 		License:       handler.NewLicenseHandler(licenseSvc, validate),
+		LicenseSvc:    licenseSvc,
 		Hub:           hub,
 	}
 
@@ -277,6 +292,11 @@ func main() {
 	defer janitorCancel()
 	janitor.StartStaleSessionWatcher(janitorCtx, db, log)
 
+	// Heartbeat lisensi berjalan selama server hidup.
+	licenseCtx, licenseCancel := context.WithCancel(context.Background())
+	defer licenseCancel()
+	licenseSvc.StartHeartbeat(licenseCtx, log)
+
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -290,6 +310,7 @@ func main() {
 	}()
 
 	<-quit
+	licenseCancel()
 	janitorCancel()
 	log.Info("Menerima sinyal shutdown, menghentikan server...")
 

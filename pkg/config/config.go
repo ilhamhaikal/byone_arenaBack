@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -47,11 +49,20 @@ type Config struct {
 	// Direktori file update client (APK + manifest.json). Kosong = nonaktif.
 	UpdatesDir string
 
+	// Aplikasi
+	AppVersion string
+
 	// Lisensi offline (Ed25519). Public key di-set vendor di .env.
 	LicensePublicKey  string
 	LicenseTrialDays  int
 	LicenseTrialUnits int
 	LicenseGraceDays  int
+
+	// Integrasi license server vendor untuk aktivasi QR dan heartbeat.
+	// Kosong berarti mode offline/manual saja.
+	LicenseServerURL          string
+	LicenseHTTPTimeoutSeconds int
+	LicenseHeartbeatMinutes   int
 
 	// Discovery TV di LAN (UDP). TV broadcast probe, server membalas alamat API.
 	DiscoveryEnabled bool
@@ -91,11 +102,16 @@ func Load() (*Config, error) {
 		JWTExpireHours:  getEnvInt("JWT_EXPIRE_HOURS", 24),
 
 		UpdatesDir: getEnv("UPDATES_DIR", ""),
+		AppVersion: getEnv("APP_VERSION", "1.0.4"),
 
 		LicensePublicKey:  getEnv("LICENSE_PUBLIC_KEY", ""),
 		LicenseTrialDays:  getEnvInt("LICENSE_TRIAL_DAYS", 14),
 		LicenseTrialUnits: getEnvInt("LICENSE_TRIAL_UNITS", 2),
 		LicenseGraceDays:  getEnvInt("LICENSE_GRACE_DAYS", 14),
+
+		LicenseServerURL:          strings.TrimRight(getEnv("LICENSE_SERVER_URL", ""), "/"),
+		LicenseHTTPTimeoutSeconds: getEnvInt("LICENSE_HTTP_TIMEOUT_SECONDS", 10),
+		LicenseHeartbeatMinutes:   getEnvInt("LICENSE_HEARTBEAT_MINUTES", 30),
 
 		DiscoveryEnabled: getEnvBool("DISCOVERY_ENABLED", true),
 		DiscoveryPort:    getEnvInt("DISCOVERY_PORT", 47823),
@@ -104,8 +120,36 @@ func Load() (*Config, error) {
 	if !spPrefixPattern.MatchString(cfg.SPPrefix) {
 		return nil, fmt.Errorf("SP_PREFIX tidak valid: %q (hanya boleh huruf/angka, harus diawali huruf)", cfg.SPPrefix)
 	}
+	if cfg.LicenseServerURL != "" {
+		u, err := url.Parse(cfg.LicenseServerURL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return nil, fmt.Errorf("LICENSE_SERVER_URL tidak valid: %q", cfg.LicenseServerURL)
+		}
+		if cfg.AppEnv == "production" && u.Scheme != "https" && !isLocalLicenseHost(u.Hostname()) {
+			return nil, fmt.Errorf("LICENSE_SERVER_URL wajib HTTPS di production: %q", cfg.LicenseServerURL)
+		}
+	}
+	if cfg.LicenseHTTPTimeoutSeconds < 3 || cfg.LicenseHTTPTimeoutSeconds > 60 {
+		cfg.LicenseHTTPTimeoutSeconds = 10
+	}
+	if cfg.LicenseHeartbeatMinutes < 5 || cfg.LicenseHeartbeatMinutes > 1440 {
+		cfg.LicenseHeartbeatMinutes = 30
+	}
 
 	return cfg, nil
+}
+
+// isLocalLicenseHost mengizinkan HTTP hanya untuk loopback/LAN saat development
+// atau deployment lokal tanpa TLS.
+func isLocalLicenseHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate()
 }
 
 // DSN mengembalikan string koneksi PostgreSQL

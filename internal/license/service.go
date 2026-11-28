@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,13 +23,16 @@ import (
 
 // State lisensi yang dikirim ke frontend.
 const (
-	StateActive   = "active"   // aktif, sisa > 30 hari
-	StateExpiring = "expiring" // aktif, sisa <= 30 hari
-	StateGrace    = "grace"    // sudah lewat expiry, masih masa tenggang
-	StateExpired  = "expired"  // lewat masa tenggang → read-only
-	StateTrial    = "trial"    // belum ada lisensi, masih masa uji coba
-	StateNone     = "none"     // belum ada lisensi & uji coba habis
-	StateInvalid  = "invalid"  // lisensi ada tapi gagal verifikasi
+	StateActive    = "active"    // aktif, sisa > 30 hari
+	StateExpiring  = "expiring"  // aktif, sisa <= 30 hari
+	StateGrace     = "grace"     // sudah lewat expiry, masih masa tenggang
+	StateExpired   = "expired"   // lewat masa tenggang → read-only
+	StateTrial     = "trial"     // belum ada lisensi, masih masa uji coba
+	StateNone      = "none"      // belum ada lisensi & uji coba habis
+	StateInvalid   = "invalid"   // lisensi ada tapi gagal verifikasi
+	StateSuspended = "suspended" // ditangguhkan vendor lewat heartbeat
+	StateRevoked   = "revoked"   // dicabut vendor lewat heartbeat
+	StateInactive  = "inactive"  // aktivasi perangkat tidak aktif lagi
 )
 
 // ErrNeedsConfirmation dikembalikan bila lisensi baru menurunkan masa berlaku
@@ -69,18 +73,21 @@ type HistoryRow struct {
 }
 
 type activeRow struct {
-	ID          uuid.UUID  `gorm:"column:id"`
-	LicenseKey  string     `gorm:"column:license_key"`
-	LicenseID   string     `gorm:"column:license_id"`
-	Customer    string     `gorm:"column:customer"`
-	Plan        string     `gorm:"column:plan"`
-	MaxUnits    int        `gorm:"column:max_units"`
-	IssuedAt    *time.Time `gorm:"column:issued_at"`
-	ExpiresAt   time.Time  `gorm:"column:expires_at"`
-	InstanceID  uuid.UUID  `gorm:"column:instance_id"`
-	ActivatedAt time.Time  `gorm:"column:activated_at"`
-	IsActive    bool       `gorm:"column:is_active"`
-	RawPayload  []byte     `gorm:"column:raw_payload"`
+	ID               uuid.UUID  `gorm:"column:id"`
+	LicenseKey       string     `gorm:"column:license_key"`
+	LicenseID        string     `gorm:"column:license_id"`
+	Customer         string     `gorm:"column:customer"`
+	Plan             string     `gorm:"column:plan"`
+	MaxUnits         int        `gorm:"column:max_units"`
+	IssuedAt         *time.Time `gorm:"column:issued_at"`
+	ExpiresAt        time.Time  `gorm:"column:expires_at"`
+	InstanceID       uuid.UUID  `gorm:"column:instance_id"`
+	ActivatedAt      time.Time  `gorm:"column:activated_at"`
+	IsActive         bool       `gorm:"column:is_active"`
+	RawPayload       []byte     `gorm:"column:raw_payload"`
+	RemoteState      string     `gorm:"column:remote_state"`
+	LastHeartbeatAt  *time.Time `gorm:"column:last_heartbeat_at"`
+	LastHeartbeatErr string     `gorm:"column:last_heartbeat_error"`
 }
 
 type identityRow struct {
@@ -104,6 +111,12 @@ type Service struct {
 	mu       sync.RWMutex
 	cached   *Status
 	cachedAt time.Time
+
+	vendor         VendorAPI
+	secretBox      *secretBox
+	appVersion     string
+	heartbeatEvery time.Duration
+	onlineMu       sync.Mutex
 }
 
 // NewService membuat service lisensi.
@@ -190,7 +203,7 @@ func (s *Service) load(ctx context.Context) *Status {
 
 	var row activeRow
 	if err := s.db.WithContext(ctx).Raw(
-		"SELECT * FROM " + spname.Ident("GetActiveLicense") + "()").Scan(&row).Error; err != nil {
+		"SELECT * FROM " + spname.Ident("GetActiveLicenseV2") + "()").Scan(&row).Error; err != nil {
 		st.State = StateInvalid
 		st.Message = "Gagal membaca data lisensi."
 		return st
@@ -247,6 +260,35 @@ func (s *Service) load(ctx context.Context) *Status {
 	st.MaxUnits = p.MaxUnits
 	exp := p.ExpiresAt
 	st.ExpiresAt = &exp
+
+	// Deteksi clock rollback kasar: waktu lokal tidak boleh jauh lebih mundur
+	// dari heartbeat terakhir yang tercatat dari server vendor.
+	if row.LastHeartbeatAt != nil && now.Add(24*time.Hour).Before(*row.LastHeartbeatAt) {
+		st.State = StateInvalid
+		st.Message = "Waktu sistem terdeteksi mundur. Perbaiki jam server lalu coba lagi."
+		return st
+	}
+
+	// Heartbeat vendor dapat menangguhkan/mencabut lisensi lebih cepat dari
+	// tanggal kedaluwarsa. State ini disimpan di DB dan tetap berlaku offline.
+	switch strings.ToLower(strings.TrimSpace(row.RemoteState)) {
+	case StateSuspended:
+		st.State = StateSuspended
+		st.Message = "Lisensi ditangguhkan oleh vendor. Hubungi admin ByoneBilling."
+		return st
+	case StateRevoked:
+		st.State = StateRevoked
+		st.Message = "Lisensi telah dicabut oleh vendor. Hubungi admin ByoneBilling."
+		return st
+	case StateInactive:
+		st.State = StateInactive
+		st.Message = "Aktivasi perangkat ini tidak aktif lagi. Lakukan aktivasi ulang."
+		return st
+	case StateExpired:
+		st.State = StateExpired
+		st.Message = "Lisensi sudah berakhir menurut license server vendor."
+		return st
+	}
 
 	switch {
 	case now.After(p.ExpiresAt.AddDate(0, 0, s.graceDays)):
@@ -353,7 +395,7 @@ func (s *Service) Activate(ctx context.Context, licenseText string, force bool) 
 	warnings := make([]string, 0, 3)
 	var cur activeRow
 	_ = s.db.WithContext(ctx).Raw(
-		"SELECT * FROM " + spname.Ident("GetActiveLicense") + "()").Scan(&cur).Error
+		"SELECT * FROM " + spname.Ident("GetActiveLicenseV2") + "()").Scan(&cur).Error
 
 	if cur.ID != uuid.Nil && cur.ExpiresAt.After(now) {
 		if p.ExpiresAt.Before(cur.ExpiresAt) {

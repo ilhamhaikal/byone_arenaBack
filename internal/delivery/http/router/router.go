@@ -8,6 +8,7 @@ import (
 	"byone-arena/internal/delivery/http/handler"
 	"byone-arena/internal/delivery/http/middleware"
 	wsHandler "byone-arena/internal/delivery/websocket"
+	"byone-arena/internal/license"
 	"byone-arena/pkg/config"
 	"byone-arena/pkg/response"
 
@@ -48,6 +49,7 @@ type Handlers struct {
 	Audit         *handler.AuditHandler
 	Promo         *handler.PromoHandler
 	License       *handler.LicenseHandler
+	LicenseSvc    *license.Service
 	Hub           *wsHandler.Hub
 }
 
@@ -104,6 +106,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 			},
 		}),
 		middleware.DeviceWSMiddleware(db),
+		middleware.RequireValidLicense(h.LicenseSvc),
 		websocket.New(func(conn *websocket.Conn) {
 			consoleID, _ := conn.Locals("consoleID").(uuid.UUID)
 			h.Hub.HandleConnection(conn, consoleID)
@@ -151,10 +154,10 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	}
 
 	// Console overview — publik, digunakan oleh client Android TV tanpa login
-	api.Get("/consoles/overview", h.Console.GetOverview)
+	api.Get("/consoles/overview", middleware.RequireValidLicense(h.LicenseSvc), h.Console.GetOverview)
 
 	// Heartbeat — publik tetapi wajib secret perangkat (lihat handler).
-	api.Post("/consoles/:id/heartbeat", limiter.New(limiter.Config{
+	api.Post("/consoles/:id/heartbeat", middleware.RequireValidLicense(h.LicenseSvc), limiter.New(limiter.Config{
 		Max:        30,
 		Expiration: 1 * time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
@@ -169,7 +172,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	}), h.Console.Heartbeat)
 
 	// Pairing TV: publik, dipanggil aplikasi TV setelah menemukan server.
-	api.Post("/devices/announce", limiter.New(limiter.Config{
+	api.Post("/devices/announce", middleware.RequireValidLicense(h.LicenseSvc), limiter.New(limiter.Config{
 		Max:        30,
 		Expiration: 1 * time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
@@ -199,6 +202,7 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	protected := api.Group("",
 		middleware.AuthMiddleware(cfg, db),
 		middleware.RequirePasswordChanged(),
+		middleware.LicenseGate(h.LicenseSvc),
 	)
 
 	// Profil pemilik token — dipakai frontend untuk memvalidasi sesi.
@@ -311,6 +315,34 @@ func Setup(app *fiber.App, h *Handlers, cfg *config.Config, db *gorm.DB) {
 	protected.Get("/license/status", h.License.Status)
 	protected.Get("/license/history", middleware.SuperAdminOnly(), h.License.History)
 	protected.Post("/license/activate", middleware.SuperAdminOnly(), h.License.Activate)
+	onlineStartLimit := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"success": false,
+				"message": "Terlalu banyak permintaan aktivasi, coba lagi nanti",
+			})
+		},
+	})
+	onlinePollLimit := limiter.New(limiter.Config{
+		Max:        60,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"success": false,
+				"message": "Terlalu banyak pengecekan aktivasi, coba lagi nanti",
+			})
+		},
+	})
+	protected.Post("/license/online/start", middleware.SuperAdminOnly(), onlineStartLimit, h.License.OnlineStart)
+	protected.Get("/license/online/status", middleware.SuperAdminOnly(), onlinePollLimit, h.License.OnlineStatus)
 
 	// Promo bonus waktu: lihat butuh menu Bonus Waktu, kelola butuh write/delete.
 	promoRules := protected.Group("/promo-bonuses", middleware.RequirePermission("promo_bonus"))
