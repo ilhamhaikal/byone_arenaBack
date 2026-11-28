@@ -30,6 +30,7 @@ type Payload struct {
 	Plan      string `json:"plan"`
 	// MaxUnits = 0 berarti tanpa batas unit (enterprise).
 	MaxUnits  int       `json:"maxUnits"`
+	GraceDays int       `json:"graceDays,omitempty"`
 	Features  []string  `json:"features,omitempty"`
 	IssuedAt  time.Time `json:"issuedAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -100,6 +101,9 @@ func ValidateStructure(p *Payload, instanceID uuid.UUID) error {
 	}
 	if p.MaxUnits < 0 {
 		return errors.New("jumlah unit lisensi tidak valid")
+	}
+	if p.GraceDays < 0 || p.GraceDays > 90 {
+		return errors.New("masa tenggang lisensi tidak valid")
 	}
 	if p.ExpiresAt.IsZero() {
 		return errors.New("tanggal kedaluwarsa lisensi kosong")

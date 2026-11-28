@@ -158,7 +158,7 @@ func main() {
 		vendorClient := license.NewVendorClient(
 			cfg.LicenseServerURL, cfg.AppVersion,
 			time.Duration(cfg.LicenseHTTPTimeoutSeconds)*time.Second)
-		licenseSvc.ConfigureOnline(vendorClient, cfg.JWTSecret, cfg.AppVersion,
+		licenseSvc.ConfigureOnline(vendorClient, cfg.AppVersion,
 			time.Duration(cfg.LicenseHeartbeatMinutes)*time.Minute)
 		log.Info("Integrasi license server aktif",
 			zap.String("url", cfg.LicenseServerURL),

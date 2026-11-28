@@ -68,21 +68,3 @@ func TestVendorClientRejectsErrorEnvelope(t *testing.T) {
 		t.Fatalf("expected vendor error, got %v", err)
 	}
 }
-
-func TestSecretBox(t *testing.T) {
-	box := newSecretBox("server-secret")
-	sealed, err := box.seal("secret-value")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sealed == "secret-value" {
-		t.Fatal("secret tidak terenkripsi")
-	}
-	plain, err := box.open(sealed)
-	if err != nil || plain != "secret-value" {
-		t.Fatalf("open = %q, err=%v", plain, err)
-	}
-	if _, err := box.open(sealed + "x"); err == nil {
-		t.Fatal("tampered secret harus ditolak")
-	}
-}

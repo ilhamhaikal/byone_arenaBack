@@ -62,7 +62,7 @@ func (h *LicenseHandler) Activate(c *fiber.Ctx) error {
 	}
 
 	key := strings.TrimSpace(req.LicenseKey)
-	st, warnings, err := h.svc.Activate(c.Context(), key, req.Force)
+	st, warnings, err := h.svc.ActivateOnline(c.Context(), key, req.Force)
 
 	// Perlu konfirmasi (downgrade masa berlaku/unit) — bukan error fatal.
 	if errors.Is(err, license.ErrNeedsConfirmation) {

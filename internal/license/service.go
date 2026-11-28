@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -73,21 +76,18 @@ type HistoryRow struct {
 }
 
 type activeRow struct {
-	ID               uuid.UUID  `gorm:"column:id"`
-	LicenseKey       string     `gorm:"column:license_key"`
-	LicenseID        string     `gorm:"column:license_id"`
-	Customer         string     `gorm:"column:customer"`
-	Plan             string     `gorm:"column:plan"`
-	MaxUnits         int        `gorm:"column:max_units"`
-	IssuedAt         *time.Time `gorm:"column:issued_at"`
-	ExpiresAt        time.Time  `gorm:"column:expires_at"`
-	InstanceID       uuid.UUID  `gorm:"column:instance_id"`
-	ActivatedAt      time.Time  `gorm:"column:activated_at"`
-	IsActive         bool       `gorm:"column:is_active"`
-	RawPayload       []byte     `gorm:"column:raw_payload"`
-	RemoteState      string     `gorm:"column:remote_state"`
-	LastHeartbeatAt  *time.Time `gorm:"column:last_heartbeat_at"`
-	LastHeartbeatErr string     `gorm:"column:last_heartbeat_error"`
+	ID          uuid.UUID  `gorm:"column:id"`
+	LicenseKey  string     `gorm:"column:license_key"`
+	LicenseID   string     `gorm:"column:license_id"`
+	Customer    string     `gorm:"column:customer"`
+	Plan        string     `gorm:"column:plan"`
+	MaxUnits    int        `gorm:"column:max_units"`
+	IssuedAt    *time.Time `gorm:"column:issued_at"`
+	ExpiresAt   time.Time  `gorm:"column:expires_at"`
+	InstanceID  uuid.UUID  `gorm:"column:instance_id"`
+	ActivatedAt time.Time  `gorm:"column:activated_at"`
+	IsActive    bool       `gorm:"column:is_active"`
+	RawPayload  []byte     `gorm:"column:raw_payload"`
 }
 
 type identityRow struct {
@@ -113,10 +113,17 @@ type Service struct {
 	cachedAt time.Time
 
 	vendor         VendorAPI
-	secretBox      *secretBox
 	appVersion     string
 	heartbeatEvery time.Duration
 	onlineMu       sync.Mutex
+	pendingOnline  *pendingOnlineActivation
+
+	// Status remote dari heartbeat disimpan di memori. Database billing hanya
+	// menyimpan token lisensi, bukan state operasional lisensi.
+	remoteMu        sync.RWMutex
+	remoteState     string
+	remoteMessage   string
+	lastHeartbeatAt *time.Time
 }
 
 // NewService membuat service lisensi.
@@ -203,7 +210,7 @@ func (s *Service) load(ctx context.Context) *Status {
 
 	var row activeRow
 	if err := s.db.WithContext(ctx).Raw(
-		"SELECT * FROM " + spname.Ident("GetActiveLicenseV2") + "()").Scan(&row).Error; err != nil {
+		"SELECT * FROM " + spname.Ident("GetActiveLicense") + "()").Scan(&row).Error; err != nil {
 		st.State = StateInvalid
 		st.Message = "Gagal membaca data lisensi."
 		return st
@@ -258,20 +265,22 @@ func (s *Service) load(ctx context.Context) *Status {
 	st.Customer = p.Customer
 	st.Plan = p.Plan
 	st.MaxUnits = p.MaxUnits
+	graceDays := s.graceDays
+	if p.GraceDays > 0 {
+		graceDays = p.GraceDays
+	}
+	st.GraceDays = graceDays
 	exp := p.ExpiresAt
 	st.ExpiresAt = &exp
 
-	// Deteksi clock rollback kasar: waktu lokal tidak boleh jauh lebih mundur
-	// dari heartbeat terakhir yang tercatat dari server vendor.
-	if row.LastHeartbeatAt != nil && now.Add(24*time.Hour).Before(*row.LastHeartbeatAt) {
+	// State remote berasal dari heartbeat dan disimpan di memori proses.
+	remoteState, remoteMessage, lastHeartbeat := s.remoteStatus()
+	if lastHeartbeat != nil && now.Add(24*time.Hour).Before(*lastHeartbeat) {
 		st.State = StateInvalid
 		st.Message = "Waktu sistem terdeteksi mundur. Perbaiki jam server lalu coba lagi."
 		return st
 	}
-
-	// Heartbeat vendor dapat menangguhkan/mencabut lisensi lebih cepat dari
-	// tanggal kedaluwarsa. State ini disimpan di DB dan tetap berlaku offline.
-	switch strings.ToLower(strings.TrimSpace(row.RemoteState)) {
+	switch strings.ToLower(strings.TrimSpace(remoteState)) {
 	case StateSuspended:
 		st.State = StateSuspended
 		st.Message = "Lisensi ditangguhkan oleh vendor. Hubungi admin ByoneBilling."
@@ -286,12 +295,16 @@ func (s *Service) load(ctx context.Context) *Status {
 		return st
 	case StateExpired:
 		st.State = StateExpired
-		st.Message = "Lisensi sudah berakhir menurut license server vendor."
+		if remoteMessage != "" {
+			st.Message = remoteMessage
+		} else {
+			st.Message = "Lisensi sudah berakhir menurut license server vendor."
+		}
 		return st
 	}
 
 	switch {
-	case now.After(p.ExpiresAt.AddDate(0, 0, s.graceDays)):
+	case now.After(p.ExpiresAt.AddDate(0, 0, graceDays)):
 		st.State = StateExpired
 		st.Message = fmt.Sprintf(
 			"Lisensi berakhir pada %s. Perpanjang lisensi untuk melanjutkan.",
@@ -299,7 +312,7 @@ func (s *Service) load(ctx context.Context) *Status {
 
 	case now.After(p.ExpiresAt):
 		graceLeft := int(math.Ceil(
-			p.ExpiresAt.AddDate(0, 0, s.graceDays).Sub(now).Hours() / 24))
+			p.ExpiresAt.AddDate(0, 0, graceDays).Sub(now).Hours() / 24))
 		if graceLeft < 0 {
 			graceLeft = 0
 		}
@@ -335,6 +348,33 @@ func (s *Service) load(ctx context.Context) *Status {
 			"Semua unit lisensi sudah terpakai (%d/%d).", st.UnitsUsed, st.MaxUnits))
 	}
 	return st
+}
+
+func (s *Service) remoteStatus() (string, string, *time.Time) {
+	s.remoteMu.RLock()
+	defer s.remoteMu.RUnlock()
+	var at *time.Time
+	if s.lastHeartbeatAt != nil {
+		cp := *s.lastHeartbeatAt
+		at = &cp
+	}
+	return s.remoteState, s.remoteMessage, at
+}
+
+func (s *Service) setRemoteStatus(state, message string, at time.Time) {
+	s.remoteMu.Lock()
+	s.remoteState = state
+	s.remoteMessage = message
+	s.lastHeartbeatAt = &at
+	s.remoteMu.Unlock()
+}
+
+func (s *Service) clearRemoteStatus() {
+	s.remoteMu.Lock()
+	s.remoteState = ""
+	s.remoteMessage = ""
+	s.lastHeartbeatAt = nil
+	s.remoteMu.Unlock()
 }
 
 // EnsureCanBindUnit menolak pemasangan TV baru bila lisensi tidak mengizinkan.
@@ -395,7 +435,7 @@ func (s *Service) Activate(ctx context.Context, licenseText string, force bool) 
 	warnings := make([]string, 0, 3)
 	var cur activeRow
 	_ = s.db.WithContext(ctx).Raw(
-		"SELECT * FROM " + spname.Ident("GetActiveLicenseV2") + "()").Scan(&cur).Error
+		"SELECT * FROM " + spname.Ident("GetActiveLicense") + "()").Scan(&cur).Error
 
 	if cur.ID != uuid.Nil && cur.ExpiresAt.After(now) {
 		if p.ExpiresAt.Before(cur.ExpiresAt) {
@@ -446,8 +486,103 @@ func (s *Service) Activate(ctx context.Context, licenseText string, force bool) 
 		"SELECT "+spname.Ident("LogLicenseEvent")+"(?::varchar, ?::varchar, ?::jsonb)",
 		"activated", p.LicenseID, string(detail)).Error
 
+	s.clearRemoteStatus()
 	s.invalidate()
 	return s.Status(ctx), warnings, nil
+}
+
+var licenseKeyPattern = regexp.MustCompile(`(?i)\bBYA(?:[\s-]?[A-Z0-9]{4}){5}\b`)
+
+// ActivateOnline mewajibkan koneksi ke license server vendor saat impor
+// file/kode lisensi atau perpanjangan. Dua format didukung:
+//   - token .lic bertanda tangan (dipakai untuk menarik token terbaru via heartbeat)
+//   - kunci lisensi BYA-... dari file teks vendor (ditukar menjadi token terbaru)
+func (s *Service) ActivateOnline(ctx context.Context, licenseText string, force bool) (*Status, []string, error) {
+	if !s.onlineEnabled() {
+		return nil, nil, errors.New("impor/perpanjangan lisensi membutuhkan koneksi internet ke license server vendor")
+	}
+	ident := s.identity(ctx)
+	if ident.ID == uuid.Nil {
+		return nil, nil, errors.New("gagal membaca identitas server")
+	}
+
+	trimmed := strings.TrimSpace(licenseText)
+	if trimmed == "" {
+		return nil, nil, errors.New("lisensi kosong")
+	}
+
+	// Format 1: token bertanda tangan (.lic lama atau hasil aktivasi online).
+	if strings.Count(trimmed, ".") == 1 && !strings.ContainsAny(trimmed, " \n\r\t") {
+		p, err := licensekey.Verify(trimmed, s.publicKey)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := licensekey.ValidateStructure(p, ident.ID); err != nil {
+			return nil, nil, err
+		}
+		result, err := s.vendor.Heartbeat(ctx, trimmed, ident.ID.String())
+		if err != nil {
+			return nil, nil, fmt.Errorf("perpanjangan membutuhkan koneksi internet ke license server: %w", err)
+		}
+		if !result.Valid {
+			msg := result.Message
+			if msg == "" {
+				msg = "license server menolak lisensi ini"
+			}
+			return nil, nil, errors.New(msg)
+		}
+		if result.License == "" {
+			return nil, nil, errors.New("license server tidak mengirim token terbaru")
+		}
+		return s.Activate(ctx, result.License, force)
+	}
+
+	// Format 2: file teks vendor / kode kunci lisensi.
+	key := extractLicenseKey(trimmed)
+	if key == "" {
+		return nil, nil, errors.New("format lisensi tidak dikenali. Gunakan file .lic resmi dari vendor atau tempel kode lisensi BYA-...")
+	}
+	machineLabel, _ := os.Hostname()
+	if strings.TrimSpace(machineLabel) == "" {
+		machineLabel = "Server billing"
+	}
+	result, err := s.vendor.Activate(ctx, key, ident.ID.String(), machineLabel, runtime.GOOS+" "+runtime.GOARCH)
+	if err != nil {
+		var apiErr *VendorAPIError
+		if errors.As(err, &apiErr) && apiErr.Message != "" {
+			return nil, nil, fmt.Errorf("license server menolak lisensi: %s", apiErr.Message)
+		}
+		return nil, nil, fmt.Errorf("aktivasi/perpanjangan membutuhkan koneksi internet ke license server: %w", err)
+	}
+	if result.License == "" {
+		return nil, nil, errors.New("license server tidak mengirim token lisensi")
+	}
+	return s.Activate(ctx, result.License, force)
+}
+
+// extractLicenseKey mengambil kunci BYA-... dari file teks vendor atau input
+// yang ditempel pengguna. Kunci kanonik tanpa prefix juga diterima bila
+// panjangnya tepat 20 karakter.
+func extractLicenseKey(raw string) string {
+	if match := licenseKeyPattern.FindString(raw); match != "" {
+		return strings.ToUpper(strings.Join(strings.Fields(match), ""))
+	}
+	compact := strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '-', '\t', '\n', '\r':
+			return -1
+		}
+		return r
+	}, strings.ToUpper(strings.TrimSpace(raw)))
+	if len(compact) == 20 {
+		for _, r := range compact {
+			if !strings.ContainsRune("0123456789ABCDEFGHJKMNPQRSTVWXYZ", r) {
+				return ""
+			}
+		}
+		return compact
+	}
+	return ""
 }
 
 // History mengembalikan riwayat lisensi yang pernah diaktifkan.

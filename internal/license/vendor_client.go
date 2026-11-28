@@ -51,6 +51,7 @@ type VendorAPI interface {
 	Enabled() bool
 	CreateActivationRequest(ctx context.Context, instanceID, machineLabel, osInfo string) (*VendorActivationRequest, error)
 	PollActivationRequest(ctx context.Context, code, secret string) (*VendorActivationPoll, error)
+	Activate(ctx context.Context, licenseKey, instanceID, machineLabel, osInfo string) (*VendorActivate, error)
 	Heartbeat(ctx context.Context, licenseToken, instanceID string) (*VendorHeartbeat, error)
 }
 
@@ -73,6 +74,23 @@ type VendorActivationPoll struct {
 	Customer  string     `json:"customer,omitempty"`
 	Plan      string     `json:"plan,omitempty"`
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+}
+
+// VendorActivate adalah respons aktivasi manual memakai kunci lisensi.
+type VendorActivate struct {
+	Valid      bool      `json:"-"`
+	License    string    `json:"license"`
+	LicenseID  string    `json:"licenseId"`
+	Customer   string    `json:"customer"`
+	Plan       string    `json:"plan"`
+	PlanName   string    `json:"planName"`
+	MaxUnits   int       `json:"maxUnits"`
+	Features   []string  `json:"features"`
+	IssuedAt   time.Time `json:"issuedAt"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	GraceDays  int       `json:"graceDays"`
+	Activation string    `json:"activationId"`
+	ServerTime time.Time `json:"serverTime"`
 }
 
 // VendorHeartbeat adalah respons heartbeat/revocation check.
@@ -185,6 +203,27 @@ func (c *VendorClient) PollActivationRequest(ctx context.Context, code, secret s
 	if err != nil {
 		return nil, err
 	}
+	return &out, nil
+}
+
+// Activate menukar kunci lisensi dengan token bertanda tangan terbaru.
+// Endpoint ini mewajibkan server billing terhubung ke internet.
+func (c *VendorClient) Activate(ctx context.Context, licenseKey, instanceID, machineLabel, osInfo string) (*VendorActivate, error) {
+	var out VendorActivate
+	err := c.post(ctx, "/api/v1/activations/", map[string]any{
+		"licenseKey":   licenseKey,
+		"instanceId":   instanceID,
+		"machineLabel": machineLabel,
+		"appVersion":   c.appVersion,
+		"osInfo":       osInfo,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	if out.License == "" {
+		return nil, errors.New("license server tidak mengembalikan token lisensi")
+	}
+	out.Valid = true
 	return &out, nil
 }
 

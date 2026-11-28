@@ -27,20 +27,27 @@ type OnlineActivationStart struct {
 
 // OnlineActivationPoll adalah hasil pengecekan status aktivasi.
 type OnlineActivationPoll struct {
-	State    string   `json:"state"` // waiting, activated, rejected, expired, error
+	State    string   `json:"state"`
 	Valid    bool     `json:"valid"`
 	Message  string   `json:"message,omitempty"`
 	Status   *Status  `json:"status,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
 }
 
+// pendingOnlineActivation hanya hidup di memori proses. Database billing tidak
+// menyimpan secret/code aktivasi; jika server restart, buat kode baru.
+type pendingOnlineActivation struct {
+	Code             string
+	Secret           string
+	ExpiresAt        time.Time
+	PollAfterSeconds int
+}
+
 // ConfigureOnline mengaktifkan integrasi license server vendor.
-// Tanpa ini, aplikasi tetap berjalan dengan lisensi offline/manual.
-func (s *Service) ConfigureOnline(vendor VendorAPI, serverSecret, appVersion string, heartbeatEvery time.Duration) {
+func (s *Service) ConfigureOnline(vendor VendorAPI, appVersion string, heartbeatEvery time.Duration) {
 	s.onlineMu.Lock()
 	defer s.onlineMu.Unlock()
 	s.vendor = vendor
-	s.secretBox = newSecretBox(serverSecret)
 	s.appVersion = strings.TrimSpace(appVersion)
 	if s.appVersion == "" {
 		s.appVersion = "1.0.4"
@@ -52,34 +59,7 @@ func (s *Service) ConfigureOnline(vendor VendorAPI, serverSecret, appVersion str
 }
 
 func (s *Service) onlineEnabled() bool {
-	return s.vendor != nil && s.vendor.Enabled() && s.secretBox != nil
-}
-
-type pendingActivationRow struct {
-	ID           uuid.UUID `gorm:"column:id"`
-	Code         string    `gorm:"column:code"`
-	SecretCipher string    `gorm:"column:secret_cipher"`
-	ExpiresAt    time.Time `gorm:"column:expires_at"`
-	CreatedAt    time.Time `gorm:"column:created_at"`
-}
-
-func (s *Service) pendingActivation(ctx context.Context) (pendingActivationRow, error) {
-	var row pendingActivationRow
-	if s.db == nil {
-		return row, errors.New("database tidak tersedia")
-	}
-	err := s.db.WithContext(ctx).Raw(
-		"SELECT * FROM " + spname.Ident("GetPendingLicenseActivationRequest") + "()").Scan(&row).Error
-	return row, err
-}
-
-func (s *Service) markActivation(ctx context.Context, id uuid.UUID, status string, at time.Time) error {
-	if s.db == nil {
-		return errors.New("database tidak tersedia")
-	}
-	return s.db.WithContext(ctx).Exec(
-		"SELECT "+spname.Ident("UpdateLicenseActivationRequest")+"(?::uuid, ?::varchar, ?::timestamptz)",
-		id, status, at).Error
+	return s.vendor != nil && s.vendor.Enabled()
 }
 
 func (s *Service) logLicenseEvent(ctx context.Context, event, licenseID string, detail map[string]any) {
@@ -93,8 +73,6 @@ func (s *Service) logLicenseEvent(ctx context.Context, event, licenseID string, 
 }
 
 // StartOnlineActivation membuat kode aktivasi QR di license server vendor.
-// Jika masih ada request pending, kode yang sama dikembalikan agar aman saat
-// aplikasi ditutup lalu dibuka kembali.
 func (s *Service) StartOnlineActivation(ctx context.Context, machineLabel, osInfo string) (*OnlineActivationStart, error) {
 	if !s.onlineEnabled() {
 		return nil, ErrOnlineDisabled
@@ -107,14 +85,11 @@ func (s *Service) StartOnlineActivation(ctx context.Context, machineLabel, osInf
 		return nil, errors.New("gagal membaca identitas server")
 	}
 
-	pending, err := s.pendingActivation(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("gagal membaca request aktivasi: %w", err)
-	}
-	if pending.ID != uuid.Nil && time.Now().Before(pending.ExpiresAt) {
+	now := time.Now()
+	if s.pendingOnline != nil && now.Before(s.pendingOnline.ExpiresAt) {
 		return &OnlineActivationStart{
-			Code: pending.Code, ExpiresAt: pending.ExpiresAt,
-			PollAfterSeconds: 5, InstanceID: ident.ID.String(),
+			Code: s.pendingOnline.Code, ExpiresAt: s.pendingOnline.ExpiresAt,
+			PollAfterSeconds: s.pendingOnline.PollAfterSeconds, InstanceID: ident.ID.String(),
 		}, nil
 	}
 
@@ -136,29 +111,17 @@ func (s *Service) StartOnlineActivation(ctx context.Context, machineLabel, osInf
 	if err != nil {
 		return nil, err
 	}
-	secretCipher, err := s.secretBox.seal(created.Secret)
-	if err != nil {
-		return nil, fmt.Errorf("gagal mengamankan secret aktivasi: %w", err)
-	}
-	if s.db == nil {
-		return nil, errors.New("database tidak tersedia")
-	}
-	var saved struct {
-		ID uuid.UUID `gorm:"column:id"`
-	}
-	if err := s.db.WithContext(ctx).Raw(
-		"SELECT * FROM "+spname.Ident("StartLicenseActivationRequest")+"(?::varchar, ?::text, ?::timestamptz)",
-		created.Code, secretCipher, created.ExpiresAt).Scan(&saved).Error; err != nil {
-		return nil, fmt.Errorf("gagal menyimpan request aktivasi: %w", err)
-	}
-	s.logLicenseEvent(ctx, "online_requested", "", map[string]any{
-		"code": created.Code, "instanceId": ident.ID.String(),
-	})
-
 	pollAfter := created.PollAfterSeconds
 	if pollAfter < 2 || pollAfter > 30 {
 		pollAfter = 5
 	}
+	s.pendingOnline = &pendingOnlineActivation{
+		Code: created.Code, Secret: created.Secret,
+		ExpiresAt: created.ExpiresAt, PollAfterSeconds: pollAfter,
+	}
+	s.logLicenseEvent(ctx, "online_requested", "", map[string]any{
+		"code": created.Code, "instanceId": ident.ID.String(),
+	})
 	return &OnlineActivationStart{
 		Code: created.Code, ExpiresAt: created.ExpiresAt,
 		PollAfterSeconds: pollAfter, InstanceID: ident.ID.String(),
@@ -174,30 +137,21 @@ func (s *Service) PollOnlineActivation(ctx context.Context) (*OnlineActivationPo
 	s.onlineMu.Lock()
 	defer s.onlineMu.Unlock()
 
-	pending, err := s.pendingActivation(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("gagal membaca request aktivasi: %w", err)
-	}
-	if pending.ID == uuid.Nil {
+	pending := s.pendingOnline
+	if pending == nil {
 		return nil, errors.New("tidak ada aktivasi tertunda; buat kode baru")
 	}
 	now := time.Now()
 	if now.After(pending.ExpiresAt) {
-		_ = s.markActivation(ctx, pending.ID, "expired", now)
+		s.pendingOnline = nil
 		return &OnlineActivationPoll{
 			State: "expired", Message: "Kode aktivasi sudah kedaluwarsa. Buat kode baru.",
 		}, nil
 	}
-	secret, err := s.secretBox.open(pending.SecretCipher)
+	result, err := s.vendor.PollActivationRequest(ctx, pending.Code, pending.Secret)
 	if err != nil {
-		return nil, err
-	}
-	result, err := s.vendor.PollActivationRequest(ctx, pending.Code, secret)
-	if err != nil {
-		_ = s.markActivation(ctx, pending.ID, "pending", now)
 		return &OnlineActivationPoll{State: "error", Message: err.Error()}, nil
 	}
-	_ = s.markActivation(ctx, pending.ID, "pending", now)
 
 	switch {
 	case result.Valid && result.License != "":
@@ -205,7 +159,7 @@ func (s *Service) PollOnlineActivation(ctx context.Context) (*OnlineActivationPo
 		if err != nil {
 			return &OnlineActivationPoll{State: "error", Message: err.Error()}, nil
 		}
-		_ = s.markActivation(ctx, pending.ID, "claimed", now)
+		s.pendingOnline = nil
 		s.logLicenseEvent(ctx, "online_activated", result.LicenseID, map[string]any{
 			"code": pending.Code, "plan": result.Plan,
 		})
@@ -215,11 +169,11 @@ func (s *Service) PollOnlineActivation(ctx context.Context) (*OnlineActivationPo
 		}, nil
 
 	case result.Status == "rejected" || result.Code == "rejected":
-		_ = s.markActivation(ctx, pending.ID, "rejected", now)
+		s.pendingOnline = nil
 		return &OnlineActivationPoll{State: "rejected", Message: result.Message}, nil
 
 	case result.Status == "expired" || result.Code == "expired":
-		_ = s.markActivation(ctx, pending.ID, "expired", now)
+		s.pendingOnline = nil
 		return &OnlineActivationPoll{State: "expired", Message: result.Message}, nil
 
 	default:
@@ -244,7 +198,6 @@ func (s *Service) StartHeartbeat(ctx context.Context, log *zap.Logger) {
 		interval = 30 * time.Minute
 	}
 	go func() {
-		// Beri waktu server/DB selesai inisialisasi.
 		timer := time.NewTimer(15 * time.Second)
 		defer timer.Stop()
 		for {
@@ -261,8 +214,8 @@ func (s *Service) StartHeartbeat(ctx context.Context, log *zap.Logger) {
 	}()
 }
 
-// HeartbeatNow melakukan satu siklus heartbeat. Network error tidak mengubah
-// status lokal; lisensi tetap berjalan sampai expiry/grace.
+// HeartbeatNow melakukan satu siklus heartbeat. State revocation disimpan di
+// memori proses; yang dipersistenkan ke database hanya token lisensinya.
 func (s *Service) HeartbeatNow(ctx context.Context) error {
 	if !s.onlineEnabled() {
 		return ErrOnlineDisabled
@@ -275,7 +228,7 @@ func (s *Service) HeartbeatNow(ctx context.Context) error {
 	}
 	var row activeRow
 	if err := s.db.WithContext(ctx).Raw(
-		"SELECT * FROM " + spname.Ident("GetActiveLicenseV2") + "()").Scan(&row).Error; err != nil {
+		"SELECT * FROM " + spname.Ident("GetActiveLicense") + "()").Scan(&row).Error; err != nil {
 		return fmt.Errorf("gagal membaca lisensi aktif: %w", err)
 	}
 	if row.ID == uuid.Nil || strings.TrimSpace(row.LicenseKey) == "" {
@@ -289,10 +242,6 @@ func (s *Service) HeartbeatNow(ctx context.Context) error {
 	now := time.Now()
 	result, err := s.vendor.Heartbeat(ctx, row.LicenseKey, ident.ID.String())
 	if err != nil {
-		_ = s.db.WithContext(ctx).Exec(
-			"SELECT "+spname.Ident("SetLicenseHeartbeatError")+"(?::text, ?::timestamptz)",
-			err.Error(), now).Error
-		s.invalidate()
 		return err
 	}
 	at := result.ServerTime
@@ -303,9 +252,7 @@ func (s *Service) HeartbeatNow(ctx context.Context) error {
 	if !result.Valid {
 		state := remoteStateFor(result.Code)
 		if state != "" {
-			_ = s.db.WithContext(ctx).Exec(
-				"SELECT "+spname.Ident("SetLicenseRemoteState")+"(?::varchar, ?::timestamptz, ?::text)",
-				state, at, result.Message).Error
+			s.setRemoteStatus(state, result.Message, at)
 			s.invalidate()
 		}
 		return nil
@@ -325,12 +272,13 @@ func (s *Service) HeartbeatNow(ctx context.Context) error {
 		ID uuid.UUID `gorm:"column:id"`
 	}
 	if err := s.db.WithContext(ctx).Raw(
-		"SELECT * FROM "+spname.Ident("UpdateLicenseHeartbeat")+
-			"(?::text, ?::varchar, ?::varchar, ?::varchar, ?::int, ?::timestamptz, ?::timestamptz, ?::jsonb, ?::timestamptz)",
-		result.License, payload.LicenseID, payload.Customer, payload.Plan, payload.MaxUnits,
-		payload.IssuedAt, payload.ExpiresAt, string(raw), at).Scan(&saved).Error; err != nil {
+		"SELECT * FROM "+spname.Ident("UpdateLicenseToken")+
+			"(?::text, ?::varchar, ?::varchar, ?::varchar, ?::int, ?::timestamptz, ?::jsonb, ?::timestamptz)",
+		result.License, payload.LicenseID, payload.Customer, payload.Plan,
+		payload.MaxUnits, payload.ExpiresAt, string(raw), at).Scan(&saved).Error; err != nil {
 		return fmt.Errorf("gagal menyimpan token heartbeat: %w", err)
 	}
+	s.setRemoteStatus("", "", at)
 	s.invalidate()
 	return nil
 }
